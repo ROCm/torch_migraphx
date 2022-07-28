@@ -1,0 +1,111 @@
+from typing import Iterable
+import warnings
+import torch
+import torch.fx
+import migraphx
+
+from .converter_registry import CONVERTERS
+from .utils import *
+
+
+class MGXInterpreter(torch.fx.Interpreter):
+    def __init__(self, module, sample_inputs):
+        super().__init__(module)
+
+        self.program = migraphx.program()
+        self.mm = self.program.get_main_module()
+        self.input_specs = [(s.size(), s.dtype) for s in sample_inputs]
+        self._input_iter = 0
+        self._input_names = []
+        self._outputs = []
+        unsupported_ops = self.validate_conversion()
+        if unsupported_ops:
+            warnings.warn(
+                'Torch model contains the following unsupported operations: \n'
+                + '\n'.join(f'{i}' for i in unsupported_ops))
+
+    def validate_conversion(self):
+        missing_converters = set()
+
+        for n in self.module.graph.nodes:
+            if n.op == 'call_module':
+                submod = self.fetch_attr(n.target)
+                target = getattr(submod, '_base_class_origin', type(submod))
+            else:
+                target = n.target
+
+            if n.op in ['call_module', 'call_function', 'call_method'
+                        ] and not CONVERTERS.get(target):
+                missing_converters.add(f'{n.op} : {target}')
+
+        return missing_converters
+
+    def run(self):
+        super().run()
+        self.mm.add_return(self._outputs)
+        return self.program
+
+    def run_node(self, n):
+        args, kwargs = self.fetch_args_kwargs_from_env(n)
+        assert isinstance(args, tuple)
+        assert isinstance(kwargs, dict)
+        return getattr(self, n.op)(n, args, kwargs)
+
+    def placeholder(self, node, args, kwargs):
+        self._input_names.append(node.target)
+        shape, dtype = self.input_specs[self._input_iter]
+        self._input_iter += 1
+
+        mgx_shape = migraphx.shape(lens=list(shape),
+                                   type=torch_dtype_to_mgx(dtype))
+        return self.mm.add_parameter(node.target, mgx_shape)
+
+    def call_module(self, node, args, kwargs):
+        assert isinstance(node.target, str)
+        # print(f'call module: {args}')
+        submod = self.fetch_attr(node.target)
+        # submod_type = getattr(submod, '_base_class_origin', type(submod))
+        submod_type = type(submod)
+        converter = CONVERTERS.get(submod_type)
+
+        if not converter:
+            raise RuntimeError(
+                f"Conversion of module {submod_type} not supported.")
+
+        return converter(self.mm, submod, node, args, kwargs)
+
+    def call_function(self, node, args, kwargs):
+        assert not isinstance(node.target, str)
+        converter = CONVERTERS.get(node.target)
+
+        if not converter:
+            raise RuntimeError(
+                f"Conversion of function {torch.typename(node.target)} not supported."
+            )
+
+        return converter(self.mm, node, args, kwargs)
+
+    def call_method(self, node, args, kwargs):
+        assert isinstance(node.target, str)
+
+        converter = CONVERTERS.get(node.target)
+
+        if not converter:
+            raise RuntimeError(
+                f"Conversion of method {node.target} not supported.")
+
+        return converter(self.mm, node, args, kwargs)
+
+    def get_attr(self, node, args, kwargs):
+        assert isinstance(node.target, str)
+        attr = self.fetch_attr(node.target)
+        return self.mm.add_literal(attr.cpu().detach().numpy())
+
+    def output(self, node, args, kwargs):
+        assert len(args) == 1
+
+        out = args[0] if isinstance(args[0], Iterable) else (args[0], )
+        self._outputs.extend(out)
+
+    def get_input_names(self):
+        return self._input_names
