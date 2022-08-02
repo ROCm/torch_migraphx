@@ -18,11 +18,11 @@ class MGXInterpreter(torch.fx.Interpreter):
         self._input_iter = 0
         self._input_names = []
         self._outputs = []
-        unsupported_ops = self.validate_conversion()
-        if unsupported_ops:
+        self.unsupported_ops = self.validate_conversion()
+        if self.unsupported_ops:
             warnings.warn(
                 'Torch model contains the following unsupported operations: \n'
-                + '\n'.join(f'{i}' for i in unsupported_ops))
+                + '\n'.join(f'{i}' for i in self.unsupported_ops))
 
     def validate_conversion(self):
         missing_converters = set()
