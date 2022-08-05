@@ -31,7 +31,9 @@ def get_submod_inputs(mod, submod, inputs):
 
 def lower_to_mgx(module: torch.nn.Module,
                  sample_inputs: Sequence[torch.Tensor],
-                 allow_split: bool = True):
+                 allow_split: bool = True,
+                 fp16_mode: bool = False):
+
     model = module.eval().cuda()
     sample_inputs = [i.cuda() for i in sample_inputs]
 
@@ -39,10 +41,13 @@ def lower_to_mgx(module: torch.nn.Module,
 
     if not allow_split:
         interp = MGXInterpreter(traced, sample_inputs)
+        interp.run()
         if len(interp.unsupported_ops) > 0:
             raise UnsupportedOpException(interp.unsupported_ops)
 
-        split_mod = MGXModule(interp.program, interp.get_input_names())
+        split_mod = MGXModule(interp.program,
+                              interp.get_input_names(),
+                              fp16_mode=fp16_mode)
 
     else:
         splitter = MGXSplitter(traced, sample_inputs)
@@ -59,7 +64,9 @@ def lower_to_mgx(module: torch.nn.Module,
                 # fx2trt replacement
                 interp = MGXInterpreter(submod, acc_inputs)
                 interp.run()
-                mgx_mod = MGXModule(interp.program, interp.get_input_names())
+                mgx_mod = MGXModule(interp.program,
+                                    interp.get_input_names(),
+                                    fp16_mode=fp16_mode)
 
                 setattr(split_mod, name, mgx_mod)
 

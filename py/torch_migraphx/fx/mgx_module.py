@@ -10,7 +10,8 @@ class MGXModule(torch.nn.Module):
     def __init__(self,
                  program: migraphx.program = None,
                  input_names: Sequence[str] = None,
-                 output_names: Sequence[str] = None):
+                 output_names: Sequence[str] = None,
+                 fp16_mode: bool = False):
         super(MGXModule, self).__init__()
 
         self._register_state_dict_hook(MGXModule._on_state_dict)
@@ -19,12 +20,16 @@ class MGXModule(torch.nn.Module):
         self.output_names = output_names
         self.initialized = False
         self.output_buffers = []
+        self.fp16_mode = fp16_mode
 
         if self.program is not None:
             self._initialize()
 
     def _initialize(self):
         self.initialized = True
+
+        if self.fp16_mode:
+            migraphx.quantize_fp16(self.program)
 
         if not self.program.is_compiled():
             self.program.compile(migraphx.get_target('gpu'),
