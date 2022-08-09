@@ -22,6 +22,5 @@ if __name__ == '__main__':
 
     torch_out = model.half()(*sample_inputs_half)
 
-    assert torch.allclose(mgx_out, torch_out, rtol=5e-1,
-                          atol=5e-1), 'Failed :('
+    assert torch.allclose(mgx_out, torch_out, rtol=5e-1, atol=5e-1), 'Failed!'
     print('Success!')

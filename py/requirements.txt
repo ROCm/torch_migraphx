@@ -1,3 +1,4 @@
 torch==1.12.1+rocm5.1.1
 torchvision==0.13.1+rocm5.1.1
 tabulate
+numpy>=1.20.0

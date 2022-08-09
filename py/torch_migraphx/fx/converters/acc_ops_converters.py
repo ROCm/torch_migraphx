@@ -11,8 +11,6 @@ from ..tracer.acc_tracer import acc_ops
 from torch.fx.node import Argument, Target
 from .utils import *
 
-# from .pooling import PoolingType
-
 
 def broadcast_for_elemwise_op(mgx_module, node, inp, other):
     dtype = node.meta['tensor_meta'].dtype
@@ -291,14 +289,11 @@ def acc_ops_adaptime_avg_pool2d(mgx_module, node, args, kwargs):
     padding = [0, 0]
 
     return mgx_module.add_instruction(
-        migraphx.op(
-            'pooling',
-            # mode=PoolingType.average,
-            mode=int(migraphx.op.pooling_mode.average),
-            padding=padding,
-            stride=strides,
-            lengths=kernel_size),
-        [kwargs['input']])
+        migraphx.op('pooling',
+                    mode=migraphx.op.pooling_mode.average,
+                    padding=padding,
+                    stride=strides,
+                    lengths=kernel_size), [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.max_pool2d)
@@ -315,15 +310,12 @@ def acc_ops_max_pool2d(mgx_module, node, args, kwargs):
         raise RuntimeError('Dilations are currently not supported.')
 
     return mgx_module.add_instruction(
-        migraphx.op(
-            'pooling',
-            # mode=PoolingType.max,
-            mode=int(migraphx.op.pooling_mode.max),
-            padding=padding,
-            stride=stride,
-            lengths=lengths,
-            ceil_mode=ceil_mode),
-        [kwargs['input']])
+        migraphx.op('pooling',
+                    mode=migraphx.op.pooling_mode.max,
+                    padding=padding,
+                    stride=stride,
+                    lengths=lengths,
+                    ceil_mode=ceil_mode), [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.avg_pool2d)
@@ -352,15 +344,12 @@ def acc_ops_avg_pool2d(mgx_module, node, args, kwargs):
                                             [in_mgx])
 
     return mgx_module.add_instruction(
-        migraphx.op(
-            'pooling',
-            # mode=PoolingType.average,
-            mode=int(migraphx.op.pooling_mode.average),
-            padding=padding,
-            stride=stride,
-            lengths=lengths,
-            ceil_mode=ceil_mode),
-        [in_mgx])
+        migraphx.op('pooling',
+                    mode=migraphx.op.pooling_mode.average,
+                    padding=padding,
+                    stride=stride,
+                    lengths=lengths,
+                    ceil_mode=ceil_mode), [in_mgx])
 
 
 # @migraphx_converter(acc_ops.flatten)
