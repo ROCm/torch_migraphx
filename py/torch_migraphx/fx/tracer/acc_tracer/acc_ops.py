@@ -454,7 +454,7 @@ def tensor_size_mapper(node: torch.fx.Node, _: nn.Module) -> torch.fx.Node:
                                                     "idx": node.kwargs["dim"]
                                                 })
         getitem_node.meta = node.meta.copy()
-        return
+        return getitem_node
 
 
 @register_custom_acc_mapper_fn(
