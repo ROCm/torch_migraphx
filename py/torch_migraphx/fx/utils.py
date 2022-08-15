@@ -34,7 +34,7 @@ def mgx_shape_from_tensor(tensor: torch.tensor) -> migraphx.shape:
 
 def mgx_argument_from_tensor(tensor: torch.tensor) -> migraphx.argument:
     shape = mgx_shape_from_tensor(tensor)
-    return migraphx.argument(shape, tensor.data_ptr())
+    return migraphx.argument_from_pointer(shape, tensor.data_ptr())
 
 
 # TODO: currently the migraphx api does not support directly interacting
