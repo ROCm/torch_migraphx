@@ -1,7 +1,14 @@
 import os
-from typing import Sequence
+from enum import Enum
 import torch
 import migraphx
+
+
+class LowerPrecision(Enum):
+    FP32 = "fp32"
+    FP16 = "fp16"
+    INT8 = "int8"
+
 
 type_map = {
     torch.bool: 'bool_type',

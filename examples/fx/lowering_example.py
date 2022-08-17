@@ -13,14 +13,14 @@ from torch_migraphx.fx import lower_to_mgx
 
 if __name__ == '__main__':
     model = models.resnet50().cuda()
-    sample_inputs = [torch.randn(16, 3, 244, 244).cuda()]
-    sample_inputs_half = [i.half() for i in sample_inputs]
 
-    mgx_model = lower_to_mgx(model, sample_inputs, fp16_mode=True)
+    sample_inputs = [torch.randn(16, 3, 244, 244).cuda()]
+
+    mgx_model = lower_to_mgx(model, sample_inputs)
 
     mgx_out = mgx_model(*sample_inputs)
 
-    torch_out = model.half()(*sample_inputs_half)
+    torch_out = model(*sample_inputs)
 
-    assert torch.allclose(mgx_out, torch_out, rtol=5e-1, atol=5e-1), 'Failed!'
+    assert torch.allclose(mgx_out, torch_out, rtol=5e-3, atol=1e-2), 'Failed!'
     print('Success!')

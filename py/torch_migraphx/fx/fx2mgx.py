@@ -9,7 +9,7 @@ from .utils import *
 
 
 class MGXInterpreter(torch.fx.Interpreter):
-    def __init__(self, module, sample_inputs):
+    def __init__(self, module, sample_inputs, verbose_log=False):
         super().__init__(module)
 
         self.program = migraphx.program()
