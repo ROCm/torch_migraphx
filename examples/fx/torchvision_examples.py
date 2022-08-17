@@ -26,7 +26,6 @@ if __name__ == '__main__':
     # model = models.squeezenet1_1()
     # model = models.convnext_base()
     # model = models.inception_v3()
-    # model = models.vit_b_16()
 
     model.eval()
     model = model.cuda()

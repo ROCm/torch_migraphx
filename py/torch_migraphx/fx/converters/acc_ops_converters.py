@@ -13,6 +13,9 @@ from .utils import *
 
 
 def broadcast_for_elemwise_op(mgx_module, node, inp, other):
+    if (inp == other):
+        return inp, other
+
     dtype = node.meta['tensor_meta'].dtype
     in_idx = 0
 
@@ -118,8 +121,11 @@ def acc_ops_clamp(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.add)
-def acc_ops_mul(mgx_module, node, args, kwargs):
+def acc_ops_add(mgx_module, node, args, kwargs):
     assert len(args) == 0
+    if node.meta['type'] != torch.Tensor:
+        return kwargs['input'] + kwargs['other']
+
     inp, other = broadcast_for_elemwise_op(mgx_module, node, kwargs['input'],
                                            kwargs['other'])
 
@@ -129,6 +135,9 @@ def acc_ops_mul(mgx_module, node, args, kwargs):
 @migraphx_converter(acc_ops.mul)
 def acc_ops_mul(mgx_module, node, args, kwargs):
     assert len(args) == 0
+    if node.meta['type'] != torch.Tensor:
+        return kwargs['input'] * kwargs['other']
+
     inp, other = broadcast_for_elemwise_op(mgx_module, node, kwargs['input'],
                                            kwargs['other'])
 
@@ -138,6 +147,8 @@ def acc_ops_mul(mgx_module, node, args, kwargs):
 @migraphx_converter(acc_ops.floor_div)
 def acc_ops_floor_div(mgx_module, node, args, kwargs):
     assert len(args) == 0
+    if node.meta['type'] != torch.Tensor:
+        return kwargs['input'] // kwargs['other']
 
     inp, other = broadcast_for_elemwise_op(mgx_module, node, kwargs['input'],
                                            kwargs['other'])
@@ -484,8 +495,13 @@ def acc_ops_mean(mgx_module, node, args, kwargs):
 def acc_ops_size(mgx_module, node, args, kwargs):
     assert len(args) == 0
 
-    return mgx_module.add_literal(
-        np.array(node.all_input_nodes[0].meta['tensor_meta'].shape))
+    inp = kwargs['input']
+    if isinstance(inp, torch.Tensor):
+        return inp.size()
+
+    return node.all_input_nodes[0].meta['tensor_meta'].shape
+    # return mgx_module.add_literal(
+    #     np.array(node.all_input_nodes[0].meta['tensor_meta'].shape))
 
 
 @migraphx_converter(acc_ops.getitem)

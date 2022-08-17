@@ -11,7 +11,8 @@ class MGXModule(torch.nn.Module):
                  program: migraphx.program = None,
                  input_names: Sequence[str] = None,
                  output_names: Sequence[str] = None,
-                 fp16_mode: bool = False):
+                 quantize_fp16: bool = False,
+                 quantize_int8: bool = False):
         super(MGXModule, self).__init__()
 
         self._register_state_dict_hook(MGXModule._on_state_dict)
@@ -20,7 +21,8 @@ class MGXModule(torch.nn.Module):
         self.output_names = output_names
         self.initialized = False
         self.output_buffers = []
-        self.fp16_mode = fp16_mode
+        self.quantize_fp16 = quantize_fp16
+        self.quantize_int8 = quantize_int8
 
         if self.program is not None:
             self._initialize()
@@ -28,8 +30,11 @@ class MGXModule(torch.nn.Module):
     def _initialize(self):
         self.initialized = True
 
-        if self.fp16_mode:
+        if self.quantize_fp16:
             migraphx.quantize_fp16(self.program)
+
+        if self.quantize_int8:
+            migraphx.quantize_int8(self.program)
 
         if not self.program.is_compiled():
             self.program.compile(migraphx.get_target('gpu'),
@@ -77,10 +82,10 @@ class MGXModule(torch.nn.Module):
 
     def _infer_output_names(self):
         assert self.input_names is not None, 'Input names not defined'
-        out_names = [
+        out_names = sorted([
             i for i in self.program.get_parameter_names()
             if i not in self.input_names
-        ]
+        ])
         # assert len(out_names) == len(
         #     self.program.get_output_shapes()
         # ), f'Wrong number of outputs, expected {len(self.program.get_output_shapes())}, got {len(out_names)}'

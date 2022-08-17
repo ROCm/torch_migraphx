@@ -69,7 +69,7 @@ def getitem(*, input, idx):
 
 @register_acc_op
 def size(*, input):
-    return torch.tensor(input.size())
+    return input.size()
 
 
 @register_acc_op_mapping(op_and_target=("call_function", nn.functional.linear))
@@ -539,3 +539,36 @@ def transpose_mapper(node: torch.fx.Node, _: nn.Module) -> torch.fx.Node:
 
     permute_node.graph.erase_node(node)
     return permute_node
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_properties(AccOpProperty.quantized)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.quantize_per_tensor),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("scale", "scale"),
+        ("zero_point", "zero_point"),
+        ("dtype", "dtype"),
+    ],
+    kwargs_to_move_to_acc_out_ty=[
+        ("scale", "scale", move_to_qparams),
+        ("zero_point", "zero_point", move_to_qparams),
+        ("dtype", "dtype", dont_move_to_qparams),
+    ],
+)
+@register_acc_op
+def quantize_per_tensor(*, input, acc_out_ty=None):
+    assert acc_out_ty is not None
+    qparams = acc_out_ty.qparams
+    dtype = acc_out_ty.dtype
+    return torch.quantize_per_tensor(input, qparams["scale"],
+                                     qparams["zero_point"], dtype)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_method", "dequantize"))
+@register_acc_op_mapping(op_and_target=("call_function", torch.dequantize))
+@register_acc_op
+def dequantize(*, input):
+    return torch.dequantize(input)
