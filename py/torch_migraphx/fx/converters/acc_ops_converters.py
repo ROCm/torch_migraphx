@@ -13,6 +13,9 @@ from .utils import *
 
 
 def broadcast_for_elemwise_op(mgx_module, node, inp, other):
+    if (inp == other):
+        return inp, other
+
     dtype = node.meta['tensor_meta'].dtype
     in_idx = 0
 
@@ -118,7 +121,7 @@ def acc_ops_clamp(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.add)
-def acc_ops_mul(mgx_module, node, args, kwargs):
+def acc_ops_add(mgx_module, node, args, kwargs):
     assert len(args) == 0
     if node.meta['type'] != torch.Tensor:
         return kwargs['input'] + kwargs['other']

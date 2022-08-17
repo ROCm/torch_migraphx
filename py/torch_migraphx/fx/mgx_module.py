@@ -82,10 +82,10 @@ class MGXModule(torch.nn.Module):
 
     def _infer_output_names(self):
         assert self.input_names is not None, 'Input names not defined'
-        out_names = [
+        out_names = sorted([
             i for i in self.program.get_parameter_names()
             if i not in self.input_names
-        ]
+        ])
         # assert len(out_names) == len(
         #     self.program.get_output_shapes()
         # ), f'Wrong number of outputs, expected {len(self.program.get_output_shapes())}, got {len(out_names)}'

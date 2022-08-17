@@ -16,7 +16,7 @@ if __name__ == '__main__':
 
     sample_inputs = [torch.randn(16, 3, 244, 244).cuda()]
 
-    mgx_model = lower_to_mgx(model, sample_inputs)
+    mgx_model = lower_to_mgx(model, sample_inputs, verbose_log=True)
 
     mgx_out = mgx_model(*sample_inputs)
 
