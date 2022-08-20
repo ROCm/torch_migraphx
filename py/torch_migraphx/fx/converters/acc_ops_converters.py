@@ -102,8 +102,10 @@ def acc_ops_clamp(mgx_module, node, args, kwargs):
     if node.target == acc_ops.hardtanh:
         min_val, max_val = kwargs['min_val'], kwargs['max_val']
     else:
-        min_val = kwargs['min'] if 'min' in kwargs else -1e16
-        max_val = kwargs['max'] if 'max' in kwargs else 1e16
+        min_val = kwargs[
+            'min'] if 'min' in kwargs and kwargs['min'] is not None else -1e16
+        max_val = kwargs[
+            'max'] if 'max' in kwargs and kwargs['max'] is not None else 1e16
 
     min_mgx = mgx_module.add_literal(
         torch.tensor([min_val], dtype=dtype).numpy())
@@ -421,7 +423,7 @@ def acc_ops_permute(mgx_module, node, args, kwargs):
     assert len(args) == 0
 
     return mgx_module.add_instruction(
-        migraphx.op('transpose', permutation=kwargs['permutation']),
+        migraphx.op('transpose', permutation=list(kwargs['permutation'])),
         [kwargs['input']])
 
 

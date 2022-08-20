@@ -106,8 +106,15 @@ class MGXModule(torch.nn.Module):
     # this output memory buffer may not be accounted for in the shape attribute of this
     # buffer. This function is called to explicitly reshape the output tensor to the
     # output shape expected by the original torch model
+    # This also causes a known bug with the chunk opreation. If the returned tensors are
+    # outputs of a chunk operation, migraphx allocates a single buffer for the original
+    # tensor, but fails to return the resulting sliced tensors from the chunk operation
     def _reshape_outputs(self):
         out_shapes = self.program.get_output_shapes()
+        if len(self.output_buffers) != len(out_shapes):
+            raise RuntimeError(
+                'Mismatch between number of allocated output buffers and expected outputs.'
+            )
         return [
             o.reshape(s.lens())
             for o, s in zip(self.output_buffers, out_shapes)

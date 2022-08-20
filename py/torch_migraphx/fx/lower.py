@@ -27,6 +27,7 @@ def lower_to_mgx(
         module: nn.Module,
         input,
         lower_precision=LowerPrecision.FP32,
+        min_acc_module_size=10,
         verbose_log=False,
 ) -> nn.Module:
     """
@@ -47,6 +48,7 @@ def lower_to_mgx(
     lower_setting = LowerSetting(
         lower_precision=lower_precision,
         verbose_log=verbose_log,
+        min_acc_module_size=min_acc_module_size,
     )
     lowerer = Lowerer.create(lower_setting=lower_setting)
     return lowerer(module, input)
