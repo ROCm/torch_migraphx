@@ -1,4 +1,3 @@
-from genericpath import sameopenfile
 import sys
 import os
 from pathlib import Path
