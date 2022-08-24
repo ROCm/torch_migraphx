@@ -137,6 +137,12 @@ class Lowerer:
     ) -> "Lowerer":
         """Instantiate a `Lowerer` instance."""
 
+        atol = 5e-1 if lower_setting.lower_precision == LowerPrecision.FP16 else 1e-1
+        rtol = 5e-1 if lower_setting.lower_precision == LowerPrecision.FP16 else 1e-1
+
+        cls.__call__ = decorate_method(validate_inference(
+            atol=atol, rtol=rtol))(cls.__call__)
+
         return cls(lower_pass_manager_builder=LowerPassManagerBuilder(
             lower_setting=lower_setting,
             trace_func=lambda module, inputs: acc_tracer.trace(
@@ -149,7 +155,7 @@ class Lowerer:
             lower_func=default_lower_pass(interpreter_builder),
         ))
 
-    @decorate_method(validate_inference(atol=1e-1, rtol=1e-1))
+    # @decorate_method(validate_inference(atol=1e-1, rtol=1e-1))
     def __call__(
             self,
             module: nn.Module,
