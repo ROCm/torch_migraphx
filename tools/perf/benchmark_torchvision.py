@@ -65,7 +65,7 @@ if __name__ == '__main__':
     torch_perf = benchmark_module(args.iter, mod, sample_inputs)
     mgx_perf = benchmark_module(args.iter, mgx_mod, sample_inputs)
     data.append([model_name, bs / (1e-3 * torch_perf), bs / (1e-3 * mgx_perf)])
-    print(f'{torch_perf=}, {mgx_perf=}')
+    print(f'torch_perf={torch_perf}, mgx_perf={mgx_perf}')
 
     fname = out_fname(args)
     write_csv(headers, data, fname)

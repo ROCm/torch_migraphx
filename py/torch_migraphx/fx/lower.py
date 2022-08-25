@@ -63,7 +63,7 @@ class LowerMgxInterpreter:
         return LowerMgxInterpreter(lower_setting)
 
     def __call__(self, mod, input, split_name) -> MGXInterpreter:
-        logger.info(f"{split_name=}")
+        logger.info(f"split_name={split_name}")
         AccShapeProp(mod).propagate(*input)
         interpreter = MGXInterpreter(
             mod, input, verbose_log=self.lower_setting.verbose_log)
