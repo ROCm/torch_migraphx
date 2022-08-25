@@ -23,13 +23,12 @@ logger = logging.getLogger(__name__)
 Input = Sequence[Any]
 
 
-def lower_to_mgx(
-        module: nn.Module,
-        input,
-        lower_precision=LowerPrecision.FP32,
-        min_acc_module_size=10,
-        verbose_log=False,
-) -> nn.Module:
+def lower_to_mgx(module: nn.Module,
+                 input,
+                 lower_precision=LowerPrecision.FP32,
+                 min_acc_module_size=10,
+                 verbose_log=False,
+                 suppress_accuracy_check=False) -> nn.Module:
     """
     Takes in original module, input and lowering setting, run lowering workflow to turn module
     into lowered module.
@@ -49,6 +48,7 @@ def lower_to_mgx(
         lower_precision=lower_precision,
         verbose_log=verbose_log,
         min_acc_module_size=min_acc_module_size,
+        suppress_accuracy_check=suppress_accuracy_check,
     )
     lowerer = Lowerer.create(lower_setting=lower_setting)
     return lowerer(module, input)
@@ -140,8 +140,11 @@ class Lowerer:
         atol = 5e-1 if lower_setting.lower_precision == LowerPrecision.FP16 else 1e-1
         rtol = 5e-1 if lower_setting.lower_precision == LowerPrecision.FP16 else 1e-1
 
-        cls.__call__ = decorate_method(validate_inference(
-            atol=atol, rtol=rtol))(cls.__call__)
+        cls.__call__ = decorate_method(
+            validate_inference(atol=atol,
+                               rtol=rtol,
+                               suppress_accuracy_check_failure=lower_setting.
+                               suppress_accuracy_check))(cls.__call__)
 
         return cls(lower_pass_manager_builder=LowerPassManagerBuilder(
             lower_setting=lower_setting,

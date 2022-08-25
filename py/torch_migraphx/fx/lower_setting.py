@@ -50,3 +50,4 @@ class LowerSetting(LowerSettingBasic):
     verbose_log: bool = False
     explicit_precision: bool = False
     preset_lowerer: str = ""
+    suppress_accuracy_check: bool = False
