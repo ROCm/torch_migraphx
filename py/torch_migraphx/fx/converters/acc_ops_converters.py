@@ -301,9 +301,14 @@ def acc_ops_adaptime_avg_pool2d(mgx_module, node, args, kwargs):
     ]
     padding = [0, 0]
 
+    # MIGraphX is using an older version of pybind11 which does not add
+    # the index dunder method for enums when using python < 3.8
+    mode = migraphx.op.pooling_mode.average
+    mode = int(mode) if not hasattr(mode, '__index__') else mode
+
     return mgx_module.add_instruction(
         migraphx.op('pooling',
-                    mode=migraphx.op.pooling_mode.average,
+                    mode=mode,
                     padding=padding,
                     stride=strides,
                     lengths=kernel_size), [kwargs['input']])
@@ -322,9 +327,14 @@ def acc_ops_max_pool2d(mgx_module, node, args, kwargs):
     if not all(i == 1 for i in dilation):
         raise RuntimeError('Dilations are currently not supported.')
 
+    # MIGraphX is using an older version of pybind11 which does not add
+    # the index dunder method for enums when using python < 3.8
+    mode = migraphx.op.pooling_mode.max
+    mode = int(mode) if not hasattr(mode, '__index__') else mode
+
     return mgx_module.add_instruction(
         migraphx.op('pooling',
-                    mode=migraphx.op.pooling_mode.max,
+                    mode=mode,
                     padding=padding,
                     stride=stride,
                     lengths=lengths,
@@ -356,9 +366,14 @@ def acc_ops_avg_pool2d(mgx_module, node, args, kwargs):
         in_mgx = mgx_module.add_instruction(migraphx.op('pad', pads=pads),
                                             [in_mgx])
 
+    # MIGraphX is using an older version of pybind11 which does not add
+    # the index dunder method for enums when using python < 3.8
+    mode = migraphx.op.pooling_mode.average
+    mode = int(mode) if not hasattr(mode, '__index__') else mode
+
     return mgx_module.add_instruction(
         migraphx.op('pooling',
-                    mode=migraphx.op.pooling_mode.average,
+                    mode=mode,
                     padding=padding,
                     stride=stride,
                     lengths=lengths,
