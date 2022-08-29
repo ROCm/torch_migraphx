@@ -134,6 +134,18 @@ def acc_ops_add(mgx_module, node, args, kwargs):
     return mgx_module.add_instruction(migraphx.op('add'), [inp, other])
 
 
+@migraphx_converter(acc_ops.sub)
+def acc_ops_add(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+    if node.meta['type'] != torch.Tensor:
+        return kwargs['input'] - kwargs['other']
+
+    inp, other = broadcast_for_elemwise_op(mgx_module, node, kwargs['input'],
+                                           kwargs['other'])
+
+    return mgx_module.add_instruction(migraphx.op('sub'), [inp, other])
+
+
 @migraphx_converter(acc_ops.mul)
 def acc_ops_mul(mgx_module, node, args, kwargs):
     assert len(args) == 0
@@ -429,8 +441,19 @@ def acc_ops_reshape(mgx_module, node, args, kwargs):
 
     out_shape = node.meta['tensor_meta'].shape
 
-    return mgx_module.add_instruction(
-        migraphx.op('reshape', dims=list(out_shape)), [kwargs['input']])
+    try:
+        return mgx_module.add_instruction(
+            migraphx.op('reshape', dims=list(out_shape)), [kwargs['input']])
+    except RuntimeError as e:
+        msg = getattr(e, 'message', repr(e))
+        if 'Shapes are not in standard layout' in msg:
+            cont_inp = mgx_module.add_instruction(migraphx.op('contiguous'),
+                                                  [kwargs['input']])
+            return mgx_module.add_instruction(
+                migraphx.op('reshape', dims=list(out_shape)), [cont_inp])
+
+        else:
+            raise RuntimeError(msg)
 
 
 @migraphx_converter(acc_ops.permute)

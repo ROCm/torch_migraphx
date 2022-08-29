@@ -61,6 +61,37 @@ def mean_mapper(node, mod):
     return reduce_op_mapper(node, mod, mean)
 
 
+@register_acc_op
+def sum(*, input, dim=None, keepdim=False, dtype=None):
+    if dim is not None:
+        return torch.sum(input, dim=dim, keepdim=keepdim, dtype=dtype)
+    else:
+        return input.sum(dtype=dtype)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "sum"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.sum),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+def sum_mapper(node: torch.fx.Node,
+               mod: torch.fx.GraphModule) -> torch.fx.Node:
+    return reduce_op_mapper(node, mod, sum)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", operator.getitem))
 @register_acc_op
 def getitem(*, input, idx):
@@ -135,6 +166,13 @@ def gelu(*, input):
     return torch.nn.functional.gelu(input=input)
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.tanh))
+@register_acc_op_mapping(op_and_target=("call_method", "tanh"))
+@register_acc_op
+def tanh(*, input):
+    return torch.tanh(input=input)
+
+
 @register_acc_op_mapping(
     op_and_target=("call_function", nn.functional.hardtanh), )
 @register_acc_op
@@ -149,6 +187,43 @@ def hardtanh(*, input, min_val=-1.0, max_val=1.0):
 @register_acc_op
 def hardsigmoid(*, input):
     return nn.functional.hardsigmoid(input)
+
+
+@register_acc_op_mapping(
+    op_and_target=("call_method", "softmax"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim"),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.nn.functional.softmax),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim"),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def softmax(*, input, dim, dtype=None):
+    """
+    _stacklevel are ignored here.
+    """
+    return torch.nn.functional.softmax(input=input, dim=dim, dtype=dtype)
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.linalg.norm))
+@register_acc_op
+def linalg_norm(*, input, ord, dim, keepdim):
+    return torch.linalg.norm(input=input, ord=ord, dim=dim, keepdim=keepdim)
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.cumsum))
+@register_acc_op_mapping(op_and_target=("call_method", "cumsum"))
+@register_acc_op
+def cumsum(*, input, dim, dtype=None):
+    return torch.cumsum(input=input, dim=dim, dtype=dtype)
 
 
 @register_acc_op_mapping(op_and_target=("call_function",
@@ -174,6 +249,34 @@ def flatten(*, input, start_dim=0, end_dim=-1):
 
 
 @register_acc_op_mapping(
+    op_and_target=("call_method", "squeeze"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.squeeze),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def squeeze(*, input, dim=None):
+    if dim is None:
+        return input.squeeze()
+    return input.squeeze(dim=dim)
+
+
+@register_acc_op_mapping(op_and_target=("call_method", "unsqueeze"))
+@register_acc_op_mapping(op_and_target=("call_function", torch.unsqueeze))
+@register_acc_op
+def unsqueeze(*, input, dim):
+    return torch.unsqueeze(input=input, dim=dim)
+
+
+@register_acc_op_mapping(
     op_and_target=("call_function", torch.reshape),
     arg_replacement_tuples=[
         ("input", "input"),
@@ -183,6 +286,18 @@ def flatten(*, input, start_dim=0, end_dim=-1):
 @register_acc_op
 def reshape(*, input, shape):
     return input.reshape(shape)
+
+
+@register_acc_op_mapping(
+    op_and_target=("call_method", "expand"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("*", "sizes"),
+    ],
+)
+@register_acc_op
+def expand(*, input, sizes):
+    return input.expand(*sizes)
 
 
 @register_acc_op_mapping(
@@ -317,11 +432,20 @@ def sigmoid(*, input):
     return torch.sigmoid(input=input)
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.add))
 @register_acc_op_mapping(op_and_target=("call_function", operator.add))
 @register_acc_op_mapping(op_and_target=("call_method", "add"))
 @register_acc_op
 def add(*, input, other):
     return input + other
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.sub))
+@register_acc_op_mapping(op_and_target=("call_function", operator.sub))
+@register_acc_op_mapping(op_and_target=("call_method", "sub"))
+@register_acc_op
+def sub(*, input, other):
+    return input - other
 
 
 @register_acc_op_mapping(op_and_target=("call_function", torch.mul))
@@ -350,6 +474,90 @@ def floor_div(*, input, other):
 @register_acc_op
 def trunc_div(*, input, other):
     return torch.div(input, other, rounding_mode="trunc")
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.div),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("other", "other"),
+        ("rounding_mode", "rounding_mode", this_arg_is_optional),
+    ],
+)
+def div_mapper(node: torch.fx.Node,
+               mod: torch.fx.GraphModule) -> torch.fx.Node:
+    with node.graph.inserting_before(node):
+        div_kwargs = dict(node.kwargs)
+        if "rounding_mode" not in div_kwargs or div_kwargs[
+                "rounding_mode"] is None:
+            div_node = node.graph.call_function(div,
+                                                kwargs={
+                                                    "input":
+                                                    div_kwargs["input"],
+                                                    "other":
+                                                    div_kwargs["other"]
+                                                })
+        elif div_kwargs["rounding_mode"] == "trunc":
+            div_node = node.graph.call_function(
+                trunc_div,
+                kwargs={
+                    "input": div_kwargs["input"],
+                    "other": div_kwargs["other"]
+                },
+            )
+        elif div_kwargs["rounding_mode"] == "floor":
+            div_node = node.graph.call_function(
+                floor_div,
+                kwargs={
+                    "input": div_kwargs["input"],
+                    "other": div_kwargs["other"]
+                },
+            )
+        else:
+            raise RuntimeError(
+                f"Unhandled div rounding mode {div_kwargs['rounding_mode']}")
+        div_node.meta = node.meta.copy()
+        return div_node
+
+
+@register_acc_op_mapping(op_and_target=("call_function", operator.truediv))
+@register_acc_op
+def div(*, input, other):
+    return input / other
+
+
+@register_acc_op_mapping(
+    op_and_target=("call_method", "mm"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("mat2", "other"),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", operator.matmul),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("mat2", "other"),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.bmm),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("mat2", "other"),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.mm),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("mat2", "other"),
+    ],
+)
+@register_acc_op_mapping(op_and_target=("call_function", torch.matmul))
+@register_acc_op
+def matmul(*, input, other):
+    return torch.matmul(input=input, other=other)
 
 
 @register_custom_acc_mapper_fn(
