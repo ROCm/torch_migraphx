@@ -1,1 +1,1 @@
-from torch_migraphx import fx
+from torch_migraphx import fx, _C
