@@ -1,4 +1,4 @@
-from .converters import *
+from .converters import acc_ops_converters
 from .converter_registry import CONVERTERS, migraphx_converter
 from .fx2mgx import MGXInterpreter
 from .mgx_module import MGXModule
