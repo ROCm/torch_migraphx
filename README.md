@@ -1,6 +1,6 @@
 # Torch-MIGraphX
 
-Torch-MIGraphX integrates AMD's graph inference engine with the PyTorch ecosystem. It provides a `mgx_module` object that may be invoked in the same manner as any other torch module, but utilizes the MIGraphX inference engine under the hood.
+Torch-MIGraphX integrates AMD's graph inference engine with the PyTorch ecosystem. It provides a `mgx_module` object that may be invoked in the same manner as any other torch module, but utilizes the MIGraphX inference engine internally. Additionally, it provides functionallity to lower a PyTorch model to a MIGraphX program via the `torch.fx` library.
 
 ## Installation
 It is highly recommended to use the provided Dockerfile to create the environment requried to use Torch-MIGraphX. Build the container using:
