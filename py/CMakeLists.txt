@@ -13,15 +13,13 @@ find_package(migraphx REQUIRED)
 SET(SOURCE_DIR "torch_migraphx/csrc")
 
 include_directories(${SOURCE_DIR})
-SET(SOURCES "")
+SET(SOURCES "${SOURCE_DIR}/mgx_util.cpp")
 
 find_package(pybind11 REQUIRED)
-
-SET(Torch_DIR ${TORCH_CMAKE_DIR})
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
-pybind11_add_module(_torch_migraphx "${SOURCE_DIR}/torch_migraphx_py.cpp")
+pybind11_add_module(_torch_migraphx ${SOURCES} "${SOURCE_DIR}/torch_migraphx_py.cpp")
 
-target_link_libraries(_torch_migraphx PRIVATE migraphx::c "${TORCH_LIBRARIES}")
+target_link_libraries(_torch_migraphx PUBLIC migraphx::c "${TORCH_LIBRARIES}")
 
 set_property(TARGET _torch_migraphx PROPERTY CXX_STANDARD 14)

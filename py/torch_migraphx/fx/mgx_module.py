@@ -53,27 +53,22 @@ class MGXModule(torch.nn.Module):
             self.input_names
         ), f'Wrong number of inputs, expected {len(self.input_names)}, got {len(inputs)}.'
 
-        # In cases where a submodel only alters the shape of the input tensor,
-        # skip executing the accelerator
-        if len(self.output_buffers) == 0:
-            self.output_buffers = inputs
-        else:
-            buffers = {}
-            for inp_name, inp_val in zip(self.input_names, inputs):
-                buffers[inp_name] = mgx_argument_from_tensor(inp_val)
+        buffers = {}
+        for inp_name, inp_val in zip(self.input_names, inputs):
+            buffers[inp_name] = mgx_argument_from_tensor(inp_val)
 
-            for out_name, out_buff in zip(self.output_names,
-                                          self.output_buffers):
-                buffers[out_name] = mgx_argument_from_tensor(out_buff)
+        for out_name, out_buff in zip(self.output_names, self.output_buffers):
+            buffers[out_name] = mgx_argument_from_tensor(out_buff)
 
-            torch.cuda.current_stream().synchronize()
-            self.program.run(buffers)
-            # TODO: Investigate if there is any way to force the migraphx execution
-            # to be on the same stream is current torch stream. gpu_sync() performs
-            # a device-wide synchroniztion (calls hipDeviceSynchronize)
-            migraphx.gpu_sync()
+        torch.cuda.current_stream().synchronize()
+        outs = self.program.run(buffers)
 
-        outs = self._reshape_outputs()
+        # TODO: Investigate if there is any way to force the migraphx execution
+        # to be on the same stream is current torch stream. gpu_sync() performs
+        # a device-wide synchroniztion (calls hipDeviceSynchronize)
+        migraphx.gpu_sync()
+
+        outs = [tensor_from_mgx_argument(o) for o in outs]
 
         if len(outs) == 1:
             return outs[0]
@@ -85,10 +80,8 @@ class MGXModule(torch.nn.Module):
         out_names = sorted([
             i for i in self.program.get_parameter_names()
             if i not in self.input_names
-        ])
-        # assert len(out_names) == len(
-        #     self.program.get_output_shapes()
-        # ), f'Wrong number of outputs, expected {len(self.program.get_output_shapes())}, got {len(out_names)}'
+        ],
+                           key=lambda x: int(x.split('output_')[1]))
         return out_names
 
     def _allocate_output_buffers(self):
@@ -101,25 +94,6 @@ class MGXModule(torch.nn.Module):
                             dtype=torch_dtype,
                             device=torch.cuda.current_device()))
 
-    # MIGraphX output buffer shape is determined by the memory allocation performed during
-    # program compilation. Any shape-manipulating operations performed on the tensor in
-    # this output memory buffer may not be accounted for in the shape attribute of this
-    # buffer. This function is called to explicitly reshape the output tensor to the
-    # output shape expected by the original torch model
-    # This also causes a known bug with the chunk opreation. If the returned tensors are
-    # outputs of a chunk operation, migraphx allocates a single buffer for the original
-    # tensor, but fails to return the resulting sliced tensors from the chunk operation
-    def _reshape_outputs(self):
-        out_shapes = self.program.get_output_shapes()
-        if len(self.output_buffers) != len(out_shapes):
-            raise RuntimeError(
-                'Mismatch between number of allocated output buffers and expected outputs.'
-            )
-        return [
-            o.reshape(s.lens())
-            for o, s in zip(self.output_buffers, out_shapes)
-        ]
-
     # Following functions are required for saving MGXModules using torch.save
     def _on_state_dict(self, state_dict, prefix, local_metadata):
         self._check_initialized()
@@ -128,14 +102,14 @@ class MGXModule(torch.nn.Module):
         state_dict[prefix + 'output_names'] = self.output_names
 
     def _load_from_state_dict(
-            self,
-            state_dict,
-            prefix,
-            local_metadata,
-            strict,
-            missing_keys,
-            unexpected_keys,
-            error_msgs,
+        self,
+        state_dict,
+        prefix,
+        local_metadata,
+        strict,
+        missing_keys,
+        unexpected_keys,
+        error_msgs,
     ):
         prog_bytes = state_dict[prefix + 'program']
 

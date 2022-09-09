@@ -1,4 +1,4 @@
-FROM rocm/pytorch:latest
+FROM rocm/pytorch:rocm5.2.3_ubuntu20.04_py3.7_pytorch_1.12.1
 
 ARG PREFIX=/usr/local
 
@@ -9,7 +9,6 @@ RUN add-apt-repository ppa:deadsnakes/ppa
 
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
     clang-format-10 \
-    g++-7 \
     python3.7-dev \
     zip unzip &&\
     apt-get clean && \
@@ -24,4 +23,4 @@ RUN /install_migraphx.sh && rm /install_migraphx.sh
 
 ENV PYTHONPATH=/opt/rocm/lib
 ENV TORCH_USE_RTLD_GLOBAL=YES
-ENV TORCH_CMAKE_DIR=/opt/conda/lib/python3.7/site-packages/torch/share/cmake/Torch
+ENV Torch_DIR=/opt/conda/lib/python3.7/site-packages/torch/share/cmake/Torch

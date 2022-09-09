@@ -56,6 +56,7 @@ class CMakeBuild(build_ext):
             build_args += ['--', '/m']
         else:
             cmake_args += ['-DCMAKE_BUILD_TYPE=' + cfg]
+            # TODO: find # of procs
             build_args += ['--', '-j2']
 
         env = os.environ.copy()

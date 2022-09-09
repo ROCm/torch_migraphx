@@ -2,6 +2,7 @@ import os
 from enum import Enum
 import torch
 import migraphx
+from .. import _C
 
 
 class LowerPrecision(Enum):
@@ -33,15 +34,24 @@ def torch_dtype_from_mgx(type_string: str) -> torch.dtype:
     return inv_type_map[type_string]
 
 
-def mgx_shape_from_tensor(tensor: torch.tensor) -> migraphx.shape:
-    return migraphx.shape(lens=list(tensor.size()),
-                          strides=list(tensor.stride()),
-                          type=torch_dtype_to_mgx(tensor.dtype))
+# def mgx_shape_from_tensor(tensor: torch.tensor) -> migraphx.shape:
+#     return migraphx.shape(lens=list(tensor.size()),
+#                           strides=list(tensor.stride()),
+#                           type=torch_dtype_to_mgx(tensor.dtype))
+
+# def mgx_argument_from_tensor(tensor: torch.tensor) -> migraphx.argument:
+#     shape = mgx_shape_from_tensor(tensor)
+#     return migraphx.argument_from_pointer(shape, tensor.data_ptr())
 
 
 def mgx_argument_from_tensor(tensor: torch.tensor) -> migraphx.argument:
-    shape = mgx_shape_from_tensor(tensor)
-    return migraphx.argument_from_pointer(shape, tensor.data_ptr())
+    return _C.tensor_to_arg(tensor)
+
+
+def tensor_from_mgx_argument(
+    arg: migraphx.argument, device: torch.device = torch.device('cuda')
+) -> torch.tensor:
+    return _C.arg_to_tensor(arg, device)
 
 
 # TODO: currently the migraphx api does not support directly interacting
