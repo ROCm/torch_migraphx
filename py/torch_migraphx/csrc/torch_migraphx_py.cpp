@@ -9,7 +9,6 @@ namespace py = pybind11;
 namespace torch_migraphx {
 
 PYBIND11_MODULE(_torch_migraphx, m){
-    py::module_::import("migraphx");
     m.def(
         "tensor_to_arg",
         [](torch::Tensor tensor) {
