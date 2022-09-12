@@ -557,6 +557,7 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
         idx = (idx, )
 
     in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
+    out_shape = node.meta['tensor_meta'].shape
     num_slice_types = sum([1 for i in idx if isinstance(i, (slice, int))])
     implicit_dims = len(in_shape) - num_slice_types
     slices = []
@@ -575,7 +576,7 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
         if isinstance(s, slice):
             if not all(elem is None for elem in [s.start, s.stop, s.step]):
                 start = s.start if s.start is not None else 0
-                end = s.stop if s.stop is not None else -1
+                end = s.stop if s.stop is not None else in_shape[i]
                 step = s.step
                 axes.append(i)
                 starts.append(start)
@@ -601,8 +602,14 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
             migraphx.op('step', axes=dims_to_step, steps=steps), [out_mgx])
 
     if dims_to_squeeze:
-        out_mgx = mgx_module.add_instruction(
-            migraphx.op('squeeze', axes=dims_to_squeeze), [out_mgx])
+        if len(out_shape) == 0:
+            out_mgx = mgx_module.add_instruction(migraphx.op('squeeze'),
+                                                 [out_mgx])
+        else:
+            out_mgx = mgx_module.add_instruction(migraphx.op('contiguous'),
+                                                 [out_mgx])
+            out_mgx = mgx_module.add_instruction(
+                migraphx.op('reshape', dims=list(out_shape)), [out_mgx])
 
     return out_mgx
 

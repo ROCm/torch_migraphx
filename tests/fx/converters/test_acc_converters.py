@@ -268,12 +268,10 @@ def test_mean(dim, keepdim):
         verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.skip(reason="Final outputs are slices of the output buffer. \
-    Currently MIGraphX does not create individual buffers for each slice.")
 @pytest.mark.parametrize('slice_func', [
     lambda x: x[1, 1, 1, 1, 0],
     lambda x: x[1:, :-1, 3:5, :, -4:-2],
-    lambda x: x[::-1, ..., 5],
+    lambda x: x[::2, ..., 5],
 ])
 def test_getitem(slice_func):
     inp = torch.randn(32, 43, 11, 2, 12).cuda()
