@@ -38,9 +38,10 @@ PYBIND11_MODULE(_torch_migraphx, m){
             auto tensor_options = torch::TensorOptions().dtype(torch_type).device(device);
 
             auto lens = py::reinterpret_borrow<py::list>(mgx_shape.attr("lens")()).cast<std::vector<std::int64_t>>();
+            auto strides = py::reinterpret_borrow<py::list>(mgx_shape.attr("strides")()).cast<std::vector<std::int64_t>>();
             
             //add .clone() if running into issues with original object being deleted
-            return torch::from_blob(reinterpret_cast<void*>(data_ptr), lens, tensor_options);
+            return torch::from_blob(reinterpret_cast<void*>(data_ptr), lens, strides, tensor_options);
         },
         "Convert MIGraphX argument to torch tensor");
 }

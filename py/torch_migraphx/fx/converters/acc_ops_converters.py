@@ -602,14 +602,8 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
             migraphx.op('step', axes=dims_to_step, steps=steps), [out_mgx])
 
     if dims_to_squeeze:
-        if len(out_shape) == 0:
-            out_mgx = mgx_module.add_instruction(migraphx.op('squeeze'),
-                                                 [out_mgx])
-        else:
-            out_mgx = mgx_module.add_instruction(migraphx.op('contiguous'),
-                                                 [out_mgx])
-            out_mgx = mgx_module.add_instruction(
-                migraphx.op('reshape', dims=list(out_shape)), [out_mgx])
+        out_mgx = mgx_module.add_instruction(
+            migraphx.op('squeeze', axes=dims_to_squeeze), [out_mgx])
 
     return out_mgx
 
