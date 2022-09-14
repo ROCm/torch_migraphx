@@ -392,25 +392,6 @@ def acc_ops_avg_pool2d(mgx_module, node, args, kwargs):
                     ceil_mode=ceil_mode), [in_mgx])
 
 
-# @migraphx_converter(acc_ops.flatten)
-# def acc_ops_flatten(mgx_module, node, args, kwargs):
-#     assert len(args) == 0
-
-#     in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
-#     start_dim = kwargs['start_dim'] if 'start_dim' in kwargs else 0
-#     end_dim = kwargs['end_dim'] if 'end_dim' in kwargs else -1
-
-#     if end_dim != -1 and end_dim != len(in_shape) - 1:
-#         raise RuntimeError('Flatten with end_dim parameter is not supported.')
-
-#     #The flatten op checks for standard shape
-#     std_input = mgx_module.add_instruction(migraphx.op('contiguous'),
-#                                            [kwargs['input']])
-
-#     return mgx_module.add_instruction(migraphx.op('flatten', axis=start_dim),
-#                                       [std_input])
-
-
 @migraphx_converter(acc_ops.flatten)
 def acc_ops_flatten(mgx_module, node, args, kwargs):
     assert len(args) == 0
@@ -430,15 +411,6 @@ def acc_ops_flatten(mgx_module, node, args, kwargs):
 @migraphx_converter(acc_ops.reshape)
 def acc_ops_reshape(mgx_module, node, args, kwargs):
     assert len(args) == 0
-
-    # # This implementation would require dynamic shape support
-    # dims = []
-    # for i in kwargs['shape']:
-    #     if isinstance(i, migraphx.instruction_ref):
-    #         dims.append(i)
-    #     else:
-    #         dims.append(migraphx.add_literal(np.array(i)))
-
     out_shape = node.meta['tensor_meta'].shape
 
     try:
