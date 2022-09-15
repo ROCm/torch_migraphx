@@ -135,7 +135,7 @@ def acc_ops_add(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.sub)
-def acc_ops_add(mgx_module, node, args, kwargs):
+def acc_ops_sub(mgx_module, node, args, kwargs):
     assert len(args) == 0
     if node.meta['type'] != torch.Tensor:
         return kwargs['input'] - kwargs['other']
