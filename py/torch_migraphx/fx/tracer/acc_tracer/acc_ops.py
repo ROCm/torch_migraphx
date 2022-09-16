@@ -160,7 +160,6 @@ def relu(*, input, inplace=False):
 
 @register_acc_op_mapping(op_and_target=("call_function",
                                         torch.nn.functional.gelu))
-@register_acc_op_mapping(op_and_target=("call_method", "gelu"))
 @register_acc_op
 def gelu(*, input):
     return torch.nn.functional.gelu(input=input)
@@ -336,14 +335,14 @@ def chunk(*, input, chunks, dim=0):
                                         nn.functional.max_pool2d))
 @register_acc_op
 def max_pool2d(
-        *,
-        input,
-        kernel_size,
-        stride,
-        padding,
-        dilation,
-        ceil_mode,
-        return_indices,
+    *,
+    input,
+    kernel_size,
+    stride,
+    padding,
+    dilation,
+    ceil_mode,
+    return_indices,
 ):
     return nn.functional.max_pool2d(
         input=input,
@@ -360,14 +359,14 @@ def max_pool2d(
                                         nn.functional.avg_pool2d))
 @register_acc_op
 def avg_pool2d(
-        *,
-        input,
-        kernel_size,
-        stride,
-        padding,
-        ceil_mode,
-        count_include_pad,
-        divisor_override,
+    *,
+    input,
+    kernel_size,
+    stride,
+    padding,
+    ceil_mode,
+    count_include_pad,
+    divisor_override,
 ):
     return nn.functional.avg_pool2d(
         input=input,
@@ -384,15 +383,15 @@ def avg_pool2d(
                                         nn.functional.batch_norm))
 @register_acc_op
 def batch_norm(
-        *,
-        input,
-        running_mean,
-        running_var,
-        weight,
-        bias,
-        training,
-        momentum,
-        eps,
+    *,
+    input,
+    running_mean,
+    running_var,
+    weight,
+    bias,
+    training,
+    momentum,
+    eps,
 ):
     return nn.functional.batch_norm(
         input=input,

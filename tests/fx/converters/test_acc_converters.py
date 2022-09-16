@@ -7,6 +7,7 @@ from torch_migraphx.fx.mgx_module import MGXModule
 
 
 class FuncModule(torch.nn.Module):
+
     def __init__(self, func, *args, **kwargs):
         super(FuncModule, self).__init__()
         self.func = func
@@ -18,11 +19,13 @@ class FuncModule(torch.nn.Module):
 
 
 class DualFuncModule(FuncModule):
+
     def forward(self, x, y):
         return self.func((x, y), *self.args, **self.kwargs)
 
 
 class LambdaModule(torch.nn.Module):
+
     def __init__(self, lambd):
         super(LambdaModule, self).__init__()
         self.lambd = lambd
@@ -32,6 +35,7 @@ class LambdaModule(torch.nn.Module):
 
 
 class MethodModule(torch.nn.Module):
+
     def __init__(self, method, *args, **kwargs):
         super(MethodModule, self).__init__()
         self.method = method
@@ -117,8 +121,10 @@ def test_hardtanh():
         verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('oper', [operator.add, operator.mul])
-def test_pointwise(oper):
+@pytest.mark.parametrize('oper', [
+    operator.add, torch.add, operator.mul, torch.mul, operator.sub, torch.sub
+])
+def test_pointwise_func(oper):
     inps1 = [torch.randn(4, 7, 3).cuda(), torch.randn(4, 7, 3).cuda()]
     inps2 = [torch.randn(4, 7, 3).cuda(), 2]
     inps3 = [torch.randn(4, 7, 3).cuda(), torch.randn(1, 1, 3).cuda()]
@@ -127,6 +133,14 @@ def test_pointwise(oper):
         mod = FuncModule(oper, inps[1]).cuda()
         mgx_mod = convert_to_mgx(mod, [inps[0]])
         verify_outputs(mod, mgx_mod, inps[0])
+
+
+@pytest.mark.parametrize('method', ['add', 'sub', 'mul'])
+def test_pointwise_method(method):
+    inp = torch.randn(4, 7, 3).cuda()
+    mod = MethodModule(method, other=2.3).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
 
 
 @pytest.mark.parametrize("kernel_size, stride, dilation, padding",
@@ -194,9 +208,17 @@ def test_adaptive_avgpool2d(out_shape):
     torch.nn.Sigmoid(),
     torch.nn.Hardsigmoid()
 ])
-def test_activations(mod):
+def test_activation_funcs(mod):
     inp = torch.randn(5, 7, 2, 1, 2).cuda()
     mod.cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('method', ['relu', 'sigmoid'])
+def test_activation_methods(method):
+    inp = torch.randn(5, 7, 2, 1, 2).cuda()
+    mod = MethodModule(method).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
@@ -235,7 +257,7 @@ def test_permute(perm):
         verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('chunks,dim', [(5, 1), (10, 3)])
+@pytest.mark.parametrize('chunks, dim', [(5, 1), (10, 3)])
 def test_chunk(chunks, dim):
     inp = torch.randn(20, 12, 15, 40).cuda()
     mod_func = FuncModule(torch.chunk, chunks=chunks, dim=dim).cuda()
