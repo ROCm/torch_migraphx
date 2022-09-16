@@ -1,7 +1,7 @@
 import operator
 import warnings
 
-import torch  # isort:skip
+import torch
 from typing import cast, Iterable, List, Sequence
 
 import torch.nn as nn
