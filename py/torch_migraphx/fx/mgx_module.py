@@ -7,6 +7,7 @@ from .utils import *
 
 
 class MGXModule(torch.nn.Module):
+
     def __init__(self,
                  program: migraphx.program = None,
                  input_names: Sequence[str] = None,
@@ -88,11 +89,13 @@ class MGXModule(torch.nn.Module):
         for out_name in self.output_names:
             out_shape = self.program.get_parameter_shapes()[out_name]
             type_str, lens = out_shape.type_string(), out_shape.lens()
+            strides = out_shape.strides()
             torch_dtype = torch_dtype_from_mgx(type_str)
             self.output_buffers.append(
-                torch.empty(lens,
-                            dtype=torch_dtype,
-                            device=torch.cuda.current_device()))
+                torch.empty_strided(lens,
+                                    strides,
+                                    dtype=torch_dtype,
+                                    device=torch.cuda.current_device()))
 
     # Following functions are required for saving MGXModules using torch.save
     def _on_state_dict(self, state_dict, prefix, local_metadata):

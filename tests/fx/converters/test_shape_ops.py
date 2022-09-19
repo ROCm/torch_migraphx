@@ -97,16 +97,37 @@ def test_cat(s1, s2, dim):
     verify_outputs(mod, mgx_mod, (t1, t2))
 
 
-@pytest.mark.skip(reason="Squeeze converter not implemented")
-def test_squeeze():
-    pass
+@pytest.mark.parametrize('dim', [1, -2, None])
+def test_squeeze(dim):
+    inp = torch.randn(24, 1, 1, 8).cuda()
+    kwargs = {'dim': dim} if dim is not None else {}
+    mod_func = FuncModule(torch.squeeze, **kwargs).cuda()
+    mod_method = MethodModule('squeeze', **kwargs).cuda()
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.skip(reason="Unsqueeze converter not implemented")
-def test_unsqueeze():
-    pass
+@pytest.mark.parametrize('dim', [0, -1, 2])
+def test_unsqueeze(dim):
+    inp = torch.randn(24, 2, 4).cuda()
+    mod_func = FuncModule(torch.unsqueeze, dim=dim).cuda()
+    mod_method = MethodModule('unsqueeze', dim=dim).cuda()
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.skip(reason="Expand converter not implemented")
-def test_expand():
-    pass
+@pytest.mark.skip(
+    reason=
+    'Expand converter results in incorrect strides when used at the output node.'
+)
+@pytest.mark.parametrize('out_shape', [(2, 4, 4), (1, 2, 3, 4),
+                                       (2, 3, 2, 2, 4)])
+def test_expand(out_shape):
+    inp = torch.randn(2, 1, 4).cuda()
+    mod = MethodModule('expand', *out_shape).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)

@@ -408,6 +408,27 @@ def acc_ops_flatten(mgx_module, node, args, kwargs):
         migraphx.op('reshape', dims=list(out_shape)), [std_input])
 
 
+@migraphx_converter(acc_ops.squeeze)
+def acc_ops_squeeze(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+
+    dim = kwargs['dim'] if 'dim' in kwargs else None
+    inp = kwargs['input']
+    if dim is None:
+        return mgx_module.add_instruction(migraphx.op('squeeze'), [inp])
+
+    return mgx_module.add_instruction(migraphx.op('squeeze', axes=[dim]),
+                                      [inp])
+
+
+@migraphx_converter(acc_ops.unsqueeze)
+def acc_ops_unsqueeze(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+
+    return mgx_module.add_instruction(
+        migraphx.op('unsqueeze', axes=[kwargs['dim']]), [kwargs['input']])
+
+
 @migraphx_converter(acc_ops.reshape)
 def acc_ops_reshape(mgx_module, node, args, kwargs):
     assert len(args) == 0
@@ -474,6 +495,18 @@ def acc_ops_chunk(mgx_module, node, args, kwargs):
                 [kwargs['input']]))
 
     return output
+
+
+# BUG: MIGraphX adds contiguoues kernel to broadcated output resulting in
+# unintended behaviour when a broadcasted shape is the output
+# @migraphx_converter(acc_ops.expand)
+# def acc_ops_expand_tensor(mgx_module, node, args, kwargs):
+#     assert len(args) == 0
+
+#     out_shape = node.meta['tensor_meta'].shape
+#     return mgx_module.add_instruction(
+#         migraphx.op('multibroadcast', out_lens=list(out_shape)),
+#         [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.cat)
