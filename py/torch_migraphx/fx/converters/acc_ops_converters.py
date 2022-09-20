@@ -35,7 +35,7 @@ def broadcast_for_elemwise_op(mgx_module, node, inp, other):
             torch.tensor(other, dtype=dtype).numpy())
 
     out_shape = np.broadcast_shapes(inp_shape, other_shape)
-    if len(out_shape) == 0 or inp_shape == out_shape:
+    if len(out_shape) == 0 or inp_shape == other_shape:
         return inp, other
 
     inp = mgx_module.add_instruction(
