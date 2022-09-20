@@ -35,7 +35,7 @@ def broadcast_for_elemwise_op(mgx_module, node, inp, other):
             torch.tensor(other, dtype=dtype).numpy())
 
     out_shape = np.broadcast_shapes(inp_shape, other_shape)
-    if len(out_shape) == 0:
+    if len(out_shape) == 0 or inp_shape == out_shape:
         return inp, other
 
     inp = mgx_module.add_instruction(
@@ -158,6 +158,23 @@ def acc_ops_mul(mgx_module, node, args, kwargs):
     return mgx_module.add_instruction(migraphx.op('mul'), [inp, other])
 
 
+@migraphx_converter(acc_ops.div)
+def acc_ops_div(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+    if node.meta['type'] != torch.Tensor:
+        return kwargs['input'] / kwargs['other']
+
+    print(mgx_module)
+    print(node)
+    print(args)
+    print(kwargs)
+
+    inp, other = broadcast_for_elemwise_op(mgx_module, node, kwargs['input'],
+                                           kwargs['other'])
+
+    return mgx_module.add_instruction(migraphx.op('div'), [inp, other])
+
+
 @migraphx_converter(acc_ops.floor_div)
 def acc_ops_floor_div(mgx_module, node, args, kwargs):
     assert len(args) == 0
@@ -169,6 +186,25 @@ def acc_ops_floor_div(mgx_module, node, args, kwargs):
 
     div = mgx_module.add_instruction(migraphx.op('div'), [inp, other])
     return mgx_module.add_instruction(migraphx.op('floor'), [div])
+
+
+@migraphx_converter(acc_ops.matmul)
+def acc_ops_matmul(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+
+    inp, other = kwargs['input'], kwargs['other']
+    inp_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
+    other_shape = node.all_input_nodes[1].meta['tensor_meta'].shape
+    out_shape = node.meta['tensor_meta'].shape
+
+    inp_bc_shape = list(out_shape[:-2]) + list(inp_shape[-2:])
+    other_bc_shape = list(out_shape[:-2]) + list(other_shape[-2:])
+
+    inp_bc = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=inp_bc_shape), [inp])
+    other_bc = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=other_bc_shape), [other])
+    return mgx_module.add_instruction(migraphx.op('dot'), [inp_bc, other_bc])
 
 
 @migraphx_converter(acc_ops.conv2d)
@@ -252,6 +288,13 @@ def acc_ops_gelu(mgx_module, node, args, kwargs):
 
     return mgx_module.add_instruction(migraphx.op('mul'),
                                       [mul_half_mgx, add_one_mgx])
+
+
+@migraphx_converter(acc_ops.tanh)
+def acc_ops_tanh(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+
+    return mgx_module.add_instruction(migraphx.op('tanh'), [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.sigmoid)

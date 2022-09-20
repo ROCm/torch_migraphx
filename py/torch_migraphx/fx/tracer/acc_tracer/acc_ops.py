@@ -483,6 +483,14 @@ def trunc_div(*, input, other):
         ("rounding_mode", "rounding_mode", this_arg_is_optional),
     ],
 )
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "div"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("other", "other"),
+        ("rounding_mode", "rounding_mode", this_arg_is_optional),
+    ],
+)
 def div_mapper(node: torch.fx.Node,
                mod: torch.fx.GraphModule) -> torch.fx.Node:
     with node.graph.inserting_before(node):

@@ -6,19 +6,13 @@ from utils import FuncModule, MethodModule, convert_to_mgx, verify_outputs
 
 @pytest.mark.parametrize('oper', [
     operator.add, torch.add, operator.mul, torch.mul, operator.sub, torch.sub,
+    torch.div, operator.truediv,
     pytest.param(
         operator.floordiv,
         marks=pytest.mark.skip(reason="floor_div converter not implemented")),
     pytest.param(
-        operator.truediv,
-        marks=pytest.mark.skip(reason="div converter not implemented")),
-    pytest.param(
         torch.floor_divide,
-        marks=pytest.mark.skip(reason="trunc_div converter not implemented")),
-    pytest.param(
-        torch.div,
-        marks=pytest.mark.skip(
-            reason="div, floor_div, trunc_div converters not implemented"))
+        marks=pytest.mark.skip(reason="trunc_div converter not implemented"))
 ])
 def test_pointwise_func(oper):
     inps1 = [torch.randn(4, 7, 3).cuda(), torch.randn(4, 7, 3).cuda()]
@@ -31,7 +25,7 @@ def test_pointwise_func(oper):
         verify_outputs(mod, mgx_mod, inps[0])
 
 
-@pytest.mark.parametrize('method', ['add', 'sub', 'mul'])
+@pytest.mark.parametrize('method', ['add', 'sub', 'mul', 'div'])
 def test_pointwise_method(method):
     inps1 = [torch.randn(4, 7, 3).cuda(), torch.randn(4, 7, 3).cuda()]
     inps2 = [torch.randn(4, 7, 3).cuda(), 2]

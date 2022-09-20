@@ -41,11 +41,9 @@ def test_softmax(inp_size, dim):
     torch.nn.Sigmoid(),
     torch.nn.Hardsigmoid(),
     torch.nn.Hardswish(),
+    torch.nn.Tanh(),
     pytest.param(
-        torch.nn.Tanh,
-        marks=pytest.mark.skip(reason="Tanh converter not implemented")),
-    pytest.param(
-        torch.nn.SiLU,
+        torch.nn.SiLU(),
         marks=pytest.mark.skip(reason="SiLU converter not implemented"))
 ])
 def test_noparam_activation_funcs(mod):
@@ -55,12 +53,7 @@ def test_noparam_activation_funcs(mod):
     verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('method', [
-    'relu', 'sigmoid',
-    pytest.param(
-        'tanh',
-        marks=pytest.mark.skip(reason="Tanh converter not implemented"))
-])
+@pytest.mark.parametrize('method', ['relu', 'sigmoid', 'tanh'])
 def test_noparam_activation_methods(method):
     inp = torch.randn(5, 7, 2, 1, 2).cuda()
     mod = MethodModule(method).cuda()
