@@ -330,6 +330,14 @@ def acc_ops_hard_sigmoid(mgx_module, node, args, kwargs):
     return mgx_module.add_instruction(migraphx.op('clip'), [add, zeros, ones])
 
 
+@migraphx_converter(acc_ops.softmax)
+def acc_ops_softmax(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+
+    return mgx_module.add_instruction(migraphx.op('softmax', axis=kwargs['dim']),
+                                      [kwargs['input']])
+
+
 # TODO: Further investigation required for cases when the input dims
 # are not integer multiples of output dims. Torch uses overlapping
 # kernels of variable sizes in such cases, and so the migrahpx pooling
