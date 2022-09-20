@@ -164,11 +164,6 @@ def acc_ops_div(mgx_module, node, args, kwargs):
     if node.meta['type'] != torch.Tensor:
         return kwargs['input'] / kwargs['other']
 
-    print(mgx_module)
-    print(node)
-    print(args)
-    print(kwargs)
-
     inp, other = broadcast_for_elemwise_op(mgx_module, node, kwargs['input'],
                                            kwargs['other'])
 
