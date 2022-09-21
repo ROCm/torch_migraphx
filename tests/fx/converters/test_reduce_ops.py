@@ -26,6 +26,12 @@ def test_sum(dim, keepdim):
         verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.skip(reason="cumsum converter not implemented")
-def test_cumsum():
-    pass
+@pytest.mark.parametrize('dim', [0, -1, 3])
+def test_cumsum(dim):
+    inp = torch.randn(32, 43, 11, 2, 12).cuda()
+    mod_func = FuncModule(torch.cumsum, dim=dim).cuda()
+    mod_method = MethodModule('cumsum', dim=dim).cuda()
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)

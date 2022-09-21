@@ -218,8 +218,22 @@ def linalg_norm(*, input, ord, dim, keepdim):
     return torch.linalg.norm(input=input, ord=ord, dim=dim, keepdim=keepdim)
 
 
-@register_acc_op_mapping(op_and_target=("call_function", torch.cumsum))
-@register_acc_op_mapping(op_and_target=("call_method", "cumsum"))
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.cumsum),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim"),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_method", "cumsum"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim"),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
 @register_acc_op
 def cumsum(*, input, dim, dtype=None):
     return torch.cumsum(input=input, dim=dim, dtype=dtype)
