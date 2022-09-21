@@ -202,14 +202,6 @@ def acc_ops_matmul(mgx_module, node, args, kwargs):
     return mgx_module.add_instruction(migraphx.op('dot'), [inp_bc, other_bc])
 
 
-@migraphx_converter(acc_ops.cumsum)
-def acc_ops_cumsum(mgx_module, node, args, kwargs):
-    assert len(args) == 0
-
-    return mgx_module.add_instruction(
-        migraphx.op('prefix_scan_sum', axis=kwargs['dim']), [kwargs['input']])
-
-
 @migraphx_converter(acc_ops.conv2d)
 def acc_ops_conv2d(mgx_module, node, args, kwargs):
     assert len(args) == 0
@@ -588,6 +580,28 @@ def acc_ops_mean(mgx_module, node, args, kwargs):
 
     return mgx_module.add_instruction(
         migraphx.op('squeeze', axes=list(kwargs['dim'])), [mean])
+
+
+@migraphx_converter(acc_ops.sum)
+def acc_ops_cumsum(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+
+    sum = mgx_module.add_instruction(
+        migraphx.op('reduce_sum', axes=list(kwargs['dim'])), [kwargs['input']])
+
+    if 'keepdim' in kwargs and kwargs['keepdim']:
+        return sum
+
+    return mgx_module.add_instruction(
+        migraphx.op('squeeze', axes=list(kwargs['dim'])), [sum])
+
+
+@migraphx_converter(acc_ops.cumsum)
+def acc_ops_cumsum(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+
+    return mgx_module.add_instruction(
+        migraphx.op('prefix_scan_sum', axis=kwargs['dim']), [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.size)

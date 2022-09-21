@@ -14,7 +14,6 @@ def test_mean(dim, keepdim):
         verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.skip(reason="Sum converter not implemented")
 @pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False), (3, False)])
 def test_sum(dim, keepdim):
     inp = torch.randn(32, 43, 11, 2, 12).cuda()
