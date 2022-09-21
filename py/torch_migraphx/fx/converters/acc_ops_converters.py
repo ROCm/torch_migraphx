@@ -334,8 +334,8 @@ def acc_ops_hard_sigmoid(mgx_module, node, args, kwargs):
 def acc_ops_softmax(mgx_module, node, args, kwargs):
     assert len(args) == 0
 
-    return mgx_module.add_instruction(migraphx.op('softmax', axis=kwargs['dim']),
-                                      [kwargs['input']])
+    return mgx_module.add_instruction(
+        migraphx.op('softmax', axis=kwargs['dim']), [kwargs['input']])
 
 
 # TODO: Further investigation required for cases when the input dims
@@ -725,3 +725,13 @@ def acc_ops_layer_norm(mgx_module, node, args, kwargs):
         [kwargs['bias']])
 
     return mgx_module.add_instruction(migraphx.op('add'), [mul_mgx, bias_mgx])
+
+
+@migraphx_converter(acc_ops.new_zeros)
+def acc_ops_new_zeros(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+
+    out_shape = node.meta['tensor_meta'].shape
+    dtype = node.meta['tensor_meta'].dtype
+
+    return mgx_module.add_literal(torch.zeros(out_shape, dtype=dtype).numpy())

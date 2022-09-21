@@ -787,3 +787,15 @@ def quantize_per_tensor(*, input, acc_out_ty=None):
 @register_acc_op
 def dequantize(*, input):
     return torch.dequantize(input)
+
+
+@register_acc_op_mapping(
+    op_and_target=("call_method", "new_zeros"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("size", "size"),
+    ],
+)
+@register_acc_op
+def new_zeros(*, input, size):
+    return input.new_zeros(size)
