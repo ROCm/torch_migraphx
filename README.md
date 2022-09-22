@@ -33,4 +33,4 @@ Tests are written using pytest and are located in the Tests directory. Tests can
 ```
 pytest
 ```
-
+To run all test cases, execute this command in the `/tests` directory. To run specific tests, navigate to the specific test directory before running this command. For more options, refer to the [pytest documentation](https://docs.pytest.org/en/7.1.x/contents.html).
