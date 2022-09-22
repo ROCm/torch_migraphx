@@ -9,6 +9,7 @@ from torch.fx.passes.pass_manager import inplace_wrapper, PassManager
 from torch.fx.passes.shape_prop import ShapeProp
 from torch.fx.passes.splitter_base import generate_inputs_for_submodules, SplitResult
 
+from ..mgx_module import SplitModule
 from ..lower_setting import LowerSetting
 from ..observer import Observer
 from ..passes.remove_duplicate_output_args import remove_duplicate_output_args
@@ -19,17 +20,16 @@ _LOGGER: logging.Logger = logging.getLogger(__name__)
 Input = Sequence[Any]
 
 # Observer for the MGX split submodules before lowering
-LOWER_SPLIT_PRE_OBSERVER: Observer[
-    Callable[[str, nn.Module, Input], None]] = Observer(
-        "LOWER_SPLIT_PRE_OBSERVER")
+LOWER_SPLIT_PRE_OBSERVER: Observer[Callable[
+    [str, nn.Module, Input], None]] = Observer("LOWER_SPLIT_PRE_OBSERVER")
 
 # Observer for the MGX split submodules after lowering
-LOWER_SPLIT_POST_OBSERVER: Observer[
-    Callable[[str, nn.Module, Input], None]] = Observer(
-        "LOWER_SPLIT_POST_OBSERVER")
+LOWER_SPLIT_POST_OBSERVER: Observer[Callable[
+    [str, nn.Module, Input], None]] = Observer("LOWER_SPLIT_POST_OBSERVER")
 
 
 def wrapper(fn: Callable, input) -> Callable:
+
     @wraps(fn)
     def wrapped_fn(gm):
         if isinstance(gm, torch.fx.GraphModule):
@@ -49,12 +49,13 @@ class LowerPassManagerBuilder:
         _lower_func: function to create and run `ACCInterpreter` to convert `fx.GraphModule`
             into a TensorRT engine.
     """
+
     def __init__(
-            self,
-            lower_setting: LowerSetting,
-            trace_func: Callable,
-            split_func: Callable,
-            lower_func: Callable,
+        self,
+        lower_setting: LowerSetting,
+        trace_func: Callable,
+        split_func: Callable,
+        lower_func: Callable,
     ):
         self.lower_setting = lower_setting
         self._trace_func = trace_func
@@ -89,6 +90,7 @@ class LowerPassManagerBuilder:
         return PassManager.build_from_passlist(passes)
 
     def _mgx_lower_pass(self) -> PassManager:
+
         def lower_func(split_result: SplitResult) -> nn.Module:
 
             for submod_name, submod_inputs in split_result.submodule_inputs.items(
@@ -116,11 +118,13 @@ class LowerPassManagerBuilder:
                         f"Lowering submodule {submod_name} elapsed time {datetime.datetime.now() - lowering_start_time}"
                     )
 
-            return split_result.split_module
+            return SplitModule(split_result.split_module,
+                               split_result.non_acc_submodule_prefix)
 
         return PassManager.build_from_passlist([lower_func])
 
     def _default_lower_pass(self) -> PassManager:
+
         def lower_func(split_result: SplitResult) -> nn.Module:
 
             for submod_name, submod_inputs in split_result.submodule_inputs.items(
@@ -152,10 +156,10 @@ class LowerPassManagerBuilder:
 
         return PassManager.build_from_passlist([lower_func])
 
-    def build_mgx_lower_pipeline(self,
-                                 input: Input,
-                                 additional_input: Optional[Input] = None
-                                 ) -> PassManager:
+    def build_mgx_lower_pipeline(
+            self,
+            input: Input,
+            additional_input: Optional[Input] = None) -> PassManager:
         self._input = input
         self._additional_input = additional_input
         passes = []
@@ -168,10 +172,10 @@ class LowerPassManagerBuilder:
         pm = PassManager.build_from_passlist(passes)
         return pm
 
-    def build_default_lower_pipeline(self,
-                                     input: Input,
-                                     additional_input: Optional[Input] = None
-                                     ) -> PassManager:
+    def build_default_lower_pipeline(
+            self,
+            input: Input,
+            additional_input: Optional[Input] = None) -> PassManager:
         self._input = input
         self._additional_input = additional_input
         passes = []

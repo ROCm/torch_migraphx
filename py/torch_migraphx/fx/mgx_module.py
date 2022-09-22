@@ -130,3 +130,24 @@ class MGXModule(torch.nn.Module):
     def __setstate__(self, state):
         state['program'] = mgx_program_from_bytearray(state['program'])
         self.__dict__.update(state)
+
+
+class SplitModule(torch.fx.GraphModule):
+
+    def __init__(self, gm: torch.fx.GraphModule,
+                 non_acc_submodule_prefix: str):
+        super(SplitModule, self).__init__(gm, gm.graph, 'SplitModule')
+        self.non_acc_submodule_prefix = non_acc_submodule_prefix
+
+    def print_all_subgraphs(self):
+        for module_name, module in self.named_children():
+            print(f'Submodule: {module_name}')
+            if isinstance(module, MGXModule):
+                module.program.print()
+            elif isinstance(module, torch.fx.GraphModule):
+                if hasattr(module, 'print_readable'):
+                    module.print_readable()
+                else:
+                    module.graph.print_tabular()
+
+                print()
