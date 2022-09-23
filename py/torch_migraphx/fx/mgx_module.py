@@ -139,15 +139,18 @@ class SplitModule(torch.fx.GraphModule):
         super(SplitModule, self).__init__(gm, gm.graph, 'SplitModule')
         self.non_acc_submodule_prefix = non_acc_submodule_prefix
 
+    def print_subgraph(self, mod: str):
+        module = getattr(self, mod)
+        if isinstance(module, MGXModule):
+            module.program.print()
+        elif isinstance(module, torch.fx.GraphModule):
+            if hasattr(module, 'print_readable'):
+                module.print_readable()
+            else:
+                module.graph.print_tabular()
+            print()
+
     def print_all_subgraphs(self):
         for module_name, module in self.named_children():
             print(f'Submodule: {module_name}')
-            if isinstance(module, MGXModule):
-                module.program.print()
-            elif isinstance(module, torch.fx.GraphModule):
-                if hasattr(module, 'print_readable'):
-                    module.print_readable()
-                else:
-                    module.graph.print_tabular()
-
-                print()
+            self.print_subgraph(module_name)
