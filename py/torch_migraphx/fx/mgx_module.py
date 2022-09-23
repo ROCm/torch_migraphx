@@ -134,9 +134,10 @@ class MGXModule(torch.nn.Module):
 
 class SplitModule(torch.fx.GraphModule):
 
-    def __init__(self, gm: torch.fx.GraphModule,
+    def __init__(self, gm: torch.fx.GraphModule, submod_inputs: dict,
                  non_acc_submodule_prefix: str):
         super(SplitModule, self).__init__(gm, gm.graph, 'SplitModule')
+        self.submod_inputs = submod_inputs
         self.non_acc_submodule_prefix = non_acc_submodule_prefix
 
     def print_subgraph(self, mod: str):

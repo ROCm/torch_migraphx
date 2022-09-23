@@ -73,11 +73,8 @@ def benchmark(model: SplitModule,
     #Benchmark each submod
     submod_times = {}
     if benchmark_submods:
-        current_input = sample_inputs
         for module_name, module in model.named_children():
-            if not isinstance(current_input, (tuple, list)):
-                current_input = (current_input, )
-            next_input = module(*current_input)
+            current_input = model.submod_inputs[module_name]
 
             t_submod = torch.utils.benchmark.Timer(stmt='module(*inputs)',
                                                    globals={
@@ -86,8 +83,6 @@ def benchmark(model: SplitModule,
                                                    })
             submod_time = t_submod.timeit(n)
             submod_times[module_name] = submod_time
-
-            current_input = next_input
 
     bm_results = MGXBenchmarkResults(model, batch_size, full_mod_time,
                                      submod_times)

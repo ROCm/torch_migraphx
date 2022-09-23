@@ -119,6 +119,7 @@ class LowerPassManagerBuilder:
                     )
 
             return SplitModule(split_result.split_module,
+                               split_result.submodule_inputs,
                                split_result.non_acc_submodule_prefix)
 
         return PassManager.build_from_passlist([lower_func])
