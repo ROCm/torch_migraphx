@@ -28,9 +28,26 @@ Add torch_migraphx to the pythonpath environment variable:
 export PYTHONPATH=<path to torch_migraphx/py>:$PYTHONPATH
 ```
 
-## Run Tests
+## Run Unit Tests
 Tests are written using pytest and are located in the Tests directory. Tests can be run using:
 ```
 pytest
 ```
 To run all test cases, execute this command in the `/tests` directory. To run specific tests, navigate to the specific test directory before running this command. For more options, refer to the [pytest documentation](https://docs.pytest.org/en/7.1.x/contents.html).
+
+
+## Run Performance Tests
+Performance benchmarks for torchvision models can be run using:
+```
+python tools/perf/benchmark_torchvision.py -m <model name> -b <batch size> <--fp16>
+
+# Examples:
+python tools/perf/benchmark_torchvision.py -m alexnet -b 1 --fp16
+python tools/perf/benchmark_torchvision.py -m resnet50 -b 1
+```
+
+For benchmarking custom models, inidividual subgraph performance can be evaluated using:
+```
+torch_migraphx.fx.mgx_benchmark.benchmark(split_module, sample_inputs)
+```
+Refer to `tools/perf/benchmark_torchvision.py` for example usage.
