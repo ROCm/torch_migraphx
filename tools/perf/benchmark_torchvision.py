@@ -3,18 +3,10 @@ import os
 import torch
 import torch_migraphx
 import torchvision.models as models
-from utils import *
 from argparse import ArgumentParser
 import csv
 
-MODEL_LIST = [
-    'resnet50', 'vgg16_bn', 'alexnet', 'densenet169', 'efficientnet_b6',
-    'googlenet', 'mnasnet1_0', 'mobilenet_v3_large', 'regnet_y_32gf',
-    'shufflenet_v2_x1_5', 'squeezenet1_1', 'convnext_base', 'inception_v3'
-]
-
 parser = ArgumentParser(description='Model to benchmark')
-# parser.add_argument('-m', '--models', nargs='+', default=MODEL_LIST)
 parser.add_argument('-m', '--model', type=str, default='alexnet')
 parser.add_argument('-b', '--batch-size', type=int, default=64)
 parser.add_argument('--fp16', action='store_true', default=False)
@@ -52,20 +44,23 @@ if __name__ == '__main__':
     data = []
     model_name = args.model
     mod = getattr(models, model_name)().eval().cuda()
+
     if args.fp16:
         mod = mod.half()
         sample_inputs = [i.half() for i in sample_inputs]
 
     mgx_mod = torch_migraphx.fx.lower_to_mgx(mod,
                                              sample_inputs,
+                                             min_acc_module_size=10,
                                              lower_precision=lower_precision,
                                              suppress_accuracy_check=True)
 
     print(f'Running benchmarks for {mod._get_name()}')
-    torch_perf = benchmark_module(args.iter, mod, sample_inputs)
-    mgx_perf = benchmark_module(args.iter, mgx_mod, sample_inputs)
-    data.append([model_name, bs / (1e-3 * torch_perf), bs / (1e-3 * mgx_perf)])
-    print(f'torch_perf={torch_perf}, mgx_perf={mgx_perf}')
-
-    fname = out_fname(args)
-    write_csv(headers, data, fname)
+    print('Torch Module Results:')
+    torch_res = torch_migraphx.fx.mgx_benchmark.benchmark(mod,
+                                                          sample_inputs,
+                                                          n=args.iter)
+    print('MIGraphX Module Results:')
+    mgx_res = torch_migraphx.fx.mgx_benchmark.benchmark(mgx_mod,
+                                                        sample_inputs,
+                                                        n=args.iter)

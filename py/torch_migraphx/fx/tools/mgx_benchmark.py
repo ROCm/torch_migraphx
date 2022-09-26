@@ -18,16 +18,12 @@ class MGXBenchmarkResults:
         self.submod_timer_results = submod_timer_results
 
     def print_tabular(self):
-        headers = ['Submod', 'Avg Exec Time (ms)', 'QPS', '% Total Runtime']
+        headers = [
+            'Submod', 'Avg Exec Time (ms)', 'Rate (/sec)', '% Total Runtime'
+        ]
         total_runtime = sum(
             [t.mean for t in self.submod_timer_results.values()])
         rows = []
-        rows.append([
-            'Full Model',
-            round(self.full_mod_timer_result.mean * 1e3, 2),
-            round(self.batch_size / self.full_mod_timer_result.mean, 2),
-            '-',
-        ])
         for name, t in self.submod_timer_results.items():
             rows.append([
                 name,
@@ -35,12 +31,18 @@ class MGXBenchmarkResults:
                 '-',
                 round(t.mean / total_runtime * 100, 2),
             ])
+        rows.append([
+            'Full Model',
+            round(self.full_mod_timer_result.mean * 1e3, 2),
+            round(self.batch_size / self.full_mod_timer_result.mean, 2),
+            '-',
+        ])
 
         print(tabulate(rows, headers=headers))
         print()
 
 
-def benchmark(model: SplitModule,
+def benchmark(model: torch.nn.Module,
               sample_inputs: Sequence[Any],
               n: int = 100,
               batch_size: Union[int, None] = None,
@@ -72,7 +74,7 @@ def benchmark(model: SplitModule,
 
     #Benchmark each submod
     submod_times = {}
-    if benchmark_submods:
+    if benchmark_submods and isinstance(model, SplitModule):
         for module_name, module in model.named_children():
             current_input = model.submod_inputs[module_name]
 

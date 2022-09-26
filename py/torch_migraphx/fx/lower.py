@@ -82,14 +82,15 @@ def default_split_function(model: fx.GraphModule, inputs: Input,
     return splitter.generate_split_results()
 
 
-def create_lower_mgx_interpreter(lower_setting: LowerSetting
-                                 ) -> LowerMgxInterpreter:
+def create_lower_mgx_interpreter(
+        lower_setting: LowerSetting) -> LowerMgxInterpreter:
     return LowerMgxInterpreter.create(lower_setting)
 
 
 def default_lower_pass(
-        create_mgx_interpreter: Callable[[LowerSetting], LowerMgxInterpreter],
+    create_mgx_interpreter: Callable[[LowerSetting], LowerMgxInterpreter],
 ) -> PassFunc:
+
     def lower_pass(mod: nn.Module, input: Input, lower_setting: LowerSetting,
                    module_name: str) -> nn.Module:
         """
@@ -130,10 +131,10 @@ class Lowerer:
 
     @classmethod
     def create(
-            cls,
-            lower_setting: LowerSetting,
-            interpreter_builder: Callable = create_lower_mgx_interpreter,
-            split_func: Callable = default_split_function,
+        cls,
+        lower_setting: LowerSetting,
+        interpreter_builder: Callable = create_lower_mgx_interpreter,
+        split_func: Callable = default_split_function,
     ) -> "Lowerer":
         """Instantiate a `Lowerer` instance."""
 
@@ -160,10 +161,10 @@ class Lowerer:
 
     # @decorate_method(validate_inference(atol=1e-1, rtol=1e-1))
     def __call__(
-            self,
-            module: nn.Module,
-            inputs: Input,
-            additional_inputs: Optional[Input] = None,
+        self,
+        module: nn.Module,
+        inputs: Input,
+        additional_inputs: Optional[Input] = None,
     ) -> nn.Module:
         module.eval()
 
