@@ -40,8 +40,6 @@ if __name__ == '__main__':
     bs = args.batch_size
     sample_inputs = [torch.randn(bs, 3, 224, 224).cuda()]
     lower_precision = torch_migraphx.fx.utils.LowerPrecision.FP16 if args.fp16 else torch_migraphx.fx.utils.LowerPrecision.FP32
-    headers = ['Model', 'Torch Perf', 'MGX Perf']
-    data = []
     model_name = args.model
     mod = getattr(models, model_name)().eval().cuda()
 
@@ -51,7 +49,7 @@ if __name__ == '__main__':
 
     mgx_mod = torch_migraphx.fx.lower_to_mgx(mod,
                                              sample_inputs,
-                                             min_acc_module_size=10,
+                                             min_acc_module_size=0,
                                              lower_precision=lower_precision,
                                              suppress_accuracy_check=True)
 

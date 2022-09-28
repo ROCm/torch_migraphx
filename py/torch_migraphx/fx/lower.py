@@ -28,7 +28,8 @@ def lower_to_mgx(module: nn.Module,
                  lower_precision=LowerPrecision.FP32,
                  min_acc_module_size=10,
                  verbose_log=False,
-                 suppress_accuracy_check=False) -> nn.Module:
+                 suppress_accuracy_check=False,
+                 save_subgraph_programs=False) -> nn.Module:
     """
     Takes in original module, input and lowering setting, run lowering workflow to turn module
     into lowered module.
@@ -49,6 +50,7 @@ def lower_to_mgx(module: nn.Module,
         verbose_log=verbose_log,
         min_acc_module_size=min_acc_module_size,
         suppress_accuracy_check=suppress_accuracy_check,
+        save_subgraph_programs=save_subgraph_programs,
     )
     lowerer = Lowerer.create(lower_setting=lower_setting)
     return lowerer(module, input)
@@ -99,6 +101,10 @@ def default_lower_pass(
         """
         interpreter = create_mgx_interpreter(lower_setting)
         interp_res: MGXInterpreter = interpreter(mod, input, module_name)
+
+        if lower_setting.save_subgraph_programs:
+            migraphx.save(interp_res.program, f'{module_name}.mxr')
+
         fp16_mode = lower_setting.lower_precision == LowerPrecision.FP16
         int8_mode = lower_setting.lower_precision == LowerPrecision.INT8
         mgx_module = MGXModule(program=interp_res.program,

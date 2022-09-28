@@ -51,3 +51,4 @@ class LowerSetting(LowerSettingBasic):
     explicit_precision: bool = False
     preset_lowerer: str = ""
     suppress_accuracy_check: bool = False
+    save_subgraph_programs: bool = False
