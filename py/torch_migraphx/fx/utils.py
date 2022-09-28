@@ -4,6 +4,7 @@ import torch
 import migraphx
 from .. import _C
 
+HIPSTREAMTYPE = 'ihipStream_t'
 
 class LowerPrecision(Enum):
     FP32 = "fp32"

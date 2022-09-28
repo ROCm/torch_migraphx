@@ -61,13 +61,8 @@ class MGXModule(torch.nn.Module):
         for out_name, out_buff in zip(self.output_names, self.output_buffers):
             buffers[out_name] = mgx_argument_from_tensor(out_buff)
 
-        torch.cuda.current_stream().synchronize()
-        outs = self.program.run(buffers)
-
-        # TODO: Investigate if there is any way to force the migraphx execution
-        # to be on the same stream is current torch stream. gpu_sync() performs
-        # a device-wide synchroniztion (calls hipDeviceSynchronize)
-        migraphx.gpu_sync()
+        curr_stream = torch.cuda.current_stream()
+        outs = self.program.run_async(buffers, curr_stream.cuda_stream, HIPSTREAMTYPE)
 
         outs = [tensor_from_mgx_argument(o) for o in outs]
 

@@ -14,27 +14,6 @@ parser.add_argument('-i', '--iter', type=int, default=50)
 parser.add_argument('-f', '--fname', type=str, default=None)
 
 
-def out_fname(args):
-    if args.fname is not None:
-        return args.fname
-
-    prec = 'fp16' if args.fp16 else 'fp32'
-    return f'b{args.batch_size}_{prec}_i{args.iter}'
-
-
-def write_csv(header, data, fname):
-    fname = fname + '.csv' if not fname.endswith('.csv') else fname
-
-    if not os.path.isfile(fname):
-        with open(fname, 'w') as f:
-            writer = csv.writer(f)
-            writer.writerow(header)
-
-    with open(fname, 'a') as f:
-        writer = csv.writer(f)
-        writer.writerows(data)
-
-
 if __name__ == '__main__':
     args = parser.parse_args()
     bs = args.batch_size
