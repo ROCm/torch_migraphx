@@ -9,12 +9,14 @@ from .utils import *
 
 
 class MGXInterpreter(torch.fx.Interpreter):
+
     def __init__(self, module, sample_inputs, verbose_log=False):
         super().__init__(module)
 
         self.program = migraphx.program()
         self.mm = self.program.get_main_module()
-        self.input_specs = [(s.size(), s.dtype) for s in sample_inputs]
+        self.input_specs = [(s.dtype, s.size(), s.stride())
+                            for s in sample_inputs]
         self._input_iter = 0
         self._input_names = []
         self._outputs = []
@@ -53,11 +55,12 @@ class MGXInterpreter(torch.fx.Interpreter):
 
     def placeholder(self, node, args, kwargs):
         self._input_names.append(node.target)
-        shape, dtype = self.input_specs[self._input_iter]
+        dtype, shape, stride = self.input_specs[self._input_iter]
         self._input_iter += 1
 
         mgx_shape = migraphx.shape(lens=list(shape),
-                                   type=torch_dtype_to_mgx(dtype))
+                                   type=torch_dtype_to_mgx(dtype),
+                                   strides=list(stride))
         return self.mm.add_parameter(node.target, mgx_shape)
 
     def call_module(self, node, args, kwargs):

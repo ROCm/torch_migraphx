@@ -62,7 +62,8 @@ class MGXModule(torch.nn.Module):
             buffers[out_name] = mgx_argument_from_tensor(out_buff)
 
         curr_stream = torch.cuda.current_stream()
-        outs = self.program.run_async(buffers, curr_stream.cuda_stream, HIPSTREAMTYPE)
+        outs = self.program.run_async(buffers, curr_stream.cuda_stream,
+                                      HIPSTREAMTYPE)
 
         outs = [tensor_from_mgx_argument(o) for o in outs]
 
