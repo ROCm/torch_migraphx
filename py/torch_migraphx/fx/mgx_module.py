@@ -3,6 +3,7 @@ from typing import Sequence
 import torch
 import migraphx
 
+from .tracer.acc_tracer import acc_shape_prop
 from .utils import *
 
 
@@ -139,13 +140,11 @@ class SplitModule(torch.fx.GraphModule):
     def print_subgraph(self, mod: str):
         module = getattr(self, mod)
         if isinstance(module, MGXModule):
-            module.program.print()
+            print(module.program)
         elif isinstance(module, torch.fx.GraphModule):
-            if hasattr(module, 'print_readable'):
-                module.print_readable()
-            else:
-                module.graph.print_tabular()
-            print()
+            inps = self.submod_inputs[mod]
+            acc_shape_prop.AccShapeProp(module).propagate(*inps)
+            print_graph(module.graph)
 
     def print_all_subgraphs(self):
         for module_name, module in self.named_children():
