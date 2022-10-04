@@ -87,6 +87,19 @@ def test_chunk(chunks, dim):
         verify_outputs(mod, mgx_mod, inp)
 
 
+@pytest.mark.parametrize('split_size, dim', [(5, 1), (7, 2)])
+def test_split(split_size, dim):
+    inp = torch.randn(20, 12, 15, 40).cuda()
+    mod_func = FuncModule(torch.split,
+                          split_size_or_sections=split_size,
+                          dim=dim).cuda()
+    mod_method = MethodModule('split', split_size, dim=dim).cuda()
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
+
+
 @pytest.mark.parametrize('s1,s2,dim', [((6, 5, 7), (2, 5, 7), 0),
                                        ((4, 5, 1, 9), (4, 5, 11, 9), 2)])
 def test_cat(s1, s2, dim):

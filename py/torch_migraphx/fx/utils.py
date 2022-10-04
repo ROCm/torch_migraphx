@@ -3,6 +3,9 @@ from enum import Enum
 import torch
 import migraphx
 from .. import _C
+from torch.fx.passes.shape_prop import TensorMetadata
+
+HIPSTREAMTYPE = 'ihipStream_t'
 
 
 class LowerPrecision(Enum):
@@ -79,3 +82,24 @@ def mgx_program_from_bytearray(barray: bytearray) -> migraphx.program:
     os.remove(dummy_file_name)
 
     return prog
+
+
+def print_graph(graph: torch.fx.Graph) -> None:
+    for node in graph.nodes:
+        node_info = 'Return' if node.op == 'output' else node.format_node()
+        out_str = f"{node_info}, args: {node.args}, kwargs: {node.kwargs}"
+        if 'tensor_meta' in node.meta:
+            out_str += tensor_meta_str(node.meta['tensor_meta'])
+
+        print(out_str)
+
+    print()
+
+
+def tensor_meta_str(tm) -> str:
+    if isinstance(tm, TensorMetadata):
+        return f", shape: [{tm.dtype}, {tm.shape}, {tm.stride}]"
+    elif isinstance(tm, (tuple, list)):
+        return ' '.join([tensor_meta_str(i) for i in tm])
+    else:
+        return ''

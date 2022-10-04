@@ -62,24 +62,12 @@ def acc_ops_linear(mgx_module, node, args, kwargs):
     A_T_mgx = mgx_module.add_instruction(
         migraphx.op('transpose', permutation=perm), [A_mgx])
 
-    # A_T_mgx = mgx_module.add_instruction(
-    #     migraphx.op('multibroadcast',
-    #                 out_lens=list(in_shape[:-2]) + list(A_shape[::-1])),
-    #     [A_T_mgx])
-
-    # TODO: There is a bug in the MIGraphX dot operator that automatifcally reshapes
-    # a 3-dim input to a 2-dim input implicitly by flattening the first 2 dimensions.
-    # Once this bug is fixed, the reshape instructions should be removed and the
-    # second argument should be multibroadcasted to match the rank of first tensor
-    if len(in_shape) > 2:
-        in_mgx = mgx_module.add_instruction(
-            migraphx.op('reshape', dims=[-1, in_shape[-1]]), [in_mgx])
+    A_T_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast',
+                    out_lens=list(in_shape[:-2]) + list(A_shape[::-1])),
+        [A_T_mgx])
 
     out_mgx = mgx_module.add_instruction(migraphx.op('dot'), [in_mgx, A_T_mgx])
-
-    if len(in_shape) > 2:
-        out_mgx = mgx_module.add_instruction(
-            migraphx.op('reshape', dims=list(out_shape)), [out_mgx])
 
     if kwargs['bias'] is not None:
         b_mgx = mgx_module.add_instruction(
@@ -531,6 +519,27 @@ def acc_ops_chunk(mgx_module, node, args, kwargs):
 
     chunk_lens = ceildiv(inp_shape[dim], chunks)
     start_idxs = list(range(0, inp_shape[dim], chunk_lens))
+    end_idxs = start_idxs[1:] + [inp_shape[dim]]
+    output = []
+
+    for start, end in zip(start_idxs, end_idxs):
+        output.append(
+            mgx_module.add_instruction(
+                migraphx.op('slice', axes=[dim], starts=[start], ends=[end]),
+                [kwargs['input']]))
+
+    return output
+
+
+@migraphx_converter(acc_ops.split)
+def acc_ops_chunk(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+
+    inp_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
+    dim = kwargs['dim']
+    split_size = kwargs['split_size']
+
+    start_idxs = list(range(0, inp_shape[dim], split_size))
     end_idxs = start_idxs[1:] + [inp_shape[dim]]
     output = []
 
