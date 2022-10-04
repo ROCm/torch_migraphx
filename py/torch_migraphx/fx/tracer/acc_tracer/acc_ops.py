@@ -345,6 +345,117 @@ def chunk(*, input, chunks, dim=0):
     return torch.chunk(input=input, chunks=chunks, dim=dim)
 
 
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "split"),
+    arg_replacement_tuples=[
+        ("tensor", "input"),
+        ("split_size_or_sections", "split_size_or_sections"),
+        ("dim", "dim"),
+    ],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "split_with_sizes"),
+    arg_replacement_tuples=[
+        ("tensor", "input"),
+        ("split_sizes", "split_size_or_sections"),
+        ("dim", "dim"),
+    ],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.split),
+    arg_replacement_tuples=[
+        ("tensor", "input"),
+        ("split_size_or_sections", "split_size_or_sections"),
+        ("dim", "dim"),
+    ],
+)
+def torch_split_mapper(node: torch.fx.Node, mod: nn.Module) -> torch.fx.Node:
+    """
+    If split_size_or_sections is sections, map the node to slice_tensors
+    + tuple_construct. Otherwise, if split_size_or_sections is split_size,
+    map the node to acc_ops.split.
+    """
+    split_size_or_sections = node.kwargs["split_size_or_sections"]
+    with node.graph.inserting_before(node):
+        if isinstance(split_size_or_sections, int):
+            new_kwargs = {
+                "input": node.kwargs["input"],
+                "split_size": split_size_or_sections,
+                "dim": node.kwargs["dim"],
+            }
+            new_node = node.graph.call_function(split, kwargs=new_kwargs)
+            new_node.meta = node.meta.copy()
+            return new_node
+
+        assert isinstance(split_size_or_sections, Sequence)
+        start = 0
+        slice_nodes = []
+        for i in split_size_or_sections:
+            assert isinstance(i, int)
+            new_kwargs = {
+                "input": node.kwargs["input"],
+                "dim": node.kwargs["dim"],
+                "start": start,
+                "stop": start + i,
+                "step": 1,
+            }
+            new_node = node.graph.call_function(slice_tensor,
+                                                kwargs=new_kwargs)
+            new_node.meta["type"] = torch.Tensor
+            slice_nodes.append(new_node)
+            start += i
+
+        new_node = node.graph.call_function(
+            tuple_construct, kwargs={"tensors": tuple(slice_nodes)})
+        new_node.meta = node.meta.copy()
+        return new_node
+
+
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op
+def split(*, input, split_size, dim):
+    return torch.split(input, split_size, dim)
+
+
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.tensor_split),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        (("tensor_indices_or_sections", "sections", "indices"),
+         "indices_or_sections"),
+        ("dim", "dim", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_method", "tensor_split"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        (("tensor_indices_or_sections", "sections", "indices"),
+         "indices_or_sections"),
+        ("dim", "dim", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def tensor_split(*, input, indices_or_sections, dim=0):
+    # Need to de-coalesce the indices_or_sections because tensor_split accepts
+    # one of three kwarg signatures:
+    #  * (Tensor input, Tensor tensor_indices_or_sections, int dim)
+    #  * (Tensor input, int sections, int dim)
+    #  * (Tensor input, tuple of ints indices, int dim)
+    if isinstance(indices_or_sections, torch.Tensor):
+        indices_or_sections = indices_or_sections.tolist()
+    if isinstance(indices_or_sections, int):
+        return torch.tensor_split(input, sections=indices_or_sections, dim=dim)
+    elif isinstance(indices_or_sections, Iterable):
+        return torch.tensor_split(input,
+                                  indices=tuple(indices_or_sections),
+                                  dim=dim)
+    else:
+        raise RuntimeError(
+            f"Expected int, Iterable or Tensor for "
+            f"indices_or_sections arg, got: {type(indices_or_sections)}")
+
+
 @register_acc_op_mapping(op_and_target=("call_function",
                                         nn.functional.max_pool2d))
 @register_acc_op
@@ -582,6 +693,61 @@ def matmul(*, input, other):
 
 
 @register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.addmm),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("mat1", "mat1"),
+        ("mat2", "mat2"),
+        ("beta", "beta"),
+        ("alpha", "alpha"),
+    ],
+)
+def addmm_mapper(node: torch.fx.Node, _: nn.Module) -> torch.fx.Node:
+    """
+    Mapping from torch.addmm to acc_ops.mm -> acc_ops.add, if alpha or beta is not 1
+    then we also insert acc_ops.mul to the right place.
+    """
+    with node.graph.inserting_before(node):
+        mm_kwargs = {
+            "input": node.kwargs["mat1"],
+            "other": node.kwargs["mat2"]
+        }
+        mm_node = node.graph.create_node("call_function",
+                                         matmul,
+                                         kwargs=mm_kwargs,
+                                         name=f"{node.name}_mm")
+        mm_node.meta = node.meta.copy()
+
+        if node.kwargs["alpha"] != 1:
+            mul_kwargs = {"input": mm_node, "other": node.kwargs["alpha"]}
+            mm_node = node.graph.create_node("call_function",
+                                             mul,
+                                             kwargs=mul_kwargs,
+                                             name=f"{mm_node.name}_mul")
+        mm_node.meta = node.meta.copy()
+
+        input_node = node.kwargs["input"]
+        if node.kwargs["beta"] != 1:
+            mul_kwargs = {"input": input_node, "other": node.kwargs["beta"]}
+            new_input_node = node.graph.create_node(
+                "call_function",
+                mul,
+                kwargs=mul_kwargs,
+                name=f"{node.name}_input_mul")
+            assert isinstance(input_node, torch.fx.Node)
+            new_input_node.meta = input_node.meta.copy()
+            input_node = new_input_node
+
+        add_kwargs = {"input": mm_node, "other": input_node}
+        add_node = node.graph.create_node("call_function",
+                                          add,
+                                          kwargs=add_kwargs,
+                                          name=f"{node.name}_add")
+        add_node.meta = node.meta.copy()
+        return add_node
+
+
+@register_custom_acc_mapper_fn(
     op_and_target=("call_function", nn.functional.silu),
     arg_replacement_tuples=[
         ("input", "input"),
@@ -813,3 +979,21 @@ def dequantize(*, input):
 @register_acc_op
 def new_zeros(*, input, size):
     return input.new_zeros(size)
+
+
+@register_acc_op
+def slice_tensor(*, input, dim, start, stop, step):
+    slc = slice(start, stop, step)
+    if dim >= 0:
+        slices: List[slice] = [slice(None, None, None) for _ in range(dim)]
+        slices.append(slc)
+    else:
+        slices = [Ellipsis, slc]  # type: ignore[list-item]
+        slices.extend([slice(None, None, None) for _ in range(-dim - 1)])
+
+    return input[tuple(slices)]
+
+
+@register_acc_op
+def tuple_construct(*, tensors):
+    return tuple(tensors)

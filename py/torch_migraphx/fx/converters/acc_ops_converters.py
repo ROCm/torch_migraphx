@@ -543,6 +543,27 @@ def acc_ops_chunk(mgx_module, node, args, kwargs):
     return output
 
 
+@migraphx_converter(acc_ops.split)
+def acc_ops_chunk(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+
+    inp_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
+    dim = kwargs['dim']
+    split_size = kwargs['split_size']
+
+    start_idxs = list(range(0, inp_shape[dim], split_size))
+    end_idxs = start_idxs[1:] + [inp_shape[dim]]
+    output = []
+
+    for start, end in zip(start_idxs, end_idxs):
+        output.append(
+            mgx_module.add_instruction(
+                migraphx.op('slice', axes=[dim], starts=[start], ends=[end]),
+                [kwargs['input']]))
+
+    return output
+
+
 # BUG: MIGraphX adds contiguoues kernel to broadcated output resulting in
 # unintended behaviour when a broadcasted shape is the output
 # @migraphx_converter(acc_ops.expand)
