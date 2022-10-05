@@ -146,6 +146,14 @@ def acc_ops_mul(mgx_module, node, args, kwargs):
     return mgx_module.add_instruction(migraphx.op('mul'), [inp, other])
 
 
+@migraphx_converter(acc_ops.abs)
+def acc_ops_mul(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+
+    return mgx_module.add_instruction(migraphx.op('abs'), [kwargs['input']])
+
+
+
 @migraphx_converter(acc_ops.div)
 def acc_ops_div(mgx_module, node, args, kwargs):
     assert len(args) == 0

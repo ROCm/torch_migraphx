@@ -580,6 +580,12 @@ def mul(*, input, other):
     return input * other
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.abs))
+@register_acc_op
+def abs(*, input):
+    return torch.abs(input=input)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", operator.floordiv))
 @register_acc_op
 def floor_div(*, input, other):
