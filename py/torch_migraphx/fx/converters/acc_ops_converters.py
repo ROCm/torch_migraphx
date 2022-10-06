@@ -147,11 +147,10 @@ def acc_ops_mul(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.abs)
-def acc_ops_mul(mgx_module, node, args, kwargs):
+def acc_ops_abs(mgx_module, node, args, kwargs):
     assert len(args) == 0
 
     return mgx_module.add_instruction(migraphx.op('abs'), [kwargs['input']])
-
 
 
 @migraphx_converter(acc_ops.div)
@@ -177,6 +176,13 @@ def acc_ops_floor_div(mgx_module, node, args, kwargs):
 
     div = mgx_module.add_instruction(migraphx.op('div'), [inp, other])
     return mgx_module.add_instruction(migraphx.op('floor'), [div])
+
+
+@migraphx_converter(acc_ops.log)
+def acc_ops_log(mgx_module, node, args, kwargs):
+    assert len(args) == 0
+
+    return mgx_module.add_instruction(migraphx.op('log'), [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.matmul)
