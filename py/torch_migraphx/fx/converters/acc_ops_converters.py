@@ -606,7 +606,7 @@ def acc_ops_mean(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.sum)
-def acc_ops_cumsum(mgx_module, node, args, kwargs):
+def acc_ops_sum(mgx_module, node, args, kwargs):
     assert len(args) == 0
 
     sum = mgx_module.add_instruction(

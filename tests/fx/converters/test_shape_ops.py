@@ -90,9 +90,7 @@ def test_chunk(chunks, dim):
 @pytest.mark.parametrize('split_size, dim', [(5, 1), (7, 2)])
 def test_split(split_size, dim):
     inp = torch.randn(20, 12, 15, 40).cuda()
-    mod_func = FuncModule(torch.split,
-                          split_size_or_sections=split_size,
-                          dim=dim).cuda()
+    mod_func = FuncModule(torch.split, split_size, dim=dim).cuda()
     mod_method = MethodModule('split', split_size, dim=dim).cuda()
 
     for mod in [mod_func, mod_method]:
