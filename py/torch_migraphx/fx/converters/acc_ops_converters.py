@@ -708,13 +708,49 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
 def acc_ops_batch_norm(mgx_module, node, args, kwargs):
     assert len(args) == 0
 
-    return mgx_module.add_instruction(
-        migraphx.op('batch_norm_inference',
-                    epsilon=kwargs['eps'],
-                    momentum=kwargs['momentum']), [
-                        kwargs['input'], kwargs['weight'], kwargs['bias'],
-                        kwargs['running_mean'], kwargs['running_var']
-                    ])
+    out_shape = node.meta['tensor_meta'].shape
+    dtype = node.meta['tensor_meta'].dtype
+    unsq_dims = [i for i in range(len(out_shape)) if i != 1]
+
+    eps_mgx = mgx_module.add_literal(
+        torch.tensor(kwargs['eps'], dtype=dtype).numpy())
+    eps_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=list(out_shape)), [eps_mgx])
+
+    mean_mgx = mgx_module.add_instruction(
+        migraphx.op('unsqueeze', axes=unsq_dims), [kwargs['running_mean']])
+    mean_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=list(out_shape)), [mean_mgx])
+
+    var_mgx = mgx_module.add_instruction(
+        migraphx.op('unsqueeze', axes=unsq_dims), [kwargs['running_var']])
+    var_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=list(out_shape)), [var_mgx])
+
+    weight_mgx = mgx_module.add_instruction(
+        migraphx.op('unsqueeze', axes=unsq_dims), [kwargs['weight']])
+    weight_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=list(out_shape)), [weight_mgx])
+
+    bias_mgx = mgx_module.add_instruction(
+        migraphx.op('unsqueeze', axes=unsq_dims), [kwargs['bias']])
+    bias_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=list(out_shape)), [bias_mgx])
+
+    denom_mgx = mgx_module.add_instruction(migraphx.op('add'),
+                                           [var_mgx, eps_mgx])
+    denom_mgx = mgx_module.add_instruction(migraphx.op('sqrt'), [denom_mgx])
+
+    num_mgx = mgx_module.add_instruction(migraphx.op('sub'),
+                                         [kwargs['input'], mean_mgx])
+
+    div_mgx = mgx_module.add_instruction(migraphx.op('div'),
+                                         [num_mgx, denom_mgx])
+
+    mul_mgx = mgx_module.add_instruction(migraphx.op('mul'),
+                                         [weight_mgx, div_mgx])
+
+    return mgx_module.add_instruction(migraphx.op('add'), [mul_mgx, bias_mgx])
 
 
 @migraphx_converter(acc_ops.layer_norm)
