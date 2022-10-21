@@ -77,7 +77,7 @@ def benchmark(model: torch.nn.Module,
     if benchmark_submods and isinstance(model, SplitModule):
         for module_name, module in model.named_children():
             current_input = model.submod_inputs[module_name]
-
+            module.disable_par_conversion = True
             t_submod = torch.utils.benchmark.Timer(stmt='module(*inputs)',
                                                    globals={
                                                        'module': module,
@@ -85,6 +85,7 @@ def benchmark(model: torch.nn.Module,
                                                    })
             submod_time = t_submod.timeit(n)
             submod_times[module_name] = submod_time
+            module.disable_par_conversion = False
 
     bm_results = MGXBenchmarkResults(model, batch_size, full_mod_time,
                                      submod_times)
