@@ -30,7 +30,7 @@ class MGXModule(torch.nn.Module):
         self.mgx_buffers = {}
         self.input_mgx_shapes = []
         self.output_mgx_shapes = []
-        self.par_threshold = 5
+        self.par_threshold = 10
 
         if self.program is not None:
             self._initialize()
