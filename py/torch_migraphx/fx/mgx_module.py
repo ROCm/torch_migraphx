@@ -15,7 +15,7 @@ class MGXModule(torch.nn.Module):
                  output_names: Sequence[str] = None,
                  quantize_fp16: bool = False,
                  quantize_int8: bool = False,
-                 disable_par_conversion: bool = False):
+                 enable_par_conversion: bool = False):
         super(MGXModule, self).__init__()
 
         self._register_state_dict_hook(MGXModule._on_state_dict)
@@ -25,12 +25,11 @@ class MGXModule(torch.nn.Module):
         self.initialized = False
         self.quantize_fp16 = quantize_fp16
         self.quantize_int8 = quantize_int8
-        self.disable_par_conversion = disable_par_conversion
+        self.enable_par_conversion = enable_par_conversion
         self.torch_buffers = {}
         self.mgx_buffers = {}
         self.input_mgx_shapes = []
         self.output_mgx_shapes = []
-        self.par_threshold = 10
 
         if self.program is not None:
             self._initialize()
@@ -78,7 +77,7 @@ class MGXModule(torch.nn.Module):
         outs = self.program.run_async(self.mgx_buffers,
                                       curr_stream.cuda_stream, HIPSTREAMTYPE)
 
-        if not self.disable_par_conversion and len(outs) >= self.par_threshold:
+        if self.enable_par_conversion:
             outs = tensors_from_mgx_arguments_par(outs, self.out_lens,
                                                   self.out_strides,
                                                   self.out_type_strs)
@@ -168,3 +167,13 @@ class SplitModule(torch.fx.GraphModule):
         for module_name, module in self.named_children():
             print(f'Submodule: {module_name}')
             self.print_subgraph(module_name)
+    
+    def enable_par_conversion(self, num_outs=10):
+        '''
+        Enables parallel conversion of outputs from arguments to tensors for
+        all mgx modules with more than 'num_outs' outputs
+        '''
+        for module_name, module in self.named_children():
+            if isinstance(module, MGXModule) and len(module.output_names) >= num_outs:
+                module.enable_par_conversion = True
+
