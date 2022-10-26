@@ -76,7 +76,7 @@ PYBIND11_MODULE(_torch_migraphx, m) {
          int thread_size) {
         std::vector<torch::Tensor> tensors(ptrs.size());
 
-        par_for(ptrs.size(), thread_size, [&](const auto i) {
+        torch_migraphx::par_for(ptrs.size(), thread_size, [&](const auto i) {
           tensors[i] = torch_migraphx::tensor_from_ptr(
               ptrs[i], lens[i], strides[i], type_strs[i], device);
         });
