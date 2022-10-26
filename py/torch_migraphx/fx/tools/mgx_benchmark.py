@@ -77,7 +77,6 @@ def benchmark(model: torch.nn.Module,
     if benchmark_submods and isinstance(model, SplitModule):
         for module_name, module in model.named_children():
             current_input = model.submod_inputs[module_name]
-
             t_submod = torch.utils.benchmark.Timer(stmt='module(*inputs)',
                                                    globals={
                                                        'module': module,

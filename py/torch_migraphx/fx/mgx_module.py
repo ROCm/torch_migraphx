@@ -14,7 +14,8 @@ class MGXModule(torch.nn.Module):
                  input_names: Sequence[str] = None,
                  output_names: Sequence[str] = None,
                  quantize_fp16: bool = False,
-                 quantize_int8: bool = False):
+                 quantize_int8: bool = False,
+                 enable_par_conversion: bool = False):
         super(MGXModule, self).__init__()
 
         self._register_state_dict_hook(MGXModule._on_state_dict)
@@ -22,9 +23,13 @@ class MGXModule(torch.nn.Module):
         self.input_names = input_names
         self.output_names = output_names
         self.initialized = False
-        self.output_buffers = []
         self.quantize_fp16 = quantize_fp16
         self.quantize_int8 = quantize_int8
+        self.enable_par_conversion = enable_par_conversion
+        self.torch_buffers = {}
+        self.mgx_buffers = {}
+        self.input_mgx_shapes = []
+        self.output_mgx_shapes = []
 
         if self.program is not None:
             self._initialize()
@@ -43,7 +48,15 @@ class MGXModule(torch.nn.Module):
                                  offload_copy=False)
 
         self.output_names = self._infer_output_names()
-        self._allocate_output_buffers()
+        self._allocate_param_buffers(self.output_names)
+
+        self.input_mgx_shapes = [
+            self.program.get_parameter_shapes()[n] for n in self.input_names
+        ]
+        self.output_mgx_shapes = self.program.get_output_shapes()
+        self.out_lens, self.out_strides, self.out_type_strs = zip(
+            *[(s.lens(), s.strides(), s.type_string())
+              for s in self.output_mgx_shapes])
 
     def _check_initialized(self):
         if not self.initialized:
@@ -55,18 +68,21 @@ class MGXModule(torch.nn.Module):
             self.input_names
         ), f'Wrong number of inputs, expected {len(self.input_names)}, got {len(inputs)}.'
 
-        buffers = {}
-        for inp_name, inp_val in zip(self.input_names, inputs):
-            buffers[inp_name] = mgx_argument_from_tensor(inp_val)
-
-        for out_name, out_buff in zip(self.output_names, self.output_buffers):
-            buffers[out_name] = mgx_argument_from_tensor(out_buff)
+        for inp_name, inp_val, mgx_shape in zip(self.input_names, inputs,
+                                                self.input_mgx_shapes):
+            self.mgx_buffers[inp_name] = mgx_argument_from_ptr(
+                inp_val.data_ptr(), mgx_shape)
 
         curr_stream = torch.cuda.current_stream()
-        outs = self.program.run_async(buffers, curr_stream.cuda_stream,
-                                      HIPSTREAMTYPE)
+        outs = self.program.run_async(self.mgx_buffers,
+                                      curr_stream.cuda_stream, HIPSTREAMTYPE)
 
-        outs = [tensor_from_mgx_argument(o) for o in outs]
+        if self.enable_par_conversion:
+            outs = tensors_from_mgx_arguments_par(outs, self.out_lens,
+                                                  self.out_strides,
+                                                  self.out_type_strs)
+        else:
+            outs = tensors_from_mgx_arguments(outs, self.output_mgx_shapes)
 
         if len(outs) == 1:
             return outs[0]
@@ -82,17 +98,18 @@ class MGXModule(torch.nn.Module):
                            key=lambda x: int(x.split('output_')[1]))
         return out_names
 
-    def _allocate_output_buffers(self):
-        for out_name in self.output_names:
-            out_shape = self.program.get_parameter_shapes()[out_name]
-            type_str, lens = out_shape.type_string(), out_shape.lens()
-            strides = out_shape.strides()
+    def _allocate_param_buffers(self, names):
+        for param_name in names:
+            param_shape = self.program.get_parameter_shapes()[param_name]
+            type_str, lens = param_shape.type_string(), param_shape.lens()
+            strides = param_shape.strides()
             torch_dtype = torch_dtype_from_mgx(type_str)
-            self.output_buffers.append(
-                torch.empty_strided(lens,
-                                    strides,
-                                    dtype=torch_dtype,
-                                    device=torch.cuda.current_device()))
+            tensor = torch.empty_strided(lens,
+                                         strides,
+                                         dtype=torch_dtype,
+                                         device=torch.cuda.current_device())
+            self.torch_buffers[param_name] = tensor
+            self.mgx_buffers[param_name] = mgx_argument_from_tensor(tensor)
 
     # Following functions are required for saving MGXModules using torch.save
     def _on_state_dict(self, state_dict, prefix, local_metadata):
@@ -150,3 +167,13 @@ class SplitModule(torch.fx.GraphModule):
         for module_name, module in self.named_children():
             print(f'Submodule: {module_name}')
             self.print_subgraph(module_name)
+    
+    def enable_par_conversion(self, num_outs=10):
+        '''
+        Enables parallel conversion of outputs from arguments to tensors for
+        all mgx modules with more than 'num_outs' outputs
+        '''
+        for module_name, module in self.named_children():
+            if isinstance(module, MGXModule) and len(module.output_names) >= num_outs:
+                module.enable_par_conversion = True
+
