@@ -29,7 +29,8 @@ def lower_to_mgx(module: nn.Module,
                  min_acc_module_size=10,
                  verbose_log=False,
                  suppress_accuracy_check=False,
-                 save_subgraph_programs=False) -> nn.Module:
+                 save_subgraph_programs=False,
+                 tracer_base_cls=torch.fx.Tracer) -> nn.Module:
     """
     Takes in original module, input and lowering setting, run lowering workflow to turn module
     into lowered module.
@@ -51,6 +52,7 @@ def lower_to_mgx(module: nn.Module,
         min_acc_module_size=min_acc_module_size,
         suppress_accuracy_check=suppress_accuracy_check,
         save_subgraph_programs=save_subgraph_programs,
+        tracer_base_cls=tracer_base_cls,
     )
     lowerer = Lowerer.create(lower_setting=lower_setting)
     return lowerer(module, input)
@@ -160,6 +162,7 @@ class Lowerer:
                 inputs,  # type: ignore[arg-type]
                 ast_rewriter_allow_list=lower_setting.ast_rewriter_allow_list,
                 leaf_module_list=lower_setting.leaf_module_list,
+                tracer_cls=lower_setting.tracer_base_cls,
             ),
             split_func=split_func,
             lower_func=default_lower_pass(interpreter_builder),

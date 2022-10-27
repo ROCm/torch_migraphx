@@ -195,46 +195,47 @@ class ConditionalExceptionWrapper(nn.Module):
             raise self.exc if msg is None else self.exc(msg)
 
 
-# Custom tracer that traces to the functional level and rewrites asserts and
-# exceptions.
-class AccRewritingTracer(Tracer):
-    # Add an explicit check for mutable operations, which break symbolic tracing.
-    check_mutable_operations = True
+def create_acc_tracer(cls=Tracer):
+    # Custom tracer that traces to the functional level and rewrites asserts and
+    # exceptions.
+    class AccRewritingTracer(cls):
+        # Add an explicit check for mutable operations, which break symbolic tracing.
+        check_mutable_operations = True
 
-    # Disble proxying buffers, which currently breaks some quantization code
-    proxy_buffer_attributes = False
+        # Disble proxying buffers, which currently breaks some quantization code
+        proxy_buffer_attributes = False
 
-    # Note: Treat ConditionalExceptionWrapper as a leaf so that we don't
-    # trace into it, because it contains control flow and raises an exception.
-    DEFAULT_LEAF_MODULE_LIST = {
-        ConditionalExceptionWrapper,
-        torch.nn.quantized.Linear,
-        torch.nn.quantized.Conv2d,
-        torch.nn.intrinsic.quantized.ConvReLU2d,
-        jit.ScriptModule,
-        jit.RecursiveScriptModule,
-    }
+        # Note: Treat ConditionalExceptionWrapper as a leaf so that we don't
+        # trace into it, because it contains control flow and raises an exception.
+        DEFAULT_LEAF_MODULE_LIST = {
+            ConditionalExceptionWrapper,
+            torch.nn.quantized.Linear,
+            torch.nn.quantized.Conv2d,
+            torch.nn.intrinsic.quantized.ConvReLU2d,
+            jit.ScriptModule,
+            jit.RecursiveScriptModule,
+        }
 
-    def is_leaf_module(self, m: nn.Module, mod_qual_name: str) -> bool:
-        return getattr(m, "_base_class_origin",
-                       type(m)) in self.leaf_module_list
+        def is_leaf_module(self, m: nn.Module, mod_qual_name: str) -> bool:
+            return getattr(m, "_base_class_origin",
+                           type(m)) in self.leaf_module_list
 
-    def trace(
+        def trace(
             self,
             root: nn.Module,
             concrete_args: Optional[Dict[str, Any]] = None,
             ast_rewriter_allow_list: Optional[Set] = None,
             leaf_module_list: Optional[Set] = None,
-    ) -> Tuple[Graph, nn.Module]:
-        self.leaf_module_list = self.DEFAULT_LEAF_MODULE_LIST
-        if leaf_module_list:
-            self.leaf_module_list.update(leaf_module_list)
-        rewritten = _rewrite(root, ast_rewriter_allow_list,
-                             self.leaf_module_list)
-        return super().trace(rewritten, concrete_args), rewritten
+        ) -> Tuple[Graph, nn.Module]:
+            self.leaf_module_list = self.DEFAULT_LEAF_MODULE_LIST
+            if leaf_module_list:
+                self.leaf_module_list.update(leaf_module_list)
+            rewritten = _rewrite(root, ast_rewriter_allow_list,
+                                 self.leaf_module_list)
+            return super().trace(rewritten, concrete_args), rewritten
 
-    # override TraceBase's method
-    def create_node(
+        # override TraceBase's method
+        def create_node(
             self,
             kind: str,
             target: Target,
@@ -242,29 +243,33 @@ class AccRewritingTracer(Tracer):
             kwargs: Dict[str, Argument],
             name: Optional[str] = None,
             type_expr: Optional[Any] = None,
-    ) -> Node:
-        """
-        Inserts a graph node given target, args, kwargs, and name.
-        This method can be overridden to do extra checking, validation, or
-        modification of values used in node creation. For example, one might
-        want to disallow in-place operations from being recorded.
-        """
+        ) -> Node:
+            """
+            Inserts a graph node given target, args, kwargs, and name.
+            This method can be overridden to do extra checking, validation, or
+            modification of values used in node creation. For example, one might
+            want to disallow in-place operations from being recorded.
+            """
 
-        ## Hacky way to decide inplace ops
-        if type(target) != str:
-            name_target = target.__name__
-        else:
-            name_target = target
+            ## Hacky way to decide inplace ops
+            if type(target) != str:
+                name_target = target.__name__
+            else:
+                name_target = target
 
-        allow_list = ["and_", "or_"]  # python  operator.and_,  operator.or_
-        if (name_target[-1] == "_" and name_target[0] != "_"
-                and not (name_target in allow_list) and kind != "placeholder"):
-            raise RuntimeError(
-                f"Tried to trace mutable operation {name_target}. FX only supports functional code"
-            )
+            allow_list = ["and_",
+                          "or_"]  # python  operator.and_,  operator.or_
+            if (name_target[-1] == "_" and name_target[0] != "_"
+                    and not (name_target in allow_list)
+                    and kind != "placeholder"):
+                raise RuntimeError(
+                    f"Tried to trace mutable operation {name_target}. FX only supports functional code"
+                )
 
-        return self.graph.create_node(kind, target, args, kwargs, name,
-                                      type_expr)
+            return self.graph.create_node(kind, target, args, kwargs, name,
+                                          type_expr)
+
+    return AccRewritingTracer
 
 
 # List of modules that need rewriting to be supported for tracing.
@@ -276,9 +281,9 @@ DEFAULT_REWRITE_ALLOW_LIST = {
 
 
 def _rewrite(
-        mod_to_rewrite: nn.Module,
-        allow_list: Optional[Set] = None,
-        leaf_module_list: Optional[Set] = None,
+    mod_to_rewrite: nn.Module,
+    allow_list: Optional[Set] = None,
+    leaf_module_list: Optional[Set] = None,
 ) -> nn.Module:
     if allow_list is None:
         allow_list = DEFAULT_REWRITE_ALLOW_LIST
@@ -412,8 +417,12 @@ def _replace_tensor_meta_with_rank(gm: torch.fx.GraphModule):
             del node.meta["tensor_meta"]
 
 
-def rewriter_base_trace(mod, ast_rewriter_allow_list, leaf_module_list):
-    rewritten_graph, rewritten_mod = AccRewritingTracer().trace(
+def rewriter_base_trace(mod,
+                        ast_rewriter_allow_list,
+                        leaf_module_list,
+                        tracer_cls=Tracer):
+    tracer = create_acc_tracer(tracer_cls)()
+    rewritten_graph, rewritten_mod = tracer.trace(
         mod,
         ast_rewriter_allow_list=ast_rewriter_allow_list,
         leaf_module_list=leaf_module_list,
@@ -426,13 +435,14 @@ def rewriter_base_trace(mod, ast_rewriter_allow_list, leaf_module_list):
 
 
 def trace(
-        mod: nn.Module,
-        sample_inputs: Sequence[Any],
-        remove_assertions: bool = True,
-        remove_exceptions: bool = True,
-        use_acc_normalization: bool = True,
-        ast_rewriter_allow_list: Optional[Set[Type[nn.Module]]] = None,
-        leaf_module_list: Optional[Set[Type[nn.Module]]] = None,
+    mod: nn.Module,
+    sample_inputs: Sequence[Any],
+    remove_assertions: bool = True,
+    remove_exceptions: bool = True,
+    use_acc_normalization: bool = True,
+    ast_rewriter_allow_list: Optional[Set[Type[nn.Module]]] = None,
+    leaf_module_list: Optional[Set[Type[nn.Module]]] = None,
+    tracer_cls: Type = Tracer,
 ) -> torch.fx.GraphModule:
     """
     Performs tracing and arg normalization specialized for accelerator lowering.
@@ -473,7 +483,7 @@ def trace(
 
     # Rewrite the module to make it symbolic traceable, and then trace it.
     traced = rewriter_base_trace(mod, ast_rewriter_allow_list,
-                                 leaf_module_list)
+                                 leaf_module_list, tracer_cls)
 
     # Now remove all assertions and exceptions if requested.
     if remove_assertions:
