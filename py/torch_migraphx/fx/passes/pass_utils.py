@@ -19,6 +19,7 @@ def chain_passes(*passes: PassFunc) -> PassFunc:
     """
     Chains a sequence of pass functions to form a single pass function
     """
+
     def parent_pass(module: fx.GraphModule, input: Input) -> fx.GraphModule:
         for pass_ in passes:
             if isinstance(module, torch.fx.GraphModule):
@@ -34,17 +35,19 @@ def chain_passes(*passes: PassFunc) -> PassFunc:
 def validate_inference(rtol=None,
                        atol=None,
                        suppress_accuracy_check_failure=False):
+
     def _validate_inference(pass_: PassFunc) -> PassFunc:
         """
         Wraps a pass function to validate that its inference results before and
         after the pass run should be `allclose`.
         """
+
         @wraps(pass_)
         def pass_with_validation(
-                module: fx.GraphModule,
-                input: Input,
-                *args,
-                **kwargs,
+            module: fx.GraphModule,
+            input: Input,
+            *args,
+            **kwargs,
         ) -> fx.GraphModule:
             res0 = module(*input)
             processed_module = pass_(module, input, *args, **kwargs)
@@ -89,8 +92,11 @@ Decorator = Callable[[Callable], Callable]
 
 
 def decorate_method(dec_for_function: Decorator) -> Decorator:
+
     def dec_for_method(unbounded_method) -> Callable:
+
         def decorated_unbounded_method(self, *args, **kwargs):
+
             @dec_for_function
             def bounded_method(*args, **kwargs):
                 return unbounded_method(self, *args, **kwargs)
@@ -106,6 +112,7 @@ def log_before_after(pass_: PassFunc) -> PassFunc:
     """
     Wraps a pass function to log the module graph before and after the pass
     """
+
     @wraps(pass_)
     def pass_with_before_after_log(module: fx.GraphModule,
                                    input: Input) -> fx.GraphModule:

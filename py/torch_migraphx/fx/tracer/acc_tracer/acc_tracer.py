@@ -35,6 +35,7 @@ class Acc_Rewriter(ast.NodeTransformer):
     that node. For more details, see:
     https://docs.python.org/3/library/ast.html#ast.NodeTransformer
     """
+
     def __init__(self):
         super().__init__()
         self.exceptions_rewritten: Set[Type[Exception]] = set()
@@ -214,6 +215,7 @@ def create_acc_tracer(cls=Tracer):
             torch.nn.intrinsic.quantized.ConvReLU2d,
             jit.ScriptModule,
             jit.RecursiveScriptModule,
+            torch.nn.LSTM,
         }
 
         def is_leaf_module(self, m: nn.Module, mod_qual_name: str) -> bool:

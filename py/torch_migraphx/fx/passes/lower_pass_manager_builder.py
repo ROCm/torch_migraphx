@@ -71,7 +71,8 @@ class LowerPassManagerBuilder:
 
     def graph_optimization_pass(self) -> PassManager:
         passes = [
-            wrapper(self._trace_func, self._input),
+            # TODO: following pass causes issues with rnn based models, needs investigation before reimplementing
+            # wrapper(self._trace_func, self._input),
         ]
         passes.append(inplace_wrapper(common_subexpression_elimination))
 

@@ -23,6 +23,15 @@ logger = logging.getLogger(__name__)
 Input = Sequence[Any]
 
 
+def to_device(x):
+    if isinstance(x, torch.Tensor):
+        return x.cuda()
+    elif isinstance(x, (tuple, list)):
+        return [to_device(y) for y in x]
+    else:
+        return x
+
+
 def lower_to_mgx(module: nn.Module,
                  input,
                  lower_precision=LowerPrecision.FP32,
@@ -30,7 +39,8 @@ def lower_to_mgx(module: nn.Module,
                  verbose_log=False,
                  suppress_accuracy_check=False,
                  save_subgraph_programs=False,
-                 tracer_base_cls=torch.fx.Tracer) -> nn.Module:
+                 tracer_base_cls=torch.fx.Tracer,
+                 leaf_modules=None) -> nn.Module:
     """
     Takes in original module, input and lowering setting, run lowering workflow to turn module
     into lowered module.
@@ -45,7 +55,7 @@ def lower_to_mgx(module: nn.Module,
         A torch.nn.Module lowered by accelerator.
     """
     module = module.cuda().eval()
-    input = [x.cuda() for x in input if x is not None]
+    input = [to_device(x) for x in input]
     lower_setting = LowerSetting(
         lower_precision=lower_precision,
         verbose_log=verbose_log,
@@ -53,6 +63,7 @@ def lower_to_mgx(module: nn.Module,
         suppress_accuracy_check=suppress_accuracy_check,
         save_subgraph_programs=save_subgraph_programs,
         tracer_base_cls=tracer_base_cls,
+        leaf_module_list=leaf_modules,
     )
     lowerer = Lowerer.create(lower_setting=lower_setting)
     return lowerer(module, input)

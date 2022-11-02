@@ -1027,3 +1027,22 @@ def slice_tensor(*, input, dim, start, stop, step):
 @register_acc_op
 def tuple_construct(*, tensors):
     return tuple(tensors)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_module", torch.nn.LSTM),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ('hidden_states', 'hx', this_arg_is_optional),
+    ],
+)
+def lstm_mapper(node: torch.fx.Node, mod: nn.Module) -> torch.fx.Node:
+    hx = None if 'hx' not in node.kwargs else node.kwargs['hx']
+    with node.graph.inserting_before(node):
+        new_node = node.graph.call_module(node.target,
+                                          kwargs={
+                                              'input': node.kwargs['input'],
+                                              'hx': hx,
+                                          })
+        new_node.meta = node.meta.copy()
+        return new_node
