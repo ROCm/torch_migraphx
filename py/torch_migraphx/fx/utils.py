@@ -1,5 +1,6 @@
 import os
 from enum import Enum
+import random
 import torch
 import migraphx
 from .. import _C
@@ -82,7 +83,7 @@ def tensors_from_mgx_arguments(
 # with program bytes. To work around this, we let it create a dummy file
 # and read from it. Update this once it is supported by the api
 def mgx_program_to_bytearray(program: migraphx.program) -> bytearray:
-    dummy_file_name = '__temp_prog_to_bytes.mxr'
+    dummy_file_name = f'__temp_prog_{random.getrandbits(32)}.mxr'
     migraphx.save(program, dummy_file_name)
 
     with open(dummy_file_name, 'rb') as f:
@@ -94,7 +95,7 @@ def mgx_program_to_bytearray(program: migraphx.program) -> bytearray:
 
 
 def mgx_program_from_bytearray(barray: bytearray) -> migraphx.program:
-    dummy_file_name = '__temp_prog_from_bytes.mxr'
+    dummy_file_name = f'__temp_prog_{random.getrandbits(32)}.mxr'
 
     with open(dummy_file_name, 'wb') as f:
         f.write(barray)
