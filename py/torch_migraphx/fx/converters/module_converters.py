@@ -92,7 +92,8 @@ def module_lstm(mgx_module, torch_mod, node, args, kwargs):
 
     input = kwargs['input']
     in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
-    h0, c0 = kwargs['hx'] if 'hx' in kwargs else (None, None)
+    h0, c0 = kwargs['hx'] if 'hx' in kwargs and kwargs['hx'] is not None else (
+        None, None)
 
     if torch_mod.batch_first:
         # Need shape [seq_length, batch_size, input_size]
