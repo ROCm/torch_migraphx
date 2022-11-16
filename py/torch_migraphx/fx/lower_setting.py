@@ -3,6 +3,7 @@ from typing import List, Optional, Set, Type
 
 from torch import nn
 from torch.fx.passes.pass_manager import PassManager
+from torch.fx import Tracer
 
 from .utils import LowerPrecision
 
@@ -52,3 +53,4 @@ class LowerSetting(LowerSettingBasic):
     preset_lowerer: str = ""
     suppress_accuracy_check: bool = False
     save_subgraph_programs: bool = False
+    tracer_base_cls: Type = Tracer

@@ -23,13 +23,24 @@ logger = logging.getLogger(__name__)
 Input = Sequence[Any]
 
 
+def to_device(x):
+    if isinstance(x, torch.Tensor):
+        return x.cuda()
+    elif isinstance(x, (tuple, list)):
+        return [to_device(y) for y in x]
+    else:
+        return x
+
+
 def lower_to_mgx(module: nn.Module,
                  input,
                  lower_precision=LowerPrecision.FP32,
                  min_acc_module_size=10,
                  verbose_log=False,
                  suppress_accuracy_check=False,
-                 save_subgraph_programs=False) -> nn.Module:
+                 save_subgraph_programs=False,
+                 tracer_base_cls=torch.fx.Tracer,
+                 leaf_modules=None) -> nn.Module:
     """
     Takes in original module, input and lowering setting, run lowering workflow to turn module
     into lowered module.
@@ -44,13 +55,15 @@ def lower_to_mgx(module: nn.Module,
         A torch.nn.Module lowered by accelerator.
     """
     module = module.cuda().eval()
-    input = [x.cuda() for x in input if x is not None]
+    input = [to_device(x) for x in input]
     lower_setting = LowerSetting(
         lower_precision=lower_precision,
         verbose_log=verbose_log,
         min_acc_module_size=min_acc_module_size,
         suppress_accuracy_check=suppress_accuracy_check,
         save_subgraph_programs=save_subgraph_programs,
+        tracer_base_cls=tracer_base_cls,
+        leaf_module_list=leaf_modules,
     )
     lowerer = Lowerer.create(lower_setting=lower_setting)
     return lowerer(module, input)
@@ -160,6 +173,7 @@ class Lowerer:
                 inputs,  # type: ignore[arg-type]
                 ast_rewriter_allow_list=lower_setting.ast_rewriter_allow_list,
                 leaf_module_list=lower_setting.leaf_module_list,
+                tracer_cls=lower_setting.tracer_base_cls,
             ),
             split_func=split_func,
             lower_func=default_lower_pass(interpreter_builder),

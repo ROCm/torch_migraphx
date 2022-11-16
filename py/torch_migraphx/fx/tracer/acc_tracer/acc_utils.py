@@ -37,13 +37,13 @@ def is_acc_op_with_kwarg(node_or_target: Union[Callable, torch.fx.Node],
 
 
 def build_raw_tensor_meta(
-        shape=None,
-        dtype=None,
-        requires_grad=None,
-        stride=None,
-        memory_format=None,
-        is_quantized=None,
-        qparams=None,
+    shape=None,
+    dtype=None,
+    requires_grad=None,
+    stride=None,
+    memory_format=None,
+    is_quantized=None,
+    qparams=None,
 ):
     return TensorMetadata(**locals())
 

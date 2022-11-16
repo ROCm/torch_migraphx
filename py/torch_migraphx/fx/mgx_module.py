@@ -37,13 +37,13 @@ class MGXModule(torch.nn.Module):
     def _initialize(self):
         self.initialized = True
 
-        if self.quantize_fp16:
-            migraphx.quantize_fp16(self.program)
-
-        if self.quantize_int8:
-            migraphx.quantize_int8(self.program)
-
         if not self.program.is_compiled():
+            if self.quantize_fp16:
+                migraphx.quantize_fp16(self.program)
+
+            if self.quantize_int8:
+                migraphx.quantize_int8(self.program)
+
             self.program.compile(migraphx.get_target('gpu'),
                                  offload_copy=False)
 
@@ -117,6 +117,10 @@ class MGXModule(torch.nn.Module):
         state_dict[prefix + 'program'] = mgx_program_to_bytearray(self.program)
         state_dict[prefix + 'input_names'] = self.input_names
         state_dict[prefix + 'output_names'] = self.output_names
+        state_dict[prefix + 'quantize_fp16'] = self.quantize_fp16
+        state_dict[prefix + 'quantize_int8'] = self.quantize_int8
+        state_dict[prefix +
+                   'enable_par_conversion'] = self.enable_par_conversion
 
     def _load_from_state_dict(
         self,
@@ -134,16 +138,32 @@ class MGXModule(torch.nn.Module):
 
         self.input_names = state_dict[prefix + 'input_names']
         self.output_names = state_dict[prefix + 'output_names']
+        self.quantize_fp16 = state_dict[prefix + 'quantize_fp16']
+        self.quantize_int8 = state_dict[prefix + 'quantize_int8']
+        self.enable_par_conversion = state_dict[prefix +
+                                                'enable_par_conversion']
+
         self._initialize()
 
     def __getstate__(self):
+        initialized_states = {
+            'torch_buffers': {},
+            'mgx_buffers': {},
+            'input_mgx_shapes': [],
+            'output_mgx_shapes': [],
+            'initialized': False
+        }
         state = self.__dict__.copy()
+        for s, v in initialized_states.items():
+            state[s] = v
+
         state['program'] = mgx_program_to_bytearray(self.program)
         return state
 
     def __setstate__(self, state):
         state['program'] = mgx_program_from_bytearray(state['program'])
         self.__dict__.update(state)
+        self._initialize()
 
 
 class SplitModule(torch.fx.GraphModule):
@@ -167,13 +187,15 @@ class SplitModule(torch.fx.GraphModule):
         for module_name, module in self.named_children():
             print(f'Submodule: {module_name}')
             self.print_subgraph(module_name)
-    
+
     def enable_par_conversion(self, num_outs=10):
         '''
         Enables parallel conversion of outputs from arguments to tensors for
         all mgx modules with more than 'num_outs' outputs
         '''
         for module_name, module in self.named_children():
-            if isinstance(module, MGXModule) and len(module.output_names) >= num_outs:
+            if isinstance(module,
+                          MGXModule) and len(module.output_names) >= num_outs:
                 module.enable_par_conversion = True
 
+                
