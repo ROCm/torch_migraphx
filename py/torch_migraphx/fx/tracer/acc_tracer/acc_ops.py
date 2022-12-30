@@ -556,12 +556,56 @@ def sigmoid(*, input):
     return torch.sigmoid(input=input)
 
 
-@register_acc_op_mapping(op_and_target=("call_function", torch.add))
 @register_acc_op_mapping(op_and_target=("call_function", operator.add))
 @register_acc_op_mapping(op_and_target=("call_method", "add"))
 @register_acc_op
 def add(*, input, other):
     return input + other
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.add),
+    # Note that we may have aliases for inputs here due to issues with deterministically
+    # knowing the correct target that will be resolved by pytorch.
+    arg_replacement_tuples=[
+        (("input", "a"), "input"),
+        (("other", "b"), "other"),
+        ("alpha", "alpha", this_arg_is_optional),
+    ],
+)
+def custom_torch_add_mapper(node: torch.fx.Node,
+                            mod: nn.Module) -> torch.fx.Node:
+    """
+    Add custom mapping for torch.add because it has an `alpha` parameter which scales
+    the `other` input, and we want to make that mul a separate node.
+    """
+    with node.graph.inserting_before(node):
+        # If alpha is in kwargs check if we need to add a mul, and use correct kwargs.
+        if "alpha" in node.kwargs:
+            # Add mul node only if it has a numerical impact, i.e. alpha != 1.0.
+            if node.kwargs["alpha"] != 1.0:
+                other_node = node.graph.create_node(
+                    "call_function",
+                    mul,
+                    kwargs={
+                        "input": node.kwargs["other"],
+                        "other": node.kwargs["alpha"],
+                    },
+                    name=node.name + "_mul_alpha",
+                )
+                other_node.meta = node.meta
+            else:
+                other_node = node.kwargs["other"]
+            add_kwargs = {"input": node.kwargs["input"], "other": other_node}
+        else:
+            add_kwargs = node.kwargs
+
+        new_node = node.graph.create_node("call_function",
+                                          add,
+                                          kwargs=add_kwargs,
+                                          name=node.name)
+        new_node.meta = node.meta
+        return new_node
 
 
 @register_acc_op_mapping(op_and_target=("call_function", torch.sub))
@@ -804,6 +848,10 @@ def silu(node: torch.fx.Node, _: nn.Module) -> torch.fx.Node:
 )
 @register_custom_acc_mapper_fn(op_and_target=("call_method", "detach"),
                                arg_replacement_tuples=[("input", "input")])
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.detach),
+    arg_replacement_tuples=[("input", "input")],
+)
 def dropout_mapper(node: torch.fx.Node, mod: nn.Module):
     """
     Remove dropout node and directly map its input to output.
@@ -880,6 +928,72 @@ def tensor_size_mapper(node: torch.fx.Node, _: nn.Module) -> torch.fx.Node:
                                                 })
         getitem_node.meta = node.meta.copy()
         return getitem_node
+
+
+@register_acc_op
+def device(*, input):
+    return input.device
+
+
+@register_acc_op
+def dtype(*, input):
+    return input.dtype
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", getattr),
+    arg_replacement_tuples=[],
+)
+def custom_getattr_mapper(node: torch.fx.Node, _: nn.Module) -> torch.fx.Node:
+    """
+    Custom function for mapping a call_function getattr to other ops.
+    Supports:
+    * getattr on a torch.Tensor with "shape", "device", or "dtype" attributes
+    * getattr for accessing named tuples
+    """
+    # Have to use args here since getattr forces positional args.
+    input_obj = node.args[0]
+    attr_name = node.args[1]
+    assert isinstance(input_obj, torch.fx.Node)
+    input_obj_type = input_obj.meta["type"]
+
+    # Handle named tuple access. NamedTupleMeta and the namedtuple factory function
+    # create a subclass of tuple with an extra _fields attribute.
+    if issubclass(input_obj_type, tuple) and hasattr(input_obj_type,
+                                                     "_fields"):
+        idx = None
+        for i, name in enumerate(input_obj_type._fields):
+            if name == attr_name:
+                idx = i
+                break
+        assert (
+            idx is not None
+        ), f"Named tuple type {input_obj_type} does not have field {name}"
+
+        with node.graph.inserting_before(node):
+            getitem_node = node.graph.call_function(getitem,
+                                                    kwargs={
+                                                        "input": input_obj,
+                                                        "idx": idx
+                                                    })
+            getitem_node.meta = node.meta.copy()
+            return getitem_node
+
+    assert (input_obj_type == torch.Tensor
+            ), f"Expected torch.Tensor type for {input_obj_type}"
+    assert (
+        attr_name == "shape" or attr_name == "device" or attr_name == "dtype"
+    ), f"Only supporting shape, device and dtype getattr for now, not {attr_name}"
+    if attr_name == "shape":
+        func = size
+    elif attr_name == "device":
+        func = device
+    elif attr_name == "dtype":
+        func = dtype
+    with node.graph.inserting_before(node):
+        size_node = node.graph.call_function(func, kwargs={"input": input_obj})
+        size_node.meta = node.meta.copy()
+        return size_node
 
 
 @register_custom_acc_mapper_fn(
@@ -964,6 +1078,35 @@ def transpose_mapper(node: torch.fx.Node, _: nn.Module) -> torch.fx.Node:
 
     permute_node.graph.erase_node(node)
     return permute_node
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.t),
+    arg_replacement_tuples=[
+        ("input", "input"),
+    ],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "t"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+    ],
+)
+def t_mapper(node: torch.fx.Node, _: nn.Module):
+    ranks = node.meta["tensor_rank"]
+    shuffle = [1, 0] if (ranks > 1) else [0]
+
+    with node.graph.inserting_before(node):
+        new_node = node.graph.create_node(
+            "call_function",
+            permute,
+            kwargs={
+                "input": node.kwargs["input"],
+                "permutation": shuffle
+            },
+        )
+        new_node.meta = node.meta.copy()
+        return new_node
 
 
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
