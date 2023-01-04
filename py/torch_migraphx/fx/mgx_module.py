@@ -134,7 +134,7 @@ class MGXModule(torch.nn.Module):
     ):
         prog_bytes = state_dict[prefix + 'program']
 
-        self.engine = mgx_program_from_bytearray(prog_bytes)
+        self.program = mgx_program_from_bytearray(prog_bytes)
 
         self.input_names = state_dict[prefix + 'input_names']
         self.output_names = state_dict[prefix + 'output_names']

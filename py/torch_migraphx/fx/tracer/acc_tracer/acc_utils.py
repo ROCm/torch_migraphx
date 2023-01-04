@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 from torch.fx.immutable_collections import immutable_list
 from torch.fx.passes.shape_prop import TensorMetadata
+from torch.fx.immutable_collections import immutable_dict, immutable_list
 
 
 def is_acc_op(node_or_target: Union[Callable, torch.fx.Node]) -> bool:
@@ -50,14 +51,33 @@ def build_raw_tensor_meta(
 
 def map_tensor_metadata(a: Any, fn: Callable):
     """
-    Map some `fn` to `a`, where `a` is either a TensorMetadata, or else a tuple/list
+    Map some `fn` to `a`, where `a` is either a TensorMetadata, or else a tuple/list/dict
     recursively containing TensorMetadata.
     """
-    if isinstance(a, TensorMetadata):
+    if isinstance(a, int):
+        return 1
+    elif a is None:
+        return 1
+    elif isinstance(a, TensorMetadata):
         return fn(a)
     elif isinstance(a, tuple):
         return tuple(map_tensor_metadata(elem, fn) for elem in a)
+    elif isinstance(a, dict):
+        return immutable_dict(
+            {name: map_tensor_metadata(elem, fn) for name, elem in a.items()}
+        )
     assert isinstance(
         a, list
     ), f"Only supporting tuple/list/TensorMetadata, but found {type(a)}"
     return immutable_list(map_tensor_metadata(elem, fn) for elem in a)
+
+
+def get_tensor_meta(node: torch.fx.Node) -> TensorMetadata:
+    tensor_meta = node.meta.get("tensor_meta")
+
+    if not tensor_meta:
+        raise RuntimeError(
+            f"Node has no tensor metadata associated with it! "
+            f"Check that shape propagation has run. {node.format_node()}"
+        )
+    return tensor_meta

@@ -58,8 +58,8 @@ class NormalizationInfo(NamedTuple):
     # (tensor_meta_field_name, orginal_field_name)
     # when move_to_qparams is True, we'll move the field to qparams
     # dictionary, otherwise it will stay in TensorMeta itself
-    kwargs_to_move_to_acc_out_ty: Optional[List[
-        Union[Tuple[str, str, bool], Tuple[str, str]]]]
+    kwargs_to_move_to_acc_out_ty: Optional[List[Union[Tuple[str, str, bool],
+                                                      Tuple[str, str]]]]
     needs_shapes_for_normalization: bool
 
 
@@ -72,14 +72,15 @@ _acc_ops: Set[Callable] = set()
 
 
 def _insert_fun(
-        op_and_target: Tuple[str, Union[str, Callable]],
-        arg_replacement_tuples: List[Tuple],
-        new_fn_target: Optional[Callable] = None,
-        custom_mapping_fn: Optional[Callable] = None,
-        kwargs_to_move_to_acc_out_ty: Optional[List[
-            Union[Tuple[str, str, bool], Tuple[str, str]]]] = None,
-        needs_shapes_for_normalization=False,
-        allow_normalize_from_torch_package=False,
+    op_and_target: Tuple[str, Union[str, Callable]],
+    arg_replacement_tuples: List[Tuple],
+    new_fn_target: Optional[Callable] = None,
+    custom_mapping_fn: Optional[Callable] = None,
+    kwargs_to_move_to_acc_out_ty: Optional[List[Union[Tuple[str, str, bool],
+                                                      Tuple[str,
+                                                            str]]]] = None,
+    needs_shapes_for_normalization=False,
+    allow_normalize_from_torch_package=False,
 ):
     if op_and_target[0] == "call_function":
         assert callable(op_and_target[1])
@@ -155,12 +156,16 @@ def register_acc_op(acc_op: Callable):
 
 
 def register_acc_op_mapping(
-        op_and_target: Tuple[str, Union[str, Callable]],
-        arg_replacement_tuples: Optional[List[
-            Union[Tuple[Union[str, Tuple[str, ...]], str],
-                  Tuple[Union[str, Tuple[str, ...]], str, bool], ]]] = None,
-        kwargs_to_move_to_acc_out_ty: Optional[List[
-            Union[Tuple[str, str, bool], Tuple[str, str]]]] = None,
+    op_and_target: Tuple[str, Union[str, Callable]],
+    arg_replacement_tuples: Optional[List[Union[Tuple[Union[str, Tuple[str,
+                                                                       ...]],
+                                                      str],
+                                                Tuple[Union[str, Tuple[str,
+                                                                       ...]],
+                                                      str, bool], ]]] = None,
+    kwargs_to_move_to_acc_out_ty: Optional[List[Union[Tuple[str, str, bool],
+                                                      Tuple[str,
+                                                            str]]]] = None,
 ):
     """
     Use this decorator to map a non-acc operator to an acc operator.
@@ -169,6 +174,7 @@ def register_acc_op_mapping(
         arg_replacement_tuples: Please refer to the comment on above for `ArgReplacementTuplesType`.
         kwargs_to_move_to_acc_out_ty: The kwargs we want to move out from the non-acc op kwargs to acc_out_ty.
     """
+
     def insert(new_fn_target: Callable):
         # If arg_replacement_tuples is None then assume we use the same signature for
         # the acc_op and the original op.
@@ -191,13 +197,14 @@ def register_acc_op_mapping(
 
 
 def register_custom_acc_mapper_fn(
-        op_and_target: Tuple[str, Union[str, Callable]],
-        arg_replacement_tuples: List[
-            Union[Tuple[Union[str, Tuple[str, ...]], str],
-                  Tuple[Union[str, Tuple[str, ...]], str, bool], ]],
-        needs_shapes_for_normalization=False,
-        allow_normalize_from_torch_package=False,
+    op_and_target: Tuple[str, Union[str, Callable]],
+    arg_replacement_tuples: List[Union[Tuple[Union[str, Tuple[str, ...]], str],
+                                       Tuple[Union[str, Tuple[str, ...]], str,
+                                             bool], ]],
+    needs_shapes_for_normalization=False,
+    allow_normalize_from_torch_package=False,
 ):
+
     def insert(custom_mapping_fn: Callable):
         _insert_fun(
             op_and_target=op_and_target,
@@ -214,8 +221,8 @@ def register_custom_acc_mapper_fn(
 
 
 def move_kwargs_to_acc_out_ty(
-        node_or_normalization_info: Union[NormalizationInfo, torch.fx.Node],
-        new_kwargs: Dict[str, Any],
+    node_or_normalization_info: Union[NormalizationInfo, torch.fx.Node],
+    new_kwargs: Dict[str, Any],
 ):
     """
     Given `node_or_normalization_info` which is either NormalizationInfo for a node, or
@@ -310,10 +317,17 @@ def get_normalized_kwargs(node: torch.fx.Node,
     return new_kwargs
 
 
-def normalize(mod: torch.fx.GraphModule,
-              expect_nodes_have_shapes: bool = False):
+def normalize(
+    mod: torch.fx.GraphModule,
+    expect_nodes_have_shapes: bool = False,
+    acc_normalization_block_list: Optional[Set[Tuple[str,
+                                                     Union[str,
+                                                           Callable]]]] = None,
+):
     assert len(_normalization_dict) > 0
     graph = mod.graph
+    if acc_normalization_block_list is None:
+        acc_normalization_block_list = set()
 
     # For "call_module" node we return _base_class_origin if it's a
     # RewrittenModule, otherwise, return its type. For other nodes,
@@ -327,10 +341,10 @@ def normalize(mod: torch.fx.GraphModule,
         return getattr(m, "_base_class_origin", type(m))
 
     def normalize_to_acc_op(
-            node: torch.fx.Node,
-            normalization_info: NormalizationInfo,
-            normalized_args: Tuple[Any, ...],
-            normalized_kwargs: Dict[str, Any],
+        node: torch.fx.Node,
+        normalization_info: NormalizationInfo,
+        normalized_args: Tuple[Any, ...],
+        normalized_kwargs: Dict[str, Any],
     ):
         # If there's a custom mapping function then use it.
         if normalization_info.custom_mapping_fn is not None:
@@ -370,6 +384,10 @@ def normalize(mod: torch.fx.GraphModule,
 
     for node in graph.nodes:
         if node.op in {"placeholder", "get_attr", "output"}:
+            continue
+
+        op_and_target = (node.op, get_target(mod, node))
+        if op_and_target in acc_normalization_block_list:
             continue
 
         normalization_info = _normalization_dict.get(
