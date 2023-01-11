@@ -37,7 +37,7 @@ def test_pointwise_method(method):
         verify_outputs(mod, mgx_mod, inps[0])
 
 
-@pytest.mark.parametrize('oper', [torch.abs])
+@pytest.mark.parametrize('oper', [torch.abs, torch.square, torch.sign])
 def test_unary_func(oper):
     inp = torch.randn(2, 9, 11, 1).cuda()
 
@@ -52,3 +52,5 @@ def test_log(oper):
     mod = FuncModule(oper).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+

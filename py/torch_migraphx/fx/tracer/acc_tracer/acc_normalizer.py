@@ -166,6 +166,7 @@ def register_acc_op_mapping(
     kwargs_to_move_to_acc_out_ty: Optional[List[Union[Tuple[str, str, bool],
                                                       Tuple[str,
                                                             str]]]] = None,
+    allow_normalize_from_torch_package=False,
 ):
     """
     Use this decorator to map a non-acc operator to an acc operator.
@@ -190,6 +191,7 @@ def register_acc_op_mapping(
             arg_replacement_tuples=
             final_arg_replacement_tuples,  # type: ignore[arg-type]
             kwargs_to_move_to_acc_out_ty=kwargs_to_move_to_acc_out_ty,
+            allow_normalize_from_torch_package=allow_normalize_from_torch_package,
         )
         return new_fn_target
 

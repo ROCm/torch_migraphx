@@ -92,6 +92,43 @@ def sum_mapper(node: torch.fx.Node,
     return reduce_op_mapper(node, mod, sum)
 
 
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op
+def prod(*, input, dim=None, keepdim=False, dtype=None):
+    if dim is not None:
+        return torch.prod(input, dim=dim, keepdim=keepdim, dtype=dtype)
+    else:
+        return input.prod(dtype=dtype)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "prod"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.prod),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+def prod_mapper(node: torch.fx.Node,
+                mod: torch.fx.GraphModule) -> torch.fx.Node:
+    func = prod
+    with node.graph.inserting_before(node):
+        kwargs = dict(node.kwargs)
+        new_node = node.graph.call_function(func, kwargs=kwargs)
+        new_node.meta = node.meta.copy()
+        return new_node
+
+
 @register_acc_op_mapping(op_and_target=("call_function", operator.getitem))
 @register_acc_op
 def getitem(*, input, idx):
@@ -130,6 +167,67 @@ def clamp(*, input, min=None, max=None):
     return torch.clamp(input=input, min=min, max=max)
 
 
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_method", "tile"))
+@register_acc_op_mapping(op_and_target=("call_function", torch.tile))
+@register_acc_op
+def tile(*, input, dims):
+    return torch.tile(input=input, dims=dims)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.stack),
+    arg_replacement_tuples=[
+        ("tensors", "tensors"),
+        ("dim", "dim"),
+    ],
+)
+def stack_mapper(node: torch.fx.Node, _: nn.Module) -> torch.fx.Node:
+    """
+    Map torch.stack to unsqueeze + cat.
+    """
+    with node.graph.inserting_before(node):
+        inputs = node.kwargs["tensors"]
+        unsqueeze_nodes = []
+        assert isinstance(inputs, Sequence)
+        for i, t in enumerate(inputs):
+            new_node = node.graph.create_node(
+                "call_function",
+                unsqueeze,
+                kwargs={
+                    "input": t,
+                    "dim": node.kwargs["dim"]
+                },
+                name=f"{node.name}_unsqueeze_{i}",
+            )
+            new_node.meta["type"] = torch.Tensor
+            unsqueeze_nodes.append(new_node)
+        cat_node = node.graph.create_node(
+            "call_function",
+            cat,
+            kwargs={
+                "tensors": unsqueeze_nodes,
+                "dim": node.kwargs["dim"]
+            },
+        )
+        cat_node.meta = node.meta.copy()
+        return cat_node
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.conv1d))
+@register_acc_op
+def conv1d(*, input, weight, bias, stride, padding, dilation, groups):
+    return nn.functional.conv1d(
+        input=input,
+        weight=weight,
+        bias=bias,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        groups=groups,
+    )
+
+
 @register_acc_op_mapping(op_and_target=("call_function", torch.conv2d))
 @register_acc_op
 def conv2d(*, input, weight, bias, stride, padding, dilation, groups):
@@ -141,6 +239,72 @@ def conv2d(*, input, weight, bias, stride, padding, dilation, groups):
         padding=padding,
         dilation=dilation,
         groups=groups,
+    )
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.conv3d))
+@register_acc_op
+def conv3d(*, input, weight, bias, stride, padding, dilation, groups):
+    return nn.functional.conv3d(
+        input=input,
+        weight=weight,
+        bias=bias,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        groups=groups,
+    )
+
+
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.conv_transpose2d))
+@register_acc_op
+def conv_transpose2d(
+    *,
+    input,
+    weight,
+    bias,
+    stride,
+    padding,
+    output_padding,
+    groups,
+    dilation,
+):
+    return nn.functional.conv_transpose2d(
+        input=input,
+        weight=weight,
+        bias=bias,
+        stride=stride,
+        padding=padding,
+        output_padding=output_padding,
+        groups=groups,
+        dilation=dilation,
+    )
+
+
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.conv_transpose3d))
+@register_acc_op
+def conv_transpose3d(
+    *,
+    input,
+    weight,
+    bias,
+    stride,
+    padding,
+    output_padding,
+    groups,
+    dilation,
+):
+    return nn.functional.conv_transpose3d(
+        input=input,
+        weight=weight,
+        bias=bias,
+        stride=stride,
+        padding=padding,
+        output_padding=output_padding,
+        groups=groups,
+        dilation=dilation,
     )
 
 
@@ -156,6 +320,40 @@ def conv2d(*, input, weight, bias, stride, padding, dilation, groups):
 @register_acc_op
 def relu(*, input, inplace=False):
     return nn.functional.relu(input=input, inplace=inplace)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.leaky_relu))
+@register_acc_op
+def leaky_relu(*, input, negative_slope=0.01, inplace=False):
+    return nn.functional.leaky_relu(input=input,
+                                    negative_slope=negative_slope,
+                                    inplace=inplace)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.elu))
+@register_acc_op
+def elu(*, input, alpha=1.0, inplace=False):
+    return nn.functional.elu(input=input, alpha=alpha, inplace=inplace)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.selu))
+@register_acc_op
+def selu(*, input, inplace=False):
+    return nn.functional.selu(input=input, inplace=inplace)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.softsign))
+@register_acc_op
+def softsign(*, input):
+    return nn.functional.softsign(input=input)
 
 
 @register_acc_op_mapping(op_and_target=("call_function",
@@ -247,6 +445,13 @@ def adaptive_avg_pool2d(*, input, output_size):
                                              output_size=output_size)
 
 
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.sign))
+@register_acc_op
+def sign(*, input):
+    return torch.sign(input)
+
+
 @register_acc_op_mapping(
     op_and_target=("call_method", "flatten"),
     arg_replacement_tuples=[
@@ -330,6 +535,24 @@ def expand(*, input, sizes):
 @register_acc_op
 def permute(*, input, permutation):
     return input.permute(*permutation)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.square),
+    arg_replacement_tuples=[
+        ("input", "input"),
+    ],
+)
+def square_mapper(node: torch.fx.Node, _: nn.Module) -> torch.fx.Node:
+    input_node = node.kwargs["input"]
+    with node.graph.inserting_before(node):
+        new_node = node.graph.call_function(mul,
+                                            kwargs={
+                                                "input": input_node,
+                                                "other": input_node
+                                            })
+        new_node.meta = node.meta.copy()
+        return new_node
 
 
 @register_acc_op_mapping(op_and_target=("call_method", "contiguous"))
@@ -1107,6 +1330,16 @@ def t_mapper(node: torch.fx.Node, _: nn.Module):
         )
         new_node.meta = node.meta.copy()
         return new_node
+
+
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.pad))
+@register_acc_op
+def pad(*, input, pad: List[int], mode: str, value: float):
+    return torch.nn.functional.pad(input=input,
+                                   pad=pad,
+                                   mode=mode,
+                                   value=value)
 
 
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)

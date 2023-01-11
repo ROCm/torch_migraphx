@@ -6,7 +6,7 @@ import logging
 import textwrap
 import warnings
 from types import FunctionType
-from typing import Any, Dict, Optional, Sequence, Set, Tuple, Type, Union, Callable
+from typing import Any, Dict, Optional, Sequence, Set, Tuple, Type, Union, Callable, Iterable
 
 import torch
 import torch.jit as jit
@@ -39,9 +39,11 @@ class Acc_Rewriter(ast.NodeTransformer):
     def __init__(self):
         super().__init__()
         self.exceptions_rewritten: Set[Type[Exception]] = set()
+        self.exceptions_bool_rewritten: Set[Type[Exception]] = set()
 
-    def rewrite(self,
-                fn: FunctionType) -> Tuple[FunctionType, Set[Type[Exception]]]:
+    def rewrite(
+        self, fn: FunctionType
+    ) -> Tuple[FunctionType, Set[Type[Exception]], Set[Type[Exception]]]:
 
         # Normalize the source lines
         sourcelines, _ = inspect.getsourcelines(fn)
@@ -64,7 +66,7 @@ class Acc_Rewriter(ast.NodeTransformer):
 
         # Return the correct FunctionType object and the Exceptions that were
         # rewritten during visit_If.
-        return fn_compiled, self.exceptions_rewritten
+        return fn_compiled, self.exceptions_rewritten, self.exceptions_bool_rewritten
 
     def visit_Assert(self, node: ast.Assert):
         """
@@ -158,7 +160,22 @@ class Acc_Rewriter(ast.NodeTransformer):
         assert isinstance(exc_wrapper_node, ast.Expression)
         exc_wrapper_call_node = exc_wrapper_node.body
         assert isinstance(exc_wrapper_call_node, ast.Call)
-        exc_wrapper_call_node.args = [if_node.test, exc_msg]
+        if isinstance(if_node.test, ast.BoolOp) and isinstance(
+                if_node.test.op, ast.And):
+            self.exceptions_bool_rewritten.add(exc_type)
+            bool_wrapper_node = ast.parse(
+                f"self.{_get_exception_wrapper_attr_name(exc_type)}_bool()",
+                mode="eval")
+            assert isinstance(exc_wrapper_node, ast.Expression)
+            bool_wrapper_call_node = bool_wrapper_node.body
+            assert isinstance(exc_wrapper_call_node, ast.Call)
+            bool_wrapper_call_node.args = if_node.test.values
+            exc_wrapper_call_node.args = [
+                _reuse_loc(bool_wrapper_call_node),
+                exc_msg,
+            ]
+        else:
+            exc_wrapper_call_node.args = [if_node.test, exc_msg]
 
         # Ensure that the new node conforms to the Python AST grammar
         expr_wrapper = _reuse_loc(ast.Expr(_reuse_loc(exc_wrapper_call_node)))
@@ -196,6 +213,39 @@ class ConditionalExceptionWrapper(nn.Module):
             raise self.exc if msg is None else self.exc(msg)
 
 
+class ConditionalExceptionBoolCondWrapper(nn.Module):
+    """
+    This is a wrapper class to for boolean ops used inside conditionals
+    raising exceptions.
+    This currently only handles binary input cases for the `and` operator
+    at one level of depth
+    For example:
+
+    .. code-block:: python
+
+    if self.name != "x" and self.name != "y":
+        raise AssertionError(f"Name was not x: {self.name}")
+
+    rewrites the `self.name != "x" and self.name != "y"` with
+    a `_conditional_exception_wrapper_AssertionError_bool` as follows:
+
+    .. code-block:: python
+
+        self._conditional_exception_wrapper_AssertionError(
+            self._conditional_exception_wrapper_AssertionError_bool(self.name != "x" and self.name != "y"), f"Name was not x: {self.name}"
+        )
+    """
+
+    # Mark as impure so that calls to it will not be removed during DCE.
+    _is_impure = True
+
+    def __init__(self, op):
+        super().__init__()
+
+    def forward(self, *conds: Iterable):
+        return all(conds)
+
+
 def create_acc_tracer(cls=Tracer):
     # Custom tracer that traces to the functional level and rewrites asserts and
     # exceptions.
@@ -209,6 +259,7 @@ def create_acc_tracer(cls=Tracer):
         # Note: Treat ConditionalExceptionWrapper as a leaf so that we don't
         # trace into it, because it contains control flow and raises an exception.
         DEFAULT_LEAF_MODULE_LIST = {
+            ConditionalExceptionBoolCondWrapper,
             ConditionalExceptionWrapper,
             torch.nn.quantized.Linear,
             torch.nn.quantized.Conv2d,
@@ -216,6 +267,7 @@ def create_acc_tracer(cls=Tracer):
             jit.ScriptModule,
             jit.RecursiveScriptModule,
             torch.nn.LSTM,
+            torch.nn.modules.activation.MultiheadAttention,
         }
 
         def is_leaf_module(self, m: nn.Module, mod_qual_name: str) -> bool:
@@ -313,6 +365,7 @@ def _rewrite(
         # Acc_Rewriter calls into in this module so we can add them in init
         # below.
         all_added_wrappers: Set[Type[Exception]] = set()
+        all_added_bool_wrappers: Set[Type[Exception]] = set()
 
         # Note: Make this a subclass of our base class.
         class RewrittenModule(base_class):  # type: ignore[valid-type, misc]
@@ -344,9 +397,13 @@ def _rewrite(
                 if base_class not in allow_list:
                     vars()[method_name] = method
                 else:
-                    vars()[method_name], added_wrappers = Acc_Rewriter(
-                    ).rewrite(method)
+                    (
+                        vars()[method_name],
+                        added_wrappers,
+                        added_bool_wrappers,
+                    ) = Acc_Rewriter().rewrite(method)
                     all_added_wrappers.update(added_wrappers)
+                    all_added_bool_wrappers.update(added_bool_wrappers)
 
             def __init__(self, orig):
                 nn.Module.__init__(self)
@@ -361,6 +418,16 @@ def _rewrite(
                         wrapper_name,
                         ConditionalExceptionWrapper(exc_type),
                     )
+
+                for exc_type in all_added_bool_wrappers:
+                    wrapper_name = f"{_get_exception_wrapper_attr_name(exc_type)}_bool"
+                    assert not hasattr(self, wrapper_name)
+                    setattr(
+                        self,
+                        wrapper_name,
+                        ConditionalExceptionBoolCondWrapper(exc_type),
+                    )
+
                 # Recursively rewrite and copy all module attrs of this module.
                 for k, v in orig.__dict__.items():
                     if k == "_modules":
@@ -403,9 +470,12 @@ def _remove_exceptions(gm: torch.fx.GraphModule) -> bool:
     found in GraphModule gm. Returns whether the graph is modified.
     """
     changed = False
-    for node in gm.graph.nodes:
-        if node.op == "call_module" and isinstance(
-                gm.get_submodule(node.target), ConditionalExceptionWrapper):
+    for node in reversed(gm.graph.nodes):
+        if node.op == "call_module" and (
+                isinstance(gm.get_submodule(node.target),
+                           ConditionalExceptionWrapper)
+                or isinstance(gm.get_submodule(node.target),
+                              ConditionalExceptionBoolCondWrapper)):
             gm.graph.erase_node(node)
             changed = True
     return changed
@@ -445,10 +515,9 @@ def trace(
     ast_rewriter_allow_list: Optional[Set[Type[nn.Module]]] = None,
     leaf_module_list: Optional[Set[Type[nn.Module]]] = None,
     tracer_cls: Type = Tracer,
-    acc_normalization_block_list: Optional[
-        Set[Tuple[str, Union[str, Callable]]]
-    ] = None,
-    
+    acc_normalization_block_list: Optional[Set[Tuple[str,
+                                                     Union[str,
+                                                           Callable]]]] = None,
 ) -> torch.fx.GraphModule:
     """
     Performs tracing and arg normalization specialized for accelerator lowering.
@@ -522,7 +591,8 @@ def trace(
     # Normalize to acc-specialized wrappers for consistency across op naming and
     # ensuring all kwarg usage.
     if use_acc_normalization:
-        acc_normalizer.normalize(traced, acc_normalization_block_list=acc_normalization_block_list)
+        acc_normalizer.normalize(
+            traced, acc_normalization_block_list=acc_normalization_block_list)
 
     traced.recompile()
 

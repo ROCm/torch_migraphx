@@ -49,7 +49,6 @@ def broadcast_for_elemwise_op(mgx_module, node, inp, other):
 
 @migraphx_converter(acc_ops.linear)
 def acc_ops_linear(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
     out_shape = node.meta['tensor_meta'].shape
@@ -83,7 +82,6 @@ def acc_ops_linear(mgx_module, node, args, kwargs):
 @migraphx_converter(acc_ops.hardtanh)
 @migraphx_converter(acc_ops.clamp)
 def acc_ops_clamp(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     dtype = node.meta['tensor_meta'].dtype
     # TODO: fix upper and lower bounds to 'inf' once migrahpx supports it
@@ -112,7 +110,7 @@ def acc_ops_clamp(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.add)
 def acc_ops_add(mgx_module, node, args, kwargs):
-    assert len(args) == 0
+
     if node.meta['type'] != torch.Tensor:
         return kwargs['input'] + kwargs['other']
 
@@ -124,7 +122,7 @@ def acc_ops_add(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.sub)
 def acc_ops_sub(mgx_module, node, args, kwargs):
-    assert len(args) == 0
+
     if node.meta['type'] != torch.Tensor:
         return kwargs['input'] - kwargs['other']
 
@@ -136,7 +134,7 @@ def acc_ops_sub(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.mul)
 def acc_ops_mul(mgx_module, node, args, kwargs):
-    assert len(args) == 0
+
     if node.meta['type'] != torch.Tensor:
         return kwargs['input'] * kwargs['other']
 
@@ -148,14 +146,13 @@ def acc_ops_mul(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.abs)
 def acc_ops_abs(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     return mgx_module.add_instruction(migraphx.op('abs'), [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.div)
 def acc_ops_div(mgx_module, node, args, kwargs):
-    assert len(args) == 0
+
     if node.meta['type'] != torch.Tensor:
         return kwargs['input'] / kwargs['other']
 
@@ -167,7 +164,7 @@ def acc_ops_div(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.floor_div)
 def acc_ops_floor_div(mgx_module, node, args, kwargs):
-    assert len(args) == 0
+
     if node.meta['type'] != torch.Tensor:
         return kwargs['input'] // kwargs['other']
 
@@ -180,14 +177,12 @@ def acc_ops_floor_div(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.log)
 def acc_ops_log(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     return mgx_module.add_instruction(migraphx.op('log'), [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.matmul)
 def acc_ops_matmul(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     inp, other = kwargs['input'], kwargs['other']
     inp_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
@@ -204,25 +199,27 @@ def acc_ops_matmul(mgx_module, node, args, kwargs):
     return mgx_module.add_instruction(migraphx.op('dot'), [inp_bc, other_bc])
 
 
+@migraphx_converter(acc_ops.conv1d)
 @migraphx_converter(acc_ops.conv2d)
-def acc_ops_conv2d(mgx_module, node, args, kwargs):
-    assert len(args) == 0
+@migraphx_converter(acc_ops.conv3d)
+def acc_ops_convnd(mgx_module, node, args, kwargs):
 
     in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
-    kernel_size = node.all_input_nodes[1].meta['tensor_meta'].shape[-2:]
-    stride = extend_attr(kwargs['stride'], 2)
-    dilation = extend_attr(kwargs['dilation'], 2)
-    kernel_size = extend_attr(kernel_size, 2)
+    kernel_size = node.all_input_nodes[1].meta['tensor_meta'].shape[2:]
+    conv_dim = len(kernel_size)
+    stride = extend_attr(kwargs['stride'], conv_dim)
+    dilation = extend_attr(kwargs['dilation'], conv_dim)
+    kernel_size = extend_attr(kernel_size, conv_dim)
     group = kwargs['groups']
     padding = kwargs['padding']
 
     if isinstance(padding, (int, tuple)):
-        padding = extend_attr(padding, 2)
+        padding = extend_attr(padding, conv_dim)
     elif padding == 'valid':
-        padding = extend_attr(0, 2)
+        padding = extend_attr(0, conv_dim)
     elif padding == 'same':
-        padding = compute_same_padding(in_shape[-2:], kernel_size, stride,
-                                       dilation)
+        padding = compute_same_padding(in_shape[-conv_dim:], kernel_size,
+                                       stride, dilation)
     else:
         raise RuntimeError(f'Unexpected value for padding: {padding}')
 
@@ -245,16 +242,132 @@ def acc_ops_conv2d(mgx_module, node, args, kwargs):
     return out_mgx
 
 
+@migraphx_converter(acc_ops.conv_transpose2d)
+@migraphx_converter(acc_ops.conv_transpose3d)
+def acc_ops_conv_transposend(mgx_module, node, args, kwargs):
+
+    in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
+    kernel_size = node.all_input_nodes[1].meta['tensor_meta'].shape[2:]
+    conv_dim = len(kernel_size)
+    stride = extend_attr(kwargs['stride'], conv_dim)
+    dilation = extend_attr(kwargs['dilation'], conv_dim)
+    kernel_size = extend_attr(kernel_size, conv_dim)
+    padding = extend_attr(kwargs['padding'], conv_dim)
+    output_padding = extend_attr(kwargs['output_padding'], conv_dim)
+    group = kwargs['groups']
+
+    out_mgx = mgx_module.add_instruction(
+        migraphx.op('deconvolution',
+                    stride=stride,
+                    padding=padding,
+                    dilation=dilation,
+                    group=group), [kwargs['input'], kwargs['weight']])
+
+    if not all(i == 0 for i in output_padding):
+        pads = [0 for i in range(conv_dim)]
+        pads = pads + output_padding
+        out_mgx = mgx_module.add_instruction(migraphx.op('pad', pads=pads),
+                                             [out_mgx])
+
+    if 'bias' in kwargs and kwargs['bias'] is not None:
+        bias_mgx = mgx_module.add_instruction(
+            migraphx.op('broadcast',
+                        axis=1,
+                        out_lens=list(node.meta['tensor_meta'].shape)),
+            [kwargs['bias']])
+        out_mgx = mgx_module.add_instruction(migraphx.op('add'),
+                                             [out_mgx, bias_mgx])
+
+    return out_mgx
+
+
+@migraphx_converter(acc_ops.sign)
+def acc_ops_sign(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('sign'), [kwargs['input']])
+
+
 @migraphx_converter(acc_ops.relu)
 def acc_ops_relu(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     return mgx_module.add_instruction(migraphx.op('relu'), [kwargs['input']])
 
 
+@migraphx_converter(acc_ops.leaky_relu)
+def acc_ops_leaky_relu(mgx_module, node, args, kwargs):
+
+    return mgx_module.add_instruction(
+        migraphx.op('leaky_relu', alpha=kwargs['negative_slope']),
+        [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.elu)
+def acc_ops_elu(mgx_module, node, args, kwargs):
+
+    return mgx_module.add_instruction(
+        migraphx.op('elu', alpha=kwargs['alpha']), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.selu)
+def acc_ops_elu(mgx_module, node, args, kwargs):
+    dtype = node.meta['tensor_meta'].dtype
+    inp_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
+
+    alpha_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=list(inp_shape)), [
+            mgx_module.add_literal(
+                torch.tensor([1.673263242354], dtype=dtype).numpy())
+        ])
+
+    scale_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=list(inp_shape)), [
+            mgx_module.add_literal(
+                torch.tensor([1.050700987355], dtype=dtype).numpy())
+        ])
+
+    zero_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=list(inp_shape)),
+        [mgx_module.add_literal(torch.tensor([0], dtype=dtype).numpy())])
+
+    one_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=list(inp_shape)),
+        [mgx_module.add_literal(torch.tensor([1.0], dtype=dtype).numpy())])
+
+    max_mgx = mgx_module.add_instruction(migraphx.op('max'),
+                                         [zero_mgx, kwargs['input']])
+
+    exp_mgx = mgx_module.add_instruction(migraphx.op('exp'), [kwargs['input']])
+    sub_mgx = mgx_module.add_instruction(migraphx.op('sub'),
+                                         [exp_mgx, one_mgx])
+    mul_mgx = mgx_module.add_instruction(migraphx.op('mul'),
+                                         [alpha_mgx, sub_mgx])
+    min_mgx = mgx_module.add_instruction(migraphx.op('min'),
+                                         [zero_mgx, mul_mgx])
+
+    sum_mgx = mgx_module.add_instruction(migraphx.op('add'),
+                                         [max_mgx, min_mgx])
+
+    return mgx_module.add_instruction(migraphx.op('mul'), [scale_mgx, sum_mgx])
+
+
+@migraphx_converter(acc_ops.softsign)
+def acc_ops_elu(mgx_module, node, args, kwargs):
+    dtype = node.meta['tensor_meta'].dtype
+    inp_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
+
+    one_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=list(inp_shape)),
+        [mgx_module.add_literal(torch.tensor([1.0], dtype=dtype).numpy())])
+
+    abs_mgx = mgx_module.add_instruction(migraphx.op('abs'), [kwargs['input']])
+    add_mgx = mgx_module.add_instruction(migraphx.op('add'),
+                                         [abs_mgx, one_mgx])
+
+    return mgx_module.add_instruction(migraphx.op('div'),
+                                      [kwargs['input'], add_mgx])
+
+
 @migraphx_converter(acc_ops.gelu)
 def acc_ops_gelu(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     dtype = node.meta['tensor_meta'].dtype
     inp_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
@@ -289,14 +402,12 @@ def acc_ops_gelu(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.tanh)
 def acc_ops_tanh(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     return mgx_module.add_instruction(migraphx.op('tanh'), [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.sigmoid)
 def acc_ops_sigmoid(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     return mgx_module.add_instruction(migraphx.op('sigmoid'),
                                       [kwargs['input']])
@@ -304,7 +415,6 @@ def acc_ops_sigmoid(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.hardsigmoid)
 def acc_ops_hard_sigmoid(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     shape = node.meta['tensor_meta'].shape
     dtype = node.meta['tensor_meta'].dtype
@@ -334,10 +444,24 @@ def acc_ops_hard_sigmoid(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.softmax)
 def acc_ops_softmax(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     return mgx_module.add_instruction(
         migraphx.op('softmax', axis=kwargs['dim']), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.tile)
+def acc_ops_tile(mgx_module, node, args, kwargs):
+
+    dims = kwargs["dims"]
+    inp = kwargs["input"]
+
+    for i, d in enumerate(dims):
+        orig = inp
+        for _ in range(d - 1):
+            inp = mgx_module.add_instruction(migraphx.op('concat', axis=i),
+                                             [inp, orig])
+
+    return inp
 
 
 # TODO: Further investigation required for cases when the input dims
@@ -346,7 +470,6 @@ def acc_ops_softmax(mgx_module, node, args, kwargs):
 # op implementation cannot replicate this behaviour
 @migraphx_converter(acc_ops.adaptive_avg_pool2d)
 def acc_ops_adaptime_avg_pool2d(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     out_shape = extend_attr(kwargs['output_size'], 2)
     in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
@@ -376,7 +499,6 @@ def acc_ops_adaptime_avg_pool2d(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.max_pool2d)
 def acc_ops_max_pool2d(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     padding = extend_attr(kwargs['padding'], 2)
     stride = extend_attr(kwargs['stride'], 2)
@@ -403,7 +525,6 @@ def acc_ops_max_pool2d(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.avg_pool2d)
 def acc_ops_avg_pool2d(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
 
@@ -442,7 +563,6 @@ def acc_ops_avg_pool2d(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.flatten)
 def acc_ops_flatten(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
     out_shape = node.meta['tensor_meta'].shape
@@ -458,7 +578,6 @@ def acc_ops_flatten(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.squeeze)
 def acc_ops_squeeze(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     dim = kwargs['dim'] if 'dim' in kwargs else None
     inp = kwargs['input']
@@ -471,7 +590,6 @@ def acc_ops_squeeze(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.unsqueeze)
 def acc_ops_unsqueeze(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     return mgx_module.add_instruction(
         migraphx.op('unsqueeze', axes=[kwargs['dim']]), [kwargs['input']])
@@ -479,7 +597,7 @@ def acc_ops_unsqueeze(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.reshape)
 def acc_ops_reshape(mgx_module, node, args, kwargs):
-    assert len(args) == 0
+
     out_shape = node.meta['tensor_meta'].shape
 
     try:
@@ -499,16 +617,46 @@ def acc_ops_reshape(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.permute)
 def acc_ops_permute(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     return mgx_module.add_instruction(
         migraphx.op('transpose', permutation=list(kwargs['permutation'])),
         [kwargs['input']])
 
 
+@migraphx_converter(acc_ops.pad)
+def acc_ops_pad(mgx_module, node, args, kwargs):
+
+    in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
+    pad = cast(Sequence[int], kwargs["pad"])
+    mode = kwargs["mode"]
+    value = kwargs["value"] if kwargs["value"] is not None else 0
+    rank = len(in_shape)
+
+    if mode != "constant":
+        raise RuntimeError(
+            f"Currently we only constant mode is supported for pad, got {mode}."
+        )
+
+    if len(pad) / 2 > rank:
+        raise RuntimeError(
+            f"Trying to pad last {len(pad) / 2} dimension but the input only has {rank} dimension."
+        )
+
+    pre_padding = [0 for _ in range(rank - len(pad) // 2)]
+    pre_padding.extend([pad[len(pad) - i - 2] for i in range(0, len(pad), 2)])
+
+    post_padding = [0 for _ in range(rank - len(pad) // 2)]
+    post_padding.extend([pad[len(pad) - i - 1] for i in range(0, len(pad), 2)])
+
+    assert len(pre_padding) == len(post_padding)
+    pads = pre_padding + post_padding
+
+    return mgx_module.add_instruction(
+        (migraphx.op('pad', pads=pads, value=value)), [kwargs['input']])
+
+
 @migraphx_converter(acc_ops.contiguous)
 def acc_ops_contiguous(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     return mgx_module.add_instruction(migraphx.op('contiguous'),
                                       [kwargs['input']])
@@ -516,7 +664,6 @@ def acc_ops_contiguous(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.chunk)
 def acc_ops_chunk(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     dim = kwargs['dim']
     chunks = kwargs['chunks']
@@ -547,7 +694,6 @@ def acc_ops_chunk(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.split)
 def acc_ops_chunk(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     inp_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
     dim = kwargs['dim']
@@ -570,7 +716,7 @@ def acc_ops_chunk(mgx_module, node, args, kwargs):
 # unintended behaviour when a broadcasted shape is the output
 # @migraphx_converter(acc_ops.expand)
 # def acc_ops_expand_tensor(mgx_module, node, args, kwargs):
-#     assert len(args) == 0
+#
 
 #     out_shape = node.meta['tensor_meta'].shape
 #     return mgx_module.add_instruction(
@@ -580,7 +726,7 @@ def acc_ops_chunk(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.cat)
 def acc_ops_cat(mgx_module, node, args, kwargs):
-    assert len(args) == 0
+
     assert all(
         isinstance(t, migraphx.instruction_ref) for t in kwargs['tensors'])
 
@@ -592,7 +738,6 @@ def acc_ops_cat(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.mean)
 def acc_ops_mean(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     mean = mgx_module.add_instruction(
         migraphx.op('reduce_mean', axes=list(kwargs['dim'])),
@@ -607,7 +752,11 @@ def acc_ops_mean(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.sum)
 def acc_ops_sum(mgx_module, node, args, kwargs):
-    assert len(args) == 0
+
+    if 'dim' not in kwargs:
+        sum = mgx_module.add_instruction(migraphx.op('reduce_sum'),
+                                         [kwargs['input']])
+        return mgx_module.add_instruction(migraphx.op('squeeze'), [sum])
 
     sum = mgx_module.add_instruction(
         migraphx.op('reduce_sum', axes=list(kwargs['dim'])), [kwargs['input']])
@@ -619,9 +768,26 @@ def acc_ops_sum(mgx_module, node, args, kwargs):
         migraphx.op('squeeze', axes=list(kwargs['dim'])), [sum])
 
 
+@migraphx_converter(acc_ops.prod)
+def acc_ops_prod(mgx_module, node, args, kwargs):
+
+    if 'dim' not in kwargs:
+        prod = mgx_module.add_instruction(migraphx.op('reduce_prod'),
+                                          [kwargs['input']])
+        return mgx_module.add_instruction(migraphx.op('squeeze'), [prod])
+
+    prod = mgx_module.add_instruction(
+        migraphx.op('reduce_prod', axes=[kwargs['dim']]), [kwargs['input']])
+
+    if 'keepdim' in kwargs and kwargs['keepdim']:
+        return prod
+
+    return mgx_module.add_instruction(
+        migraphx.op('squeeze', axes=[kwargs['dim']]), [prod])
+
+
 @migraphx_converter(acc_ops.cumsum)
 def acc_ops_cumsum(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     return mgx_module.add_instruction(
         migraphx.op('prefix_scan_sum', axis=kwargs['dim']), [kwargs['input']])
@@ -629,7 +795,6 @@ def acc_ops_cumsum(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.size)
 def acc_ops_size(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     inp = kwargs['input']
     if isinstance(inp, torch.Tensor):
@@ -642,7 +807,6 @@ def acc_ops_size(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.getitem)
 def acc_ops_getitem(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     inp, idx = kwargs['input'], kwargs['idx']
 
@@ -706,7 +870,6 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.batch_norm)
 def acc_ops_batch_norm(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     out_shape = node.meta['tensor_meta'].shape
     dtype = node.meta['tensor_meta'].dtype
@@ -755,7 +918,6 @@ def acc_ops_batch_norm(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.layer_norm)
 def acc_ops_layer_norm(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     out_shape = node.meta['tensor_meta'].shape
     dtype = node.meta['tensor_meta'].dtype
@@ -810,7 +972,6 @@ def acc_ops_layer_norm(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.new_zeros)
 def acc_ops_new_zeros(mgx_module, node, args, kwargs):
-    assert len(args) == 0
 
     out_shape = node.meta['tensor_meta'].shape
     dtype = node.meta['tensor_meta'].dtype

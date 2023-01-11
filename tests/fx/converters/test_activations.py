@@ -41,11 +41,13 @@ def test_softmax(inp_size, dim):
 @pytest.mark.parametrize('mod', [
     torch.nn.ReLU(),
     torch.nn.GELU(),
+    torch.nn.SELU(),
     torch.nn.Sigmoid(),
     torch.nn.Hardsigmoid(),
     torch.nn.Hardswish(),
     torch.nn.Tanh(),
     torch.nn.SiLU(),
+    torch.nn.Softsign(),
 ])
 def test_noparam_activation_funcs(mod):
     inp = torch.randn(5, 7, 2, 1, 2).cuda()
@@ -58,5 +60,31 @@ def test_noparam_activation_funcs(mod):
 def test_noparam_activation_methods(method):
     inp = torch.randn(5, 7, 2, 1, 2).cuda()
     mod = MethodModule(method).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('inp_size, alpha', [
+    ((11, 3, 9), 0.1),
+    ((6, 12, 32, 6), 0.05),
+    ((2, ), 0),
+])
+def test_leaky_relu(inp_size, alpha):
+    inp = torch.randn(inp_size).cuda()
+    mod = torch.nn.LeakyReLU(negative_slope=alpha).cuda()
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('inp_size, alpha', [
+    ((11, 3, 9), 1),
+    ((6, 12, 32, 6), 0.05),
+    ((2, ), 3.2),
+])
+def test_elu(inp_size, alpha):
+    inp = torch.randn(inp_size).cuda()
+    mod = torch.nn.ELU(alpha=alpha).cuda()
+
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
