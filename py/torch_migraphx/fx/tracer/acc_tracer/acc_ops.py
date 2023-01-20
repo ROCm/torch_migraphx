@@ -140,6 +140,13 @@ def size(*, input):
     return input.size()
 
 
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.numel))
+@register_acc_op
+def numel(*, input):
+    return torch.numel(input)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", nn.functional.linear))
 @register_acc_op
 def linear(*, input, weight, bias):
@@ -361,13 +368,6 @@ def softsign(*, input):
 @register_acc_op
 def gelu(*, input):
     return torch.nn.functional.gelu(input=input)
-
-
-@register_acc_op_mapping(op_and_target=("call_function", torch.tanh))
-@register_acc_op_mapping(op_and_target=("call_method", "tanh"))
-@register_acc_op
-def tanh(*, input):
-    return torch.tanh(input=input)
 
 
 @register_acc_op_mapping(
@@ -766,6 +766,42 @@ def layer_norm(*, input, normalized_shape, weight, bias, eps):
     )
 
 
+@register_acc_op_properties(AccOpProperty.pointwise)
+@register_acc_op_mapping(op_and_target=("call_function", torch.fmod))
+@register_acc_op_mapping(op_and_target=("call_method", "fmod"))
+@register_acc_op
+def fmod(*, input, other):
+    return torch.fmod(input=input, other=other)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.sin))
+@register_acc_op
+def sin(*, input):
+    return torch.sin(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.cos))
+@register_acc_op
+def cos(*, input):
+    return torch.cos(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.tan))
+@register_acc_op
+def tan(*, input):
+    return torch.tan(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.topk))
+@register_acc_op
+def topk(*, input, k, dim, largest, sorted):
+    return torch.topk(input=input, k=k, dim=dim, largest=largest, sorted=sorted)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", torch.cat))
 @register_acc_op
 def cat(*, tensors, dim):
@@ -777,6 +813,71 @@ def cat(*, tensors, dim):
 @register_acc_op
 def sigmoid(*, input):
     return torch.sigmoid(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.sinh))
+@register_acc_op
+def sinh(*, input):
+    return torch.sinh(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.cosh))
+@register_acc_op
+def cosh(*, input):
+    return torch.cosh(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.tanh))
+@register_acc_op_mapping(op_and_target=("call_method", "tanh"))
+@register_acc_op
+def tanh(*, input):
+    return torch.tanh(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.asin))
+@register_acc_op
+def asin(*, input):
+    return torch.asin(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.acos))
+@register_acc_op
+def acos(*, input):
+    return torch.acos(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.atan))
+@register_acc_op
+def atan(*, input):
+    return torch.atan(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.exp))
+@register_acc_op
+def exp(*, input):
+    return torch.exp(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.sqrt))
+@register_acc_op_mapping(op_and_target=("call_method", "sqrt"))
+@register_acc_op
+def sqrt(*, input):
+    return torch.sqrt(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.reciprocal))
+@register_acc_op
+def reciprocal(*, input):
+    return torch.reciprocal(input=input)
 
 
 @register_acc_op_mapping(op_and_target=("call_function", operator.add))
@@ -851,6 +952,28 @@ def mul(*, input, other):
 @register_acc_op
 def abs(*, input):
     return torch.abs(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", operator.neg))
+@register_acc_op_mapping(op_and_target=("call_function", torch.neg))
+@register_acc_op
+def neg(*, input):
+    return torch.neg(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.floor))
+@register_acc_op
+def floor(*, input):
+    return torch.floor(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.ceil))
+@register_acc_op
+def ceil(*, input):
+    return torch.ceil(input=input)
 
 
 @register_acc_op_mapping(op_and_target=("call_function", operator.floordiv))
@@ -935,6 +1058,14 @@ def div(*, input, other):
 @register_acc_op
 def log(*, input):
     return torch.log(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise)
+@register_acc_op_mapping(op_and_target=("call_function", torch.pow))
+@register_acc_op_mapping(op_and_target=("call_method", "pow"))
+@register_acc_op
+def pow(*, input, exponent):
+    return torch.pow(input, exponent)
 
 
 @register_custom_acc_mapper_fn(
@@ -1387,6 +1518,7 @@ def new_zeros(*, input, size):
     return input.new_zeros(size)
 
 
+@register_acc_op_properties(AccOpProperty.unary)
 @register_acc_op
 def slice_tensor(*, input, dim, start, stop, step):
     slc = slice(start, stop, step)
@@ -1398,6 +1530,50 @@ def slice_tensor(*, input, dim, start, stop, step):
         slices.extend([slice(None, None, None) for _ in range(-dim - 1)])
 
     return input[tuple(slices)]
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.narrow),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim"),
+        ("start", "start"),
+        ("length", "length"),
+    ],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "narrow"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim"),
+        ("start", "start"),
+        ("length", "length"),
+    ],
+)
+def custom_narrow_mapper(node: torch.fx.Node, mod: nn.Module) -> torch.fx.Node:
+    assert isinstance(node.kwargs["start"], int) and isinstance(
+        node.kwargs["length"], int)
+
+    dim = node.kwargs["dim"]
+    start = node.kwargs["start"]
+    stop = node.kwargs["start"] + node.kwargs["length"]
+
+    slc = slice(start, stop, 1)
+
+    if dim >= 0:
+        slices: List[slice] = [slice(None, None, None) for _ in range(dim)]
+        slices.append(slc)
+    else:
+        slices = [Ellipsis, slc]  # type: ignore[list-item]
+        slices.extend([slice(None, None, None) for _ in range(-dim - 1)])
+
+    kwargs = {"input": node.kwargs["input"], "idx": tuple(slices)}
+
+    with node.graph.inserting_before(node):
+        new_node = node.graph.call_function(getitem, kwargs=kwargs)
+
+    new_node.meta = node.meta.copy()
+    return new_node
 
 
 @register_acc_op

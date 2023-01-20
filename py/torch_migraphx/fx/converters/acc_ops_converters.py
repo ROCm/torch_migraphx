@@ -144,10 +144,45 @@ def acc_ops_mul(mgx_module, node, args, kwargs):
     return mgx_module.add_instruction(migraphx.op('mul'), [inp, other])
 
 
+@migraphx_converter(acc_ops.pow)
+def acc_ops_pow(mgx_module, node, args, kwargs):
+
+    if node.meta['type'] != torch.Tensor:
+        return kwargs['input']**kwargs['exponent']
+
+    inp, other = broadcast_for_elemwise_op(mgx_module, node, kwargs['input'],
+                                           kwargs['exponent'])
+
+    return mgx_module.add_instruction(migraphx.op('pow'), [inp, other])
+
+
+@migraphx_converter(acc_ops.fmod)
+def acc_ops_fmod(mgx_module, node, args, kwargs):
+
+    inp, other = broadcast_for_elemwise_op(mgx_module, node, kwargs['input'],
+                                           kwargs['other'])
+
+    return mgx_module.add_instruction(migraphx.op('fmod'), [inp, other])
+
+
 @migraphx_converter(acc_ops.abs)
 def acc_ops_abs(mgx_module, node, args, kwargs):
-
     return mgx_module.add_instruction(migraphx.op('abs'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.neg)
+def acc_ops_neg(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('neg'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.floor)
+def acc_ops_floor(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('floor'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.ceil)
+def acc_ops_ceil(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('ceil'), [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.div)
@@ -366,6 +401,66 @@ def acc_ops_elu(mgx_module, node, args, kwargs):
                                       [kwargs['input'], add_mgx])
 
 
+@migraphx_converter(acc_ops.sin)
+def acc_ops_sin(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('sin'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.cos)
+def acc_ops_cos(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('cos'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.tan)
+def acc_ops_tan(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('tan'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.sinh)
+def acc_ops_sinh(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('sinh'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.cosh)
+def acc_ops_cosh(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('cosh'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.tanh)
+def acc_ops_tanh(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('tanh'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.asin)
+def acc_ops_asin(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('asin'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.acos)
+def acc_ops_acos(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('acos'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.atan)
+def acc_ops_atan(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('atan'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.exp)
+def acc_ops_exp(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('exp'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.sqrt)
+def acc_ops_sqrt(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('sqrt'), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.reciprocal)
+def acc_ops_reciprocal(mgx_module, node, args, kwargs):
+    return mgx_module.add_instruction(migraphx.op('recip'), [kwargs['input']])
+
+
 @migraphx_converter(acc_ops.gelu)
 def acc_ops_gelu(mgx_module, node, args, kwargs):
 
@@ -398,12 +493,6 @@ def acc_ops_gelu(mgx_module, node, args, kwargs):
 
     return mgx_module.add_instruction(migraphx.op('mul'),
                                       [mul_half_mgx, add_one_mgx])
-
-
-@migraphx_converter(acc_ops.tanh)
-def acc_ops_tanh(mgx_module, node, args, kwargs):
-
-    return mgx_module.add_instruction(migraphx.op('tanh'), [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.sigmoid)
@@ -593,6 +682,26 @@ def acc_ops_unsqueeze(mgx_module, node, args, kwargs):
 
     return mgx_module.add_instruction(
         migraphx.op('unsqueeze', axes=[kwargs['dim']]), [kwargs['input']])
+
+
+@migraphx_converter(acc_ops.topk)
+def acc_ops_topk(mgx_module, node, args, kwargs):
+
+    inp = kwargs['input']
+    k = kwargs["k"]
+    dim = kwargs["dim"] if kwargs["dim"] is not None else -1
+    largest = 1 if kwargs['largest'] else 0
+
+    if not kwargs['sorted']:
+        raise RuntimeError("Currently only sorted=True is supported")
+
+    topk =  mgx_module.add_instruction(
+        migraphx.op('topk', k=k, axis=dim, largest=largest), [inp])
+    
+    val = mgx_module.add_instruction(migraphx.op('get_tuple_elem', index=0), [topk])
+    ind = mgx_module.add_instruction(migraphx.op('get_tuple_elem', index=1), [topk])
+    
+    return [val, ind]
 
 
 @migraphx_converter(acc_ops.reshape)
@@ -803,6 +912,19 @@ def acc_ops_size(mgx_module, node, args, kwargs):
     return node.all_input_nodes[0].meta['tensor_meta'].shape
     # return mgx_module.add_literal(
     #     np.array(node.all_input_nodes[0].meta['tensor_meta'].shape))
+
+
+@migraphx_converter(acc_ops.numel)
+def acc_ops_numel(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    if isinstance(inp, torch.Tensor):
+        return torch.numel(inp)
+
+    return np.prod(node.all_input_nodes[0].meta['tensor_meta'].shape)
+    # in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
+    # const = np.prod(in_shape)
+    # return mgx_module.add_literal(
+    #     torch.tensor(const, dtype=torch.long).numpy())
 
 
 @migraphx_converter(acc_ops.getitem)

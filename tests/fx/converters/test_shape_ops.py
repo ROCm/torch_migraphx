@@ -174,3 +174,17 @@ def test_tile(size, dims):
     for mod in [mod_func, mod_method]:
         mgx_mod = convert_to_mgx(mod, [inp])
         verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('dim, start, length', [
+    (0, 2, 3),
+    (-1, 5, 2),
+    (2, 0, 7),
+])
+def test_narrow(dim, start, length):
+    inp = torch.randn(10, 15, 12, 8).cuda()
+    mod = FuncModule(torch.narrow, dim=dim, start=start, length=length).cuda()
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
