@@ -40,7 +40,7 @@ class MethodModule(torch.nn.Module):
         return m(*self.args, **self.kwargs)
 
 
-def verify_outputs(mod1, mod2, inp, rtol=3e-3, atol=1e-2):
+def verify_outputs(mod1, mod2, inp, rtol=3e-3, atol=1e-2, equal_nan=False):
     if not isinstance(inp, (list, tuple)):
         inp = (inp, )
     out1, out2 = mod1(*inp), mod2(*inp)
@@ -48,11 +48,15 @@ def verify_outputs(mod1, mod2, inp, rtol=3e-3, atol=1e-2):
     if isinstance(out1, (list, tuple)):
         assert len(out1) == len(out2)
         assert all(
-            torch.allclose(o1, o2, rtol=rtol, atol=atol)
+            torch.allclose(o1, o2, rtol=rtol, atol=atol, equal_nan=equal_nan)
             for o1, o2 in zip(out1, out2))
 
     else:
-        assert torch.allclose(out1, out2, rtol=rtol, atol=atol)
+        assert torch.allclose(out1,
+                              out2,
+                              rtol=rtol,
+                              atol=atol,
+                              equal_nan=equal_nan)
 
 
 def randint(max_, min_=0):

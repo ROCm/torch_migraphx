@@ -9,6 +9,13 @@ class CatModule(FuncModule):
         return self.func((x, y), *self.args, **self.kwargs)
 
 
+class StackModule(FuncModule):
+
+    def forward(self, x1, x2, x3):
+
+        return self.func([x1, x2, x3], *self.args, **self.kwargs)
+
+
 @pytest.mark.parametrize('slice_func', [
     lambda x: x[1, 1, 1, 1, 0],
     lambda x: x[1:, :-1, 3:5, :, -4:-2],
@@ -87,6 +94,16 @@ def test_chunk(chunks, dim):
         verify_outputs(mod, mgx_mod, inp)
 
 
+@pytest.mark.parametrize('dim', [0, 3, -1])
+def test_stack(dim):
+    inps = [torch.randn(20, 12, 15, 40).cuda() for _ in range(3)]
+
+    mod = StackModule(torch.stack, dim=dim).cuda()
+
+    mgx_mod = convert_to_mgx(mod, inps)
+    verify_outputs(mod, mgx_mod, inps)
+
+
 @pytest.mark.parametrize('split_size, dim', [(5, 1), (7, 2)])
 def test_split(split_size, dim):
     inp = torch.randn(20, 12, 15, 40).cuda()
@@ -142,3 +159,32 @@ def test_expand(out_shape):
     mod = MethodModule('expand', *out_shape).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('size, dims', [
+    ((24, 2, 4), (1, 1, 3)),
+    ((2, ), (5, )),
+    ((24, 3, 1, 8), (2, 6, 5, 3)),
+])
+def test_tile(size, dims):
+    inp = torch.randn(size).cuda()
+    mod_func = FuncModule(torch.tile, dims=dims).cuda()
+    mod_method = MethodModule('tile', dims=dims).cuda()
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('dim, start, length', [
+    (0, 2, 3),
+    (-1, 5, 2),
+    (2, 0, 7),
+])
+def test_narrow(dim, start, length):
+    inp = torch.randn(10, 15, 12, 8).cuda()
+    mod = FuncModule(torch.narrow, dim=dim, start=start, length=length).cuda()
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+

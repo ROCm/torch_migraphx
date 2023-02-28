@@ -92,6 +92,43 @@ def sum_mapper(node: torch.fx.Node,
     return reduce_op_mapper(node, mod, sum)
 
 
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op
+def prod(*, input, dim=None, keepdim=False, dtype=None):
+    if dim is not None:
+        return torch.prod(input, dim=dim, keepdim=keepdim, dtype=dtype)
+    else:
+        return input.prod(dtype=dtype)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "prod"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.prod),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+def prod_mapper(node: torch.fx.Node,
+                mod: torch.fx.GraphModule) -> torch.fx.Node:
+    func = prod
+    with node.graph.inserting_before(node):
+        kwargs = dict(node.kwargs)
+        new_node = node.graph.call_function(func, kwargs=kwargs)
+        new_node.meta = node.meta.copy()
+        return new_node
+
+
 @register_acc_op_mapping(op_and_target=("call_function", operator.getitem))
 @register_acc_op
 def getitem(*, input, idx):
@@ -101,6 +138,13 @@ def getitem(*, input, idx):
 @register_acc_op
 def size(*, input):
     return input.size()
+
+
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.numel))
+@register_acc_op
+def numel(*, input):
+    return torch.numel(input)
 
 
 @register_acc_op_mapping(op_and_target=("call_function", nn.functional.linear))
@@ -130,6 +174,67 @@ def clamp(*, input, min=None, max=None):
     return torch.clamp(input=input, min=min, max=max)
 
 
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_method", "tile"))
+@register_acc_op_mapping(op_and_target=("call_function", torch.tile))
+@register_acc_op
+def tile(*, input, dims):
+    return torch.tile(input=input, dims=dims)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.stack),
+    arg_replacement_tuples=[
+        ("tensors", "tensors"),
+        ("dim", "dim"),
+    ],
+)
+def stack_mapper(node: torch.fx.Node, _: nn.Module) -> torch.fx.Node:
+    """
+    Map torch.stack to unsqueeze + cat.
+    """
+    with node.graph.inserting_before(node):
+        inputs = node.kwargs["tensors"]
+        unsqueeze_nodes = []
+        assert isinstance(inputs, Sequence)
+        for i, t in enumerate(inputs):
+            new_node = node.graph.create_node(
+                "call_function",
+                unsqueeze,
+                kwargs={
+                    "input": t,
+                    "dim": node.kwargs["dim"]
+                },
+                name=f"{node.name}_unsqueeze_{i}",
+            )
+            new_node.meta["type"] = torch.Tensor
+            unsqueeze_nodes.append(new_node)
+        cat_node = node.graph.create_node(
+            "call_function",
+            cat,
+            kwargs={
+                "tensors": unsqueeze_nodes,
+                "dim": node.kwargs["dim"]
+            },
+        )
+        cat_node.meta = node.meta.copy()
+        return cat_node
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.conv1d))
+@register_acc_op
+def conv1d(*, input, weight, bias, stride, padding, dilation, groups):
+    return nn.functional.conv1d(
+        input=input,
+        weight=weight,
+        bias=bias,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        groups=groups,
+    )
+
+
 @register_acc_op_mapping(op_and_target=("call_function", torch.conv2d))
 @register_acc_op
 def conv2d(*, input, weight, bias, stride, padding, dilation, groups):
@@ -141,6 +246,72 @@ def conv2d(*, input, weight, bias, stride, padding, dilation, groups):
         padding=padding,
         dilation=dilation,
         groups=groups,
+    )
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.conv3d))
+@register_acc_op
+def conv3d(*, input, weight, bias, stride, padding, dilation, groups):
+    return nn.functional.conv3d(
+        input=input,
+        weight=weight,
+        bias=bias,
+        stride=stride,
+        padding=padding,
+        dilation=dilation,
+        groups=groups,
+    )
+
+
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.conv_transpose2d))
+@register_acc_op
+def conv_transpose2d(
+    *,
+    input,
+    weight,
+    bias,
+    stride,
+    padding,
+    output_padding,
+    groups,
+    dilation,
+):
+    return nn.functional.conv_transpose2d(
+        input=input,
+        weight=weight,
+        bias=bias,
+        stride=stride,
+        padding=padding,
+        output_padding=output_padding,
+        groups=groups,
+        dilation=dilation,
+    )
+
+
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.conv_transpose3d))
+@register_acc_op
+def conv_transpose3d(
+    *,
+    input,
+    weight,
+    bias,
+    stride,
+    padding,
+    output_padding,
+    groups,
+    dilation,
+):
+    return nn.functional.conv_transpose3d(
+        input=input,
+        weight=weight,
+        bias=bias,
+        stride=stride,
+        padding=padding,
+        output_padding=output_padding,
+        groups=groups,
+        dilation=dilation,
     )
 
 
@@ -158,18 +329,45 @@ def relu(*, input, inplace=False):
     return nn.functional.relu(input=input, inplace=inplace)
 
 
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.leaky_relu))
+@register_acc_op
+def leaky_relu(*, input, negative_slope=0.01, inplace=False):
+    return nn.functional.leaky_relu(input=input,
+                                    negative_slope=negative_slope,
+                                    inplace=inplace)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.elu))
+@register_acc_op
+def elu(*, input, alpha=1.0, inplace=False):
+    return nn.functional.elu(input=input, alpha=alpha, inplace=inplace)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.selu))
+@register_acc_op
+def selu(*, input, inplace=False):
+    return nn.functional.selu(input=input, inplace=inplace)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.softsign))
+@register_acc_op
+def softsign(*, input):
+    return nn.functional.softsign(input=input)
+
+
 @register_acc_op_mapping(op_and_target=("call_function",
                                         torch.nn.functional.gelu))
 @register_acc_op
 def gelu(*, input):
     return torch.nn.functional.gelu(input=input)
-
-
-@register_acc_op_mapping(op_and_target=("call_function", torch.tanh))
-@register_acc_op_mapping(op_and_target=("call_method", "tanh"))
-@register_acc_op
-def tanh(*, input):
-    return torch.tanh(input=input)
 
 
 @register_acc_op_mapping(
@@ -245,6 +443,13 @@ def cumsum(*, input, dim, dtype=None):
 def adaptive_avg_pool2d(*, input, output_size):
     return nn.functional.adaptive_avg_pool2d(input=input,
                                              output_size=output_size)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.sign))
+@register_acc_op
+def sign(*, input):
+    return torch.sign(input)
 
 
 @register_acc_op_mapping(
@@ -330,6 +535,24 @@ def expand(*, input, sizes):
 @register_acc_op
 def permute(*, input, permutation):
     return input.permute(*permutation)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.square),
+    arg_replacement_tuples=[
+        ("input", "input"),
+    ],
+)
+def square_mapper(node: torch.fx.Node, _: nn.Module) -> torch.fx.Node:
+    input_node = node.kwargs["input"]
+    with node.graph.inserting_before(node):
+        new_node = node.graph.call_function(mul,
+                                            kwargs={
+                                                "input": input_node,
+                                                "other": input_node
+                                            })
+        new_node.meta = node.meta.copy()
+        return new_node
 
 
 @register_acc_op_mapping(op_and_target=("call_method", "contiguous"))
@@ -543,6 +766,42 @@ def layer_norm(*, input, normalized_shape, weight, bias, eps):
     )
 
 
+@register_acc_op_properties(AccOpProperty.pointwise)
+@register_acc_op_mapping(op_and_target=("call_function", torch.fmod))
+@register_acc_op_mapping(op_and_target=("call_method", "fmod"))
+@register_acc_op
+def fmod(*, input, other):
+    return torch.fmod(input=input, other=other)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.sin))
+@register_acc_op
+def sin(*, input):
+    return torch.sin(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.cos))
+@register_acc_op
+def cos(*, input):
+    return torch.cos(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.tan))
+@register_acc_op
+def tan(*, input):
+    return torch.tan(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.topk))
+@register_acc_op
+def topk(*, input, k, dim, largest, sorted):
+    return torch.topk(input=input, k=k, dim=dim, largest=largest, sorted=sorted)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", torch.cat))
 @register_acc_op
 def cat(*, tensors, dim):
@@ -554,6 +813,71 @@ def cat(*, tensors, dim):
 @register_acc_op
 def sigmoid(*, input):
     return torch.sigmoid(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.sinh))
+@register_acc_op
+def sinh(*, input):
+    return torch.sinh(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.cosh))
+@register_acc_op
+def cosh(*, input):
+    return torch.cosh(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.tanh))
+@register_acc_op_mapping(op_and_target=("call_method", "tanh"))
+@register_acc_op
+def tanh(*, input):
+    return torch.tanh(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.asin))
+@register_acc_op
+def asin(*, input):
+    return torch.asin(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.acos))
+@register_acc_op
+def acos(*, input):
+    return torch.acos(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.atan))
+@register_acc_op
+def atan(*, input):
+    return torch.atan(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.exp))
+@register_acc_op
+def exp(*, input):
+    return torch.exp(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.sqrt))
+@register_acc_op_mapping(op_and_target=("call_method", "sqrt"))
+@register_acc_op
+def sqrt(*, input):
+    return torch.sqrt(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.reciprocal))
+@register_acc_op
+def reciprocal(*, input):
+    return torch.reciprocal(input=input)
 
 
 @register_acc_op_mapping(op_and_target=("call_function", operator.add))
@@ -628,6 +952,28 @@ def mul(*, input, other):
 @register_acc_op
 def abs(*, input):
     return torch.abs(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", operator.neg))
+@register_acc_op_mapping(op_and_target=("call_function", torch.neg))
+@register_acc_op
+def neg(*, input):
+    return torch.neg(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.floor))
+@register_acc_op
+def floor(*, input):
+    return torch.floor(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.ceil))
+@register_acc_op
+def ceil(*, input):
+    return torch.ceil(input=input)
 
 
 @register_acc_op_mapping(op_and_target=("call_function", operator.floordiv))
@@ -712,6 +1058,14 @@ def div(*, input, other):
 @register_acc_op
 def log(*, input):
     return torch.log(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise)
+@register_acc_op_mapping(op_and_target=("call_function", torch.pow))
+@register_acc_op_mapping(op_and_target=("call_method", "pow"))
+@register_acc_op
+def pow(*, input, exponent):
+    return torch.pow(input, exponent)
 
 
 @register_custom_acc_mapper_fn(
@@ -1109,6 +1463,16 @@ def t_mapper(node: torch.fx.Node, _: nn.Module):
         return new_node
 
 
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.nn.functional.pad))
+@register_acc_op
+def pad(*, input, pad: List[int], mode: str, value: float):
+    return torch.nn.functional.pad(input=input,
+                                   pad=pad,
+                                   mode=mode,
+                                   value=value)
+
+
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
 @register_acc_op_properties(AccOpProperty.quantized)
 @register_acc_op_mapping(
@@ -1154,6 +1518,7 @@ def new_zeros(*, input, size):
     return input.new_zeros(size)
 
 
+@register_acc_op_properties(AccOpProperty.unary)
 @register_acc_op
 def slice_tensor(*, input, dim, start, stop, step):
     slc = slice(start, stop, step)
@@ -1165,6 +1530,50 @@ def slice_tensor(*, input, dim, start, stop, step):
         slices.extend([slice(None, None, None) for _ in range(-dim - 1)])
 
     return input[tuple(slices)]
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.narrow),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim"),
+        ("start", "start"),
+        ("length", "length"),
+    ],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "narrow"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim"),
+        ("start", "start"),
+        ("length", "length"),
+    ],
+)
+def custom_narrow_mapper(node: torch.fx.Node, mod: nn.Module) -> torch.fx.Node:
+    assert isinstance(node.kwargs["start"], int) and isinstance(
+        node.kwargs["length"], int)
+
+    dim = node.kwargs["dim"]
+    start = node.kwargs["start"]
+    stop = node.kwargs["start"] + node.kwargs["length"]
+
+    slc = slice(start, stop, 1)
+
+    if dim >= 0:
+        slices: List[slice] = [slice(None, None, None) for _ in range(dim)]
+        slices.append(slc)
+    else:
+        slices = [Ellipsis, slc]  # type: ignore[list-item]
+        slices.extend([slice(None, None, None) for _ in range(-dim - 1)])
+
+    kwargs = {"input": node.kwargs["input"], "idx": tuple(slices)}
+
+    with node.graph.inserting_before(node):
+        new_node = node.graph.call_function(getitem, kwargs=kwargs)
+
+    new_node.meta = node.meta.copy()
+    return new_node
 
 
 @register_acc_op

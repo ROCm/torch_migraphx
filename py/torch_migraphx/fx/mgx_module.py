@@ -101,6 +101,9 @@ class MGXModule(torch.nn.Module):
     def _allocate_param_buffers(self, names):
         for param_name in names:
             param_shape = self.program.get_parameter_shapes()[param_name]
+            if param_shape.type_string() == 'tuple_type':
+                raise RuntimeError('Tuple return types are not currently supoprted')
+
             type_str, lens = param_shape.type_string(), param_shape.lens()
             strides = param_shape.strides()
             torch_dtype = torch_dtype_from_mgx(type_str)

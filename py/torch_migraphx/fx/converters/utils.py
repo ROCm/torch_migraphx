@@ -19,10 +19,12 @@ def compute_same_padding(in_shape, kernel_size, strides, dilation):
         for i in range(len(in_shape))
     ]
 
-    return [
-        pads[0] // 2, pads[0] - pads[0] // 2, pads[1] // 2,
-        pads[1] - pads[1] // 2
-    ]
+    res = []
+    for i in range(len(in_shape)):
+        res.append(pads[i] // 2)
+        res.append(pads[i] - pads[i] // 2)
+
+    return res
 
 
 def ceildiv(a, b):
