@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm5.2.3_ubuntu20.04_py3.7_pytorch_1.12.1
+FROM rocm/pytorch:latest
 
 ARG PREFIX=/usr/local
 
@@ -23,4 +23,4 @@ RUN /install_migraphx.sh && rm /install_migraphx.sh
 
 ENV PYTHONPATH=/opt/rocm/lib
 ENV TORCH_USE_RTLD_GLOBAL=YES
-ENV Torch_DIR=/opt/conda/lib/python3.7/site-packages/torch/share/cmake/Torch
+ENV LD_LIBRARY_PATH=/opt/rocm/lib

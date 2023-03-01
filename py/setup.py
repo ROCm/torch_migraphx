@@ -10,6 +10,7 @@ from setuptools import setup, Extension, find_packages
 from setuptools.command.build_ext import build_ext
 from setuptools.command.test import test as TestCommand
 
+import torch
 
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=''):
@@ -40,7 +41,8 @@ class CMakeBuild(build_ext):
             os.path.dirname(self.get_ext_fullpath(ext.name)))
         cmake_args = [
             '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
-            '-DPYTHON_EXECUTABLE=' + sys.executable
+            '-DPYTHON_EXECUTABLE=' + sys.executable,
+            '-DCMAKE_PREFIX_PATH=' + torch.utils.cmake_prefix_path
         ]
 
         cfg = 'Debug' if self.debug else 'Release'
