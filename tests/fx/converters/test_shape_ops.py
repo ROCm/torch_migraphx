@@ -52,7 +52,7 @@ def test_reshape(in_shape, out_shape):
         verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('perm', [(1, 2, 3, 0), (0, 2, 3, 1), (3, 2, 1, 0)])
+@pytest.mark.parametrize('perm', [(1, 2, 3, 0), (0, 2, 3, 1), (3, 2, 1, 0), (1, 0, -2, -1)])
 def test_permute(perm):
     inp = torch.randn(6, 2, 5, 4).cuda()
     mod_func = FuncModule(torch.permute, dims=perm).cuda()

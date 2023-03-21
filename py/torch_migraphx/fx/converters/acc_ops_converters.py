@@ -727,9 +727,9 @@ def acc_ops_reshape(mgx_module, node, args, kwargs):
 @migraphx_converter(acc_ops.permute)
 def acc_ops_permute(mgx_module, node, args, kwargs):
 
+    perm = normalize_permutation(kwargs['permutation'])
     return mgx_module.add_instruction(
-        migraphx.op('transpose', permutation=list(kwargs['permutation'])),
-        [kwargs['input']])
+        migraphx.op('transpose', permutation=perm), [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.pad)

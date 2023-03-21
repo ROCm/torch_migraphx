@@ -29,3 +29,9 @@ def compute_same_padding(in_shape, kernel_size, strides, dilation):
 
 def ceildiv(a, b):
     return -(a // -b)
+
+def normalize_permutation(ax):
+    if len(ax) == 1 and isinstance(ax[0], Iterable):
+        ax = ax[0]
+        
+    return [len(ax) + i if i < 0 else i for i in ax]
