@@ -67,6 +67,10 @@ def validate_inference(rtol=None,
                 if x.get_device() != y.get_device():
                     x = x.cpu()
                     y = y.cpu()
+                if not x.shape:
+                    x = x.reshape(1)
+                if not y.shape:
+                    y = y.reshape(1)
                 accuracy_check = torch.allclose(x, y, **kwargs)
                 if not accuracy_check:
                     _LOGGER.error(
