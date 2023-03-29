@@ -17,7 +17,7 @@ class LowerPrecision(Enum):
     INT8 = "int8"
 
 
-type_map = {
+TYPE_MAP = {
     torch.bool: 'bool_type',
     torch.half: 'half_type',
     torch.float: 'float_type',
@@ -29,15 +29,23 @@ type_map = {
     torch.long: 'int64_type'
 }
 
-inv_type_map = {v: k for k, v in type_map.items()}
+INV_TYPE_MAP = {v: k for k, v in TYPE_MAP.items()}
 
 
 def torch_dtype_to_mgx(dtype: torch.dtype) -> str:
-    return type_map[dtype]
+    return TYPE_MAP[dtype]
 
 
 def torch_dtype_from_mgx(type_string: str) -> torch.dtype:
-    return inv_type_map[type_string]
+    return INV_TYPE_MAP[type_string]
+
+
+def mgx_type_str_to_enum(type_string: str) -> migraphx.shape.type_t:
+    return getattr(migraphx.shape.type_t, type_string)
+
+
+def torch_dtype_to_mgx_enum(dtype: torch.dtype) -> migraphx.shape.type_t:
+    return mgx_type_str_to_enum(torch_dtype_to_mgx(dtype))
 
 
 def mgx_argument_from_tensor(tensor: torch.tensor) -> migraphx.argument:

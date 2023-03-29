@@ -10,6 +10,7 @@ from ..converter_registry import migraphx_converter
 from ..tracer.acc_tracer import acc_ops
 from torch.fx.node import Argument, Target
 from .utils import *
+from ..utils import torch_dtype_to_mgx_enum
 
 
 def broadcast_for_elemwise_op(mgx_module, node, inp, other):
@@ -22,6 +23,9 @@ def broadcast_for_elemwise_op(mgx_module, node, inp, other):
     if isinstance(inp, migraphx.instruction_ref):
         inp_shape = node.all_input_nodes[in_idx].meta['tensor_meta'].shape
         in_idx += 1
+        inp = mgx_module.add_instruction(
+            migraphx.op("convert", target_type=torch_dtype_to_mgx_enum(dtype)),
+            [inp])
     else:
         inp_shape = np.array(inp).shape
         inp = mgx_module.add_literal(torch.tensor(inp, dtype=dtype).numpy())
@@ -29,6 +33,9 @@ def broadcast_for_elemwise_op(mgx_module, node, inp, other):
     if isinstance(other, migraphx.instruction_ref):
         other_shape = node.all_input_nodes[in_idx].meta['tensor_meta'].shape
         in_idx += 1
+        other = mgx_module.add_instruction(
+            migraphx.op("convert", target_type=torch_dtype_to_mgx_enum(dtype)),
+            [other])
     else:
         other_shape = np.array(other).shape
         other = mgx_module.add_literal(
@@ -695,12 +702,14 @@ def acc_ops_topk(mgx_module, node, args, kwargs):
     if not kwargs['sorted']:
         raise RuntimeError("Currently only sorted=True is supported")
 
-    topk =  mgx_module.add_instruction(
+    topk = mgx_module.add_instruction(
         migraphx.op('topk', k=k, axis=dim, largest=largest), [inp])
-    
-    val = mgx_module.add_instruction(migraphx.op('get_tuple_elem', index=0), [topk])
-    ind = mgx_module.add_instruction(migraphx.op('get_tuple_elem', index=1), [topk])
-    
+
+    val = mgx_module.add_instruction(migraphx.op('get_tuple_elem', index=0),
+                                     [topk])
+    ind = mgx_module.add_instruction(migraphx.op('get_tuple_elem', index=1),
+                                     [topk])
+
     return [val, ind]
 
 
@@ -943,12 +952,23 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
     num_slice_types = sum([1 for i in idx if isinstance(i, (slice, int))])
     implicit_dims = len(in_shape) - num_slice_types
     slices = []
-    for i in idx:
+    dims_to_unsqueeze = []
+    for ax, i in enumerate(idx):
         if i == Ellipsis:
             slices.extend(
                 [slice(None, None, None) for i in range(implicit_dims)])
+        elif i is None:
+            slices.append(slice(None, None, None))
+            dims_to_unsqueeze.append(ax)
         else:
             slices.append(i)
+
+    if dims_to_unsqueeze:
+        out_mgx = mgx_module.add_instruction(
+            migraphx.op('unsqueeze', axes=dims_to_unsqueeze),
+            [kwargs['input']])
+    else:
+        out_mgx = kwargs['input']
 
     axes, starts, ends, steps = [], [], [], []
     dims_to_squeeze = []
@@ -976,8 +996,7 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
             dims_to_squeeze.append(i)
 
     out_mgx = mgx_module.add_instruction(
-        migraphx.op('slice', axes=axes, starts=starts, ends=ends),
-        [kwargs['input']])
+        migraphx.op('slice', axes=axes, starts=starts, ends=ends), [out_mgx])
 
     if dims_to_step:
         out_mgx = mgx_module.add_instruction(
