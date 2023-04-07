@@ -718,19 +718,12 @@ def acc_ops_reshape(mgx_module, node, args, kwargs):
 
     out_shape = node.meta['tensor_meta'].shape
 
-    try:
-        return mgx_module.add_instruction(
-            migraphx.op('reshape', dims=list(out_shape)), [kwargs['input']])
-    except RuntimeError as e:
-        msg = getattr(e, 'message', repr(e))
-        if 'Shapes are not in standard layout' in msg:
-            cont_inp = mgx_module.add_instruction(migraphx.op('contiguous'),
-                                                  [kwargs['input']])
-            return mgx_module.add_instruction(
+    cont_inp = mgx_module.add_instruction(migraphx.op('contiguous'),
+                                          [kwargs['input']])
+
+    return mgx_module.add_instruction(
                 migraphx.op('reshape', dims=list(out_shape)), [cont_inp])
 
-        else:
-            raise RuntimeError(msg)
 
 
 @migraphx_converter(acc_ops.permute)
