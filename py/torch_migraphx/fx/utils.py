@@ -28,6 +28,8 @@
 #####################################################################################
 import os
 from enum import Enum
+from typing import List, Callable
+from packaging import version
 import random
 import torch
 import migraphx
@@ -161,3 +163,34 @@ def tensor_meta_str(tm) -> str:
         return ' '.join([tensor_meta_str(i) for i in tm])
     else:
         return ''
+
+
+def req_torch_version(min_torch_version: str = "2.dev"):
+    """
+    Create a decorator which verifies the Torch version installed
+    against a specified version range
+    Args:
+        min_torch_version (str): The minimum required Torch version
+        for the decorated function to work properly
+    Returns:
+        A decorator which raises a descriptive error message if
+        an unsupported Torch version is used
+    """
+
+    def nested_decorator(f: Callable):
+        def function_wrapper(*args, **kwargs):
+            # Parse minimum and current Torch versions
+            min_version = version.parse(min_torch_version)
+            current_version = version.parse(torch.__version__)
+
+            if current_version < min_version:
+                raise AssertionError(
+                    f"Expected Torch version {min_torch_version} or greater, "
+                    + f"when calling {f}. Detected version {torch.__version__}"
+                )
+            else:
+                return f(*args, **kwargs)
+
+        return function_wrapper
+
+    return nested_decorator

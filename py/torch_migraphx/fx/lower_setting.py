@@ -63,9 +63,8 @@ class LowerSettingBasic:
     ast_rewriter_allow_list: Optional[Set[Type[nn.Module]]] = None
     leaf_module_list: Optional[Set[Type[nn.Module]]] = None
     verbose_profile: bool = False
+    use_aten: bool = False
 
-
-# TODO: Use this to specify any lowering settings specific to migraphx
 @dc.dataclass
 class LowerSetting(LowerSettingBasic):
     """
@@ -82,3 +81,5 @@ class LowerSetting(LowerSettingBasic):
     suppress_accuracy_check: bool = False
     save_subgraph_programs: bool = False
     tracer_base_cls: Type = Tracer
+    correctness_atol: float = 0.5
+    correctness_rtol: float = 0.5

@@ -204,6 +204,23 @@ class LowerPassManagerBuilder:
         pm = PassManager.build_from_passlist(passes)
         return pm
 
+    def build_mgx_aten_lower_pipeline(
+            self,
+            input: Input,
+            additional_input: Optional[Input] = None) -> PassManager:
+        self._input = input
+        self._additional_input = additional_input
+        passes = []
+
+        passes.append(
+            wrapper(self._trace_func, self._input),
+        )
+        passes.append(self._split_pass())
+        passes.append(self._mgx_lower_pass())
+
+        pm = PassManager.build_from_passlist(passes)
+        return pm
+
     def build_default_lower_pipeline(
             self,
             input: Input,

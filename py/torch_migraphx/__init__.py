@@ -1,1 +1,1 @@
-from torch_migraphx import fx, _C
+from torch_migraphx import fx, _C, dynamo
