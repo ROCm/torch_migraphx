@@ -5,6 +5,7 @@ from torch.fx.passes.infra.partitioner import CapabilityBasedPartitioner
 from torch.fx.passes.operator_support import OperatorSupport
 
 from torch_migraphx.fx.converter_registry import CONVERTERS
+from ..utils import print_graph_info
 
 
 class MGXOperatorSupport(OperatorSupport):
@@ -29,8 +30,8 @@ class MGXOperatorSupport(OperatorSupport):
                 self.unsupported.add(node.target)
             return False
 
-    def print_support_sumamry(self):
-        print('\nSupported Nodes: ')
+    def print_support_summary(self):
+        print('Supported Nodes: ')
         for n in self.supported:
             print(n)
 
@@ -56,16 +57,17 @@ def partition(gm: torch.fx.GraphModule,
                                              allows_single_node_partition=True)
 
     partitons = partitioner.propose_partitions()
-    print(len(partitons))
     if len(partitons) > max_partitions:
         raise RuntimeError(
             f'Found {len(partitons)} partitions, max allowed: {max_partitions}.'
         )
+    fused_gm = partitioner.fuse_partitions(partitons)
 
     if verbose:
-        op_support.print_support_sumamry()
+        print_graph_info("Partitioned Module", fused_gm, None)
+        op_support.print_support_summary()
 
-    return partitioner.fuse_partitions(partitons)
+    return fused_gm
 
 
 def get_partition_inputs(
@@ -87,7 +89,7 @@ def get_partition_inputs(
     def get_inputs(self, inputs):
         nonlocal sub_inputs
         sub_inputs = inputs
-    
+
     handle = submod.register_forward_pre_hook(get_inputs)
     mod(*example_input)
     handle.remove()
