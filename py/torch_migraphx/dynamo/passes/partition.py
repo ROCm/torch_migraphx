@@ -41,7 +41,7 @@ class MGXOperatorSupport(OperatorSupport):
 
 
 def partition(gm: torch.fx.GraphModule,
-              max_partitions: int = 20,
+              max_partitions: int = 100,
               verbose: bool = True):
     """Partition the graph into supported and unsupported subgraphx for lowering
 
@@ -53,20 +53,24 @@ def partition(gm: torch.fx.GraphModule,
 
     op_support = MGXOperatorSupport()
     partitioner = CapabilityBasedPartitioner(gm,
-                                             op_support,
-                                             allows_single_node_partition=True)
+                                             op_support)
 
     partitons = partitioner.propose_partitions()
-    if len(partitons) > max_partitions:
-        raise RuntimeError(
-            f'Found {len(partitons)} partitions, max allowed: {max_partitions}.'
-        )
     fused_gm = partitioner.fuse_partitions(partitons)
+    fused_gm.graph.eliminate_dead_code()
+    fused_gm.recompile()
+    fused_gm.delete_all_unused_submodules()
 
     if verbose:
         print_graph_info("Partitioned Module", fused_gm, None)
         op_support.print_support_summary()
 
+    # TODO: Compute number of partitions after dead code elimination
+    if len(partitons) > max_partitions:
+        raise RuntimeError(
+            f'Found {len(partitons)} partitions, max allowed: {max_partitions}.'
+        )
+    
     return fused_gm
 
 

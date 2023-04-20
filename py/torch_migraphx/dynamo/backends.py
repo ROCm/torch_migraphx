@@ -15,9 +15,9 @@ def migraphx(gm, example_inputs):
         lowered_gm = lower_aten_to_mgx(gm, example_inputs, verbose=True)
         return make_boxed_func(lowered_gm)
 
+    gm = gm.cuda()
     gm.eval()
     gm.requires_grad_(False)
-    gm = gm.cuda()
     return aot_module_simplified(gm,
                                  example_inputs,
                                  fw_compiler=migraphx_compiler)

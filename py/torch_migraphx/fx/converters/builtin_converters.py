@@ -28,31 +28,14 @@
 #####################################################################################
 
 import migraphx
+import operator
 import torch
 from ..converter_registry import migraphx_converter
 from torch_migraphx.fx.converters import acc_ops_converters
 
 
-@migraphx_converter(torch.ops.aten.relu.default)
-def aten_ops_relu(mgx_module, node, args, kwargs):
-    assert len(args) == 1
-    acc_kwargs = {"input": args[0]}
+@migraphx_converter(operator.getitem)
+def builtin_getitem(mgx_module, node, args, kwargs):
+    acc_kwargs = {"input": args[0], "idx": args[1]}
 
-    return acc_ops_converters.acc_ops_relu(mgx_module, node, (), acc_kwargs)
-
-@migraphx_converter(torch.ops.aten.view.default)
-def aten_ops_view(mgx_module, node, args, kwargs):
-    assert len(args) == 2
-    inp, shape = args[0], args[1]
-    cont_inp = mgx_module.add_instruction(migraphx.op('contiguous'),
-                                          [inp])
-    return mgx_module.add_instruction(
-                migraphx.op('reshape', dims=list(shape)), [cont_inp])
-
-def aten_ops_addmm(mgx_module, node, args, kwargs):
-    assert len(args) == 3
-    inp, mat1, mat2 = args
-    beta = kwargs["beta"] if "beta" in kwargs else 1
-    alpha = kwargs["alpha"] if "alpha" in kwargs else 1
-
-    
+    return acc_ops_converters.acc_ops.getitem(mgx_module, node, (), acc_kwargs)
