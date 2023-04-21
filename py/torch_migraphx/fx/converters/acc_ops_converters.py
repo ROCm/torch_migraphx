@@ -303,7 +303,7 @@ def acc_ops_convnd(mgx_module, node, args, kwargs):
     group = kwargs['groups']
     padding = kwargs['padding']
 
-    if isinstance(padding, (int, tuple)):
+    if isinstance(padding, (int, tuple, list)):
         padding = extend_attr(padding, conv_dim)
     elif padding == 'valid':
         padding = extend_attr(0, conv_dim)
@@ -1003,9 +1003,9 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
     if dims_to_unsqueeze:
         out_mgx = mgx_module.add_instruction(
             migraphx.op('unsqueeze', axes=dims_to_unsqueeze),
-            [kwargs['input']])
+            [inp])
     else:
-        out_mgx = kwargs['input']
+        out_mgx = inp
 
     axes, starts, ends, steps = [], [], [], []
     dims_to_squeeze = []

@@ -40,19 +40,155 @@ def aten_ops_relu(mgx_module, node, args, kwargs):
 
     return acc_ops_converters.acc_ops_relu(mgx_module, node, (), acc_kwargs)
 
+
 @migraphx_converter(torch.ops.aten.view.default)
 def aten_ops_view(mgx_module, node, args, kwargs):
     assert len(args) == 2
-    inp, shape = args[0], args[1]
-    cont_inp = mgx_module.add_instruction(migraphx.op('contiguous'),
-                                          [inp])
-    return mgx_module.add_instruction(
-                migraphx.op('reshape', dims=list(shape)), [cont_inp])
+    acc_kwargs = {"input": args[0], "shape": args[1]}
+    return acc_ops_converters.acc_ops_reshape(mgx_module, node, (), acc_kwargs)
 
+
+@migraphx_converter(torch.ops.aten.addmm.default)
 def aten_ops_addmm(mgx_module, node, args, kwargs):
     assert len(args) == 3
     inp, mat1, mat2 = args
     beta = kwargs["beta"] if "beta" in kwargs else 1
     alpha = kwargs["alpha"] if "alpha" in kwargs else 1
 
-    
+    mm_kwargs = {"input": mat1, "other": mat2}
+    mm_out = acc_ops_converters.acc_ops_matmul(mgx_module, node, (), mm_kwargs)
+
+    if alpha != 1:
+        mul_kwargs = {"input": mm_out, "other": alpha}
+        mm_out = acc_ops_converters.acc_ops_mul(mgx_module, node, (),
+                                                mul_kwargs)
+
+    if beta != 1:
+        mul_kwargs = {"input": inp, "other": beta}
+        inp = acc_ops_converters.acc_ops_mul(mgx_module, node, (), mul_kwargs)
+
+    add_kwargs = {"input": inp, "other": mm_out}
+    return acc_ops_converters.acc_ops_add(mgx_module, node, (), add_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.add.Scalar)
+@migraphx_converter(torch.ops.aten.add.Tensor)
+def aten_ops_add(mgx_module, node, args, kwargs):
+    assert len(args) >= 2
+    inp, other = args[0], args[1]
+
+    if node.target == torch.ops.aten.add.Scalar:
+        alpha = args[2] if len(args) == 3 else 1
+    else:
+        alpha = kwargs["alpha"] if "alpha" in kwargs else 1
+
+    if alpha != 1:
+        mul_kwargs = mul_kwargs = {"input": other, "other": alpha}
+        other = acc_ops_converters.acc_ops_mul(mgx_module, node, (),
+                                               mul_kwargs)
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_add(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.batch_norm)
+@migraphx_converter(torch.ops.aten.miopen_batch_norm.default)
+def aten_ops_batch_norm(mgx_module, node, args, kwargs):
+    assert len(args) == 8
+
+    acc_kwargs = {
+        "input": args[0],
+        "weight": args[1],
+        "bias": args[2],
+        "running_mean": args[3],
+        "running_var": args[4],
+        "training": args[5],
+        "momentum": args[6],
+        "eps": args[7],
+    }
+
+    return acc_ops_converters.acc_ops_batch_norm(
+        mgx_module, node, (),
+        acc_kwargs), acc_kwargs["running_mean"], acc_kwargs["running_var"]
+
+
+@migraphx_converter(torch.ops.aten.convolution.default)
+def aten_ops_convolution(mgx_module, node, args, kwargs):
+    assert len(args) == 9
+
+    acc_kwargs = {
+        "input": args[0],
+        "weight": args[1],
+        "bias": args[2],
+        "stride": args[3],
+        "padding": args[4],
+        "dilation": args[5],
+        "transposed": args[6],
+        "output_padding": args[7],
+        "groups": args[8],
+    }
+
+    if acc_kwargs["transposed"]:
+        raise RuntimeError("'transposed' parameter not supported.")
+
+    if not all(i == 0 for i in acc_kwargs["output_padding"]):
+        raise RuntimeError(
+            "non-zero values for 'output_padding' not supported")
+
+    return acc_ops_converters.acc_ops_convnd(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.t.default)
+def aten_ops_t(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+
+    in_shape = args[0].shape().lens()
+    if len(in_shape) != 2:
+        raise RuntimeError(f"aten.t expects a 2D input shape, got {in_shape}")
+
+    acc_kwargs = {"input": args[0], "permutation": [1, 0]}
+    return acc_ops_converters.acc_ops_permute(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.mean.dim)
+def aten_ops_mean(mgx_module, node, args, kwargs):
+    assert len(args) >= 2
+
+    acc_kwargs = {
+        "input": args[0],
+        "dim": args[1],
+        "keepdim": args[2] if len(args) == 3 else False
+    }
+
+    # TODO: Remove Work around for fused_reduce bug in migraphx
+    if acc_kwargs["keepdim"] and sorted(acc_kwargs["dim"]) == [-2, -1]:
+        return aten_ops_adaptive_avg_pool2d(mgx_module, node,
+                                            (args[0], [1, 1]), {})
+
+    return acc_ops_converters.acc_ops_mean(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten._adaptive_avg_pool2d.default)
+def aten_ops_adaptive_avg_pool2d(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+
+    acc_kwargs = {"input": args[0], "output_size": args[1]}
+    return acc_ops_converters.acc_ops_adaptive_avg_pool2d(
+        mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.max_pool2d_with_indices.default)
+def aten_ops_max_pool2d(mgx_module, node, args, kwargs):
+    assert len(args) >= 2
+
+    acc_kwargs = {
+        "input": args[0],
+        "kernel_size": args[1],
+        "stride": args[2] if len(args) >= 3 and args[2] else 1,
+        "padding": args[3] if len(args) >= 4 else 0,
+        "dilation": args[4] if len(args) >= 5 else 1,
+        "ceil_mode": args[5] if len(args) == 6 else False
+    }
+
+    return acc_ops_converters.acc_ops_max_pool2d(mgx_module, node, (),
+                                                 acc_kwargs), None

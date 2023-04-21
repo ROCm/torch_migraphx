@@ -36,6 +36,7 @@ from torch_migraphx.fx.converters import acc_ops_converters
 
 @migraphx_converter(operator.getitem)
 def builtin_getitem(mgx_module, node, args, kwargs):
+    assert len(args) == 2
     acc_kwargs = {"input": args[0], "idx": args[1]}
 
-    return acc_ops_converters.acc_ops.getitem(mgx_module, node, (), acc_kwargs)
+    return acc_ops_converters.acc_ops_getitem(mgx_module, node, (), acc_kwargs)
