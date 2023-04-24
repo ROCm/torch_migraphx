@@ -1,20 +1,20 @@
 #####################################################################################
 # Copyright (c) 2022-present, Advanced Micro Devices, Inc. All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 # 1. Redistributions of source code must retain the above copyright notice, this
 #    list of conditions and the following disclaimer.
-# 
+#
 # 2. Redistributions in binary form must reproduce the above copyright notice,
 #    this list of conditions and the following disclaimer in the documentation
 #    and/or other materials provided with the distribution.
-# 
+#
 # 3. Neither the name of the copyright holder nor the names of its
 #    contributors may be used to endorse or promote products derived from
 #    this software without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -723,12 +723,14 @@ def acc_ops_topk(mgx_module, node, args, kwargs):
     if not kwargs['sorted']:
         raise RuntimeError("Currently only sorted=True is supported")
 
-    topk =  mgx_module.add_instruction(
+    topk = mgx_module.add_instruction(
         migraphx.op('topk', k=k, axis=dim, largest=largest), [inp])
-    
-    val = mgx_module.add_instruction(migraphx.op('get_tuple_elem', index=0), [topk])
-    ind = mgx_module.add_instruction(migraphx.op('get_tuple_elem', index=1), [topk])
-    
+
+    val = mgx_module.add_instruction(migraphx.op('get_tuple_elem', index=0),
+                                     [topk])
+    ind = mgx_module.add_instruction(migraphx.op('get_tuple_elem', index=1),
+                                     [topk])
+
     return [val, ind]
 
 
@@ -890,37 +892,36 @@ def acc_ops_mean(mgx_module, node, args, kwargs):
 @migraphx_converter(acc_ops.sum)
 def acc_ops_sum(mgx_module, node, args, kwargs):
 
-    if 'dim' not in kwargs:
-        sum = mgx_module.add_instruction(migraphx.op('reduce_sum'),
-                                         [kwargs['input']])
-        return mgx_module.add_instruction(migraphx.op('squeeze'), [sum])
+    inp = kwargs['input']
+    in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
+    dims = list(kwargs['dim']) if 'dim' in kwargs else list(
+        range(len(in_shape)))
 
-    sum = mgx_module.add_instruction(
-        migraphx.op('reduce_sum', axes=list(kwargs['dim'])), [kwargs['input']])
+    sum_ = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=dims),
+                                      [inp])
 
     if 'keepdim' in kwargs and kwargs['keepdim']:
-        return sum
+        return sum_
 
-    return mgx_module.add_instruction(
-        migraphx.op('squeeze', axes=list(kwargs['dim'])), [sum])
+    return mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
+                                      [sum_])
 
 
 @migraphx_converter(acc_ops.prod)
 def acc_ops_prod(mgx_module, node, args, kwargs):
 
-    if 'dim' not in kwargs:
-        prod = mgx_module.add_instruction(migraphx.op('reduce_prod'),
-                                          [kwargs['input']])
-        return mgx_module.add_instruction(migraphx.op('squeeze'), [prod])
+    inp = kwargs['input']
+    in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
+    dims = [kwargs['dim']] if 'dim' in kwargs else list(range(len(in_shape)))
 
-    prod = mgx_module.add_instruction(
-        migraphx.op('reduce_prod', axes=[kwargs['dim']]), [kwargs['input']])
+    prod = mgx_module.add_instruction(migraphx.op('reduce_prod', axes=dims),
+                                      [inp])
 
     if 'keepdim' in kwargs and kwargs['keepdim']:
         return prod
 
-    return mgx_module.add_instruction(
-        migraphx.op('squeeze', axes=[kwargs['dim']]), [prod])
+    return mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
+                                      [prod])
 
 
 @migraphx_converter(acc_ops.cumsum)
