@@ -879,13 +879,11 @@ def acc_ops_chunk(mgx_module, node, args, kwargs):
 # BUG: MIGraphX adds contiguoues kernel to broadcated output resulting in
 # unintended behaviour when a broadcasted shape is the output
 # @migraphx_converter(acc_ops.expand)
-# def acc_ops_expand_tensor(mgx_module, node, args, kwargs):
-#
-
-#     out_shape = kwargs["sizes"]
-#     return mgx_module.add_instruction(
-#         migraphx.op('multibroadcast', out_lens=list(out_shape)),
-#         [kwargs['input']])
+def acc_ops_expand_tensor(mgx_module, node, args, kwargs):
+    out_shape = kwargs["sizes"]
+    return mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=list(out_shape)),
+        [kwargs['input']])
 
 
 @migraphx_converter(acc_ops.cat)

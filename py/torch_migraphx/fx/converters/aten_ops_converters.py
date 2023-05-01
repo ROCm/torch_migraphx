@@ -35,6 +35,7 @@ from ..utils import torch_dtype_to_mgx_enum
 
 
 # @migraphx_converter(torch.ops.aten._to_copy.default)
+@migraphx_converter(torch.ops.aten.clone.default)
 def aten_ops_to_copy(mgx_module, node, args, kwargs):
     assert len(args) == 1
 
@@ -47,7 +48,8 @@ def aten_ops_to_copy(mgx_module, node, args, kwargs):
     return args[0]
 
 
-# @migraphx_converter(torch.ops.aten.view.default)
+@migraphx_converter(torch.ops.aten.view.default)
+@migraphx_converter(torch.ops.aten._unsafe_view.default)
 def aten_ops_view(mgx_module, node, args, kwargs):
     assert len(args) == 2
     acc_kwargs = {"input": args[0], "shape": args[1]}
@@ -60,6 +62,14 @@ def aten_ops_unsqueeze(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": args[0], "dim": args[1]}
     return acc_ops_converters.acc_ops_unsqueeze(mgx_module, node, (),
                                                 acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.expand.default)
+def aten_ops_expand(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    acc_kwargs = {"input": args[0], "sizes": args[1]}
+    return acc_ops_converters.acc_ops_expand_tensor(mgx_module, node, (),
+                                                    acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.slice.Tensor)
@@ -93,6 +103,14 @@ def aten_ops_relu(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_relu(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.gelu.default)
+def aten_ops_gelu(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+
+    return acc_ops_converters.acc_ops_gelu(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.silu.default)
 def aten_ops_silu(mgx_module, node, args, kwargs):
     assert len(args) == 1
@@ -102,6 +120,14 @@ def aten_ops_silu(mgx_module, node, args, kwargs):
 
     mul_kwargs = {"input": inp, "other": sig}
     return acc_ops_converters.acc_ops_mul(mgx_module, node, (), mul_kwargs)
+
+
+@migraphx_converter(torch.ops.aten._softmax.default)
+def aten_ops_softmax(mgx_module, node, args, kwargs):
+    assert len(args) == 3
+    acc_kwargs = {"input": args[0], "dim": args[1]}
+
+    return acc_ops_converters.acc_ops_softmax(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.bmm.default)
@@ -156,12 +182,22 @@ def aten_ops_add(mgx_module, node, args, kwargs):
 
 @migraphx_converter(torch.ops.aten.mul.Scalar)
 @migraphx_converter(torch.ops.aten.mul.Tensor)
-def aten_ops_add(mgx_module, node, args, kwargs):
+def aten_ops_mul(mgx_module, node, args, kwargs):
     assert len(args) == 2
     inp, other = args[0], args[1]
 
     acc_kwargs = {"input": inp, "other": other}
     return acc_ops_converters.acc_ops_mul(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.div.Scalar)
+@migraphx_converter(torch.ops.aten.div.Tensor)
+def aten_ops_div(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_div(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.batch_norm)
@@ -220,6 +256,18 @@ def aten_ops_t(mgx_module, node, args, kwargs):
         raise RuntimeError(f"aten.t expects a 2D input shape, got {in_shape}")
 
     acc_kwargs = {"input": args[0], "permutation": [1, 0]}
+    return acc_ops_converters.acc_ops_permute(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.transpose.int)
+def aten_ops_transpose(mgx_module, node, args, kwargs):
+    assert len(args) == 3
+    inp, dim1, dim2 = args[0], args[1], args[2]
+    perm = list(range(len(inp.shape().lens())))
+    perm[dim1] = dim2
+    perm[dim2] = dim1
+
+    acc_kwargs = acc_kwargs = {"input": inp, "permutation": perm}
     return acc_ops_converters.acc_ops_permute(mgx_module, node, (), acc_kwargs)
 
 
