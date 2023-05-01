@@ -4,6 +4,7 @@ import torch
 from torch.fx.passes.shape_prop import ShapeProp
 from torch_migraphx.fx.mgx_module import MGXModule
 from torch_migraphx.fx.fx2mgx import MGXInterpreter
+from torch_migraphx.fx.passes.pass_utils import validate_inference
 
 from .passes.partition import partition, get_partition_inputs
 from .utils import print_graph_info
@@ -29,6 +30,7 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
         print_graph_info('Traced Model', gm, example_inputs)
 
     partitioned_gm = partition(gm, verbose=verbose)
+    # return gm
     for name, mod in partitioned_gm.named_children():
         partition_inputs = get_partition_inputs(partitioned_gm, mod,
                                                 example_inputs)
@@ -42,6 +44,7 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
     return partitioned_gm
 
 
+@validate_inference(0.1, 0.1)
 def lower_subgraph(module: torch.fx.GraphModule,
                    inputs: Sequence[torch.Tensor], **kwargs) -> MGXModule:
     """Lower graph to migraphx module. This graph should only contain supported nodes.

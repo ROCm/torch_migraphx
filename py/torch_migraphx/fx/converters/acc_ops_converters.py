@@ -922,13 +922,13 @@ def acc_ops_sum(mgx_module, node, args, kwargs):
     dims = list(kwargs['dim']) if 'dim' in kwargs else list(
         range(len(in_shape)))
 
-    sum = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=dims),
+    sum_ = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=dims),
                                      [inp])
 
     if 'keepdim' in kwargs and kwargs['keepdim']:
-        return sum
+        return sum_
 
-    return mgx_module.add_instruction(migraphx.op('squeeze', axes=dims), [sum])
+    return mgx_module.add_instruction(migraphx.op('squeeze', axes=dims), [sum_])
 
 
 @migraphx_converter(acc_ops.prod)
@@ -1098,14 +1098,18 @@ def acc_ops_batch_norm(mgx_module, node, args, kwargs):
 def acc_ops_layer_norm(mgx_module, node, args, kwargs):
 
     inp = kwargs['input']
+    eps = kwargs['eps']
+    normalized_shape = kwargs['normalized_shape']
+    weight = kwargs['weight']
+    bias = kwargs['bias']
     dtype = get_arg_dtype(inp)
     out_shape = inp.shape().lens()
 
     eps_mgx = mgx_module.add_literal(
-        torch.tensor(kwargs['eps'], dtype=dtype).numpy())
+        torch.tensor(eps, dtype=dtype).numpy())
     exp_mgx = mgx_module.add_literal(torch.tensor(2, dtype=dtype).numpy())
 
-    axes = list(range(-len(kwargs['normalized_shape']), 0))
+    axes = list(range(-len(normalized_shape), 0))
     mean_mgx = mgx_module.add_instruction(
         migraphx.op('reduce_mean', axes=axes), [inp])
     mean_mgx = mgx_module.add_instruction(
@@ -1135,13 +1139,13 @@ def acc_ops_layer_norm(mgx_module, node, args, kwargs):
                                          [sub_mgx, sqrt_mgx])
 
     weight_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [kwargs['weight']])
+        migraphx.op('multibroadcast', out_lens=out_shape), [weight])
 
     mul_mgx = mgx_module.add_instruction(migraphx.op('mul'),
                                          [weight_mgx, div_mgx])
 
     bias_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [kwargs['bias']])
+        migraphx.op('multibroadcast', out_lens=out_shape), [bias])
 
     return mgx_module.add_instruction(migraphx.op('add'), [mul_mgx, bias_mgx])
 

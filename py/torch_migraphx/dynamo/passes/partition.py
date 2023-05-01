@@ -41,7 +41,7 @@ class MGXOperatorSupport(OperatorSupport):
 
 
 def partition(gm: torch.fx.GraphModule,
-              max_partitions: int = 100,
+              max_partitions: int = 500,
               verbose: bool = True):
     """Partition the graph into supported and unsupported subgraphx for lowering
 

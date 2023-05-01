@@ -31,6 +31,58 @@ import migraphx
 import torch
 from ..converter_registry import migraphx_converter
 from torch_migraphx.fx.converters import acc_ops_converters
+from ..utils import torch_dtype_to_mgx_enum
+
+
+# @migraphx_converter(torch.ops.aten._to_copy.default)
+def aten_ops_to_copy(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+
+    if "dtype" in kwargs:
+        return mgx_module.add_instruction(
+            migraphx.op("convert",
+                        target_type=torch_dtype_to_mgx_enum(kwargs["dtype"])),
+            [args[0]])
+
+    return args[0]
+
+
+# @migraphx_converter(torch.ops.aten.view.default)
+def aten_ops_view(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    acc_kwargs = {"input": args[0], "shape": args[1]}
+    return acc_ops_converters.acc_ops_reshape(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.unsqueeze.default)
+def aten_ops_unsqueeze(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    acc_kwargs = {"input": args[0], "dim": args[1]}
+    return acc_ops_converters.acc_ops_unsqueeze(mgx_module, node, (),
+                                                acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.slice.Tensor)
+def aten_ops_slice(mgx_module, node, args, kwargs):
+    assert len(args) >= 1
+    inp = args[0]
+    dim = args[1] if len(args) >= 2 else 0
+    start = args[2] if len(args) >= 3 else None
+    end = args[3] if len(args) >= 4 else None
+    step = args[4] if len(args) == 5 else None
+
+    inp_size = inp.shape().lens()
+    end = min(inp_size[dim], end) if end else end
+    step = 1 if not step else step
+
+    if (start == 0 and end == inp_size[dim] and step == 1):
+        return inp
+
+    slices = [slice(None, None, None) for _ in inp_size]
+    slices[dim] = start if not end and (step == 1) else slice(start, end, step)
+
+    acc_kwargs = {"input": inp, "idx": slices}
+    return acc_ops_converters.acc_ops_getitem(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.relu.default)
@@ -41,11 +93,22 @@ def aten_ops_relu(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_relu(mgx_module, node, (), acc_kwargs)
 
 
-@migraphx_converter(torch.ops.aten.view.default)
-def aten_ops_view(mgx_module, node, args, kwargs):
+@migraphx_converter(torch.ops.aten.silu.default)
+def aten_ops_silu(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    inp = args[0]
+    sig_kwargs = {"input": inp}
+    sig = acc_ops_converters.acc_ops_sigmoid(mgx_module, node, (), sig_kwargs)
+
+    mul_kwargs = {"input": inp, "other": sig}
+    return acc_ops_converters.acc_ops_mul(mgx_module, node, (), mul_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.bmm.default)
+def aten_ops_bmm(mgx_module, node, args, kwargs):
     assert len(args) == 2
-    acc_kwargs = {"input": args[0], "shape": args[1]}
-    return acc_ops_converters.acc_ops_reshape(mgx_module, node, (), acc_kwargs)
+    acc_kwargs = {"input": args[0], "other": args[1]}
+    return acc_ops_converters.acc_ops_matmul(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.addmm.default)
@@ -89,6 +152,16 @@ def aten_ops_add(mgx_module, node, args, kwargs):
 
     acc_kwargs = {"input": inp, "other": other}
     return acc_ops_converters.acc_ops_add(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.mul.Scalar)
+@migraphx_converter(torch.ops.aten.mul.Tensor)
+def aten_ops_add(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_mul(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.batch_norm)
@@ -192,3 +265,19 @@ def aten_ops_max_pool2d(mgx_module, node, args, kwargs):
 
     return acc_ops_converters.acc_ops_max_pool2d(mgx_module, node, (),
                                                  acc_kwargs), None
+
+
+@migraphx_converter(torch.ops.aten.native_layer_norm.default)
+def aten_ops_layer_norm(mgx_module, node, args, kwargs):
+    assert len(args) == 5
+
+    acc_kwargs = {
+        "input": args[0],
+        "normalized_shape": args[1],
+        "weight": args[2],
+        "bias": args[3],
+        "eps": args[4]
+    }
+
+    return acc_ops_converters.acc_ops_layer_norm(mgx_module, node, (),
+                                                 acc_kwargs), None, None
