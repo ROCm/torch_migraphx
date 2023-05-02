@@ -922,13 +922,14 @@ def acc_ops_sum(mgx_module, node, args, kwargs):
     dims = list(kwargs['dim']) if 'dim' in kwargs else list(
         range(len(in_shape)))
 
-    sum = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=dims),
-                                     [inp])
+    sum_ = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=dims),
+                                      [inp])
 
     if 'keepdim' in kwargs and kwargs['keepdim']:
-        return sum
+        return sum_
 
-    return mgx_module.add_instruction(migraphx.op('squeeze', axes=dims), [sum])
+    return mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
+                                      [sum_])
 
 
 @migraphx_converter(acc_ops.prod)
