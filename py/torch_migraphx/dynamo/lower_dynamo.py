@@ -30,6 +30,7 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
         print_graph_info('Traced Model', gm, example_inputs)
 
     partitioned_gm = partition(gm, verbose=verbose)
+    del gm
     # return gm
     for name, mod in partitioned_gm.named_children():
         partition_inputs = get_partition_inputs(partitioned_gm, mod,
@@ -40,6 +41,8 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
         mgx_mod = lower_subgraph(mod, partition_inputs, **kwargs)
 
         setattr(partitioned_gm, name, mgx_mod)
+        del mod
+        del partition_inputs
 
     return partitioned_gm
 

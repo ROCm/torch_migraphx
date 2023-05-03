@@ -13,6 +13,7 @@ def migraphx(gm, example_inputs):
     @fake_tensor_unsupported
     def migraphx_compiler(gm, example_inputs):
         lowered_gm = lower_aten_to_mgx(gm, example_inputs, verbose=True)
+        del gm
         return make_boxed_func(lowered_gm)
 
     gm = gm.cuda()

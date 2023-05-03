@@ -921,12 +921,13 @@ def acc_ops_sum(mgx_module, node, args, kwargs):
         range(len(in_shape)))
 
     sum_ = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=dims),
-                                     [inp])
+                                      [inp])
 
     if 'keepdim' in kwargs and kwargs['keepdim']:
         return sum_
 
-    return mgx_module.add_instruction(migraphx.op('squeeze', axes=dims), [sum_])
+    return mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
+                                      [sum_])
 
 
 @migraphx_converter(acc_ops.prod)
@@ -1000,8 +1001,7 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
 
     if dims_to_unsqueeze:
         out_mgx = mgx_module.add_instruction(
-            migraphx.op('unsqueeze', axes=dims_to_unsqueeze),
-            [inp])
+            migraphx.op('unsqueeze', axes=dims_to_unsqueeze), [inp])
     else:
         out_mgx = inp
 
@@ -1092,6 +1092,36 @@ def acc_ops_batch_norm(mgx_module, node, args, kwargs):
     return mgx_module.add_instruction(migraphx.op('add'), [mul_mgx, bias_mgx])
 
 
+def conpute_norm(mgx_module, x, eps, axes):
+    dtype = get_arg_dtype(x)
+    out_shape = x.shape().lens()
+
+    exp_mgx = mgx_module.add_literal(torch.tensor(2, dtype=dtype).numpy())
+    eps_mgx = mgx_module.add_literal(torch.tensor(eps, dtype=dtype).numpy())
+    exp_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=out_shape), [exp_mgx])
+    eps_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=out_shape), [eps_mgx])
+
+    mean_mgx = mgx_module.add_instruction(
+        migraphx.op('reduce_mean', axes=axes), [x])
+    mean_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=out_shape), [mean_mgx])
+    sub_mgx = mgx_module.add_instruction(migraphx.op('sub'), [x, mean_mgx])
+    pow_mgx = mgx_module.add_instruction(migraphx.op('pow'),
+                                         [sub_mgx, exp_mgx])
+    var_mgx = mgx_module.add_instruction(migraphx.op('reduce_mean', axes=axes),
+                                         [pow_mgx])
+    var_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=out_shape), [var_mgx])
+    add_eps_mgx = mgx_module.add_instruction(migraphx.op('add'),
+                                             [var_mgx, eps_mgx])
+
+    sqrt_mgx = mgx_module.add_instruction(migraphx.op('sqrt'), [add_eps_mgx])
+
+    return mgx_module.add_instruction(migraphx.op('div'), [sub_mgx, sqrt_mgx])
+
+
 @migraphx_converter(acc_ops.layer_norm)
 def acc_ops_layer_norm(mgx_module, node, args, kwargs):
 
@@ -1100,52 +1130,66 @@ def acc_ops_layer_norm(mgx_module, node, args, kwargs):
     normalized_shape = kwargs['normalized_shape']
     weight = kwargs['weight']
     bias = kwargs['bias']
-    dtype = get_arg_dtype(inp)
     out_shape = inp.shape().lens()
-
-    eps_mgx = mgx_module.add_literal(
-        torch.tensor(eps, dtype=dtype).numpy())
-    exp_mgx = mgx_module.add_literal(torch.tensor(2, dtype=dtype).numpy())
-
     axes = list(range(-len(normalized_shape), 0))
-    mean_mgx = mgx_module.add_instruction(
-        migraphx.op('reduce_mean', axes=axes), [inp])
-    mean_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [mean_mgx])
 
-    sub_mgx = mgx_module.add_instruction(migraphx.op('sub'), [inp, mean_mgx])
-    exp_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [exp_mgx])
-
-    pow_mgx = mgx_module.add_instruction(migraphx.op('pow'),
-                                         [sub_mgx, exp_mgx])
-
-    var_mgx = mgx_module.add_instruction(migraphx.op('reduce_mean', axes=axes),
-                                         [pow_mgx])
-    var_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [var_mgx])
-
-    eps_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [eps_mgx])
-
-    add_eps_mgx = mgx_module.add_instruction(migraphx.op('add'),
-                                             [var_mgx, eps_mgx])
-
-    sqrt_mgx = mgx_module.add_instruction(migraphx.op('sqrt'), [add_eps_mgx])
-
-    div_mgx = mgx_module.add_instruction(migraphx.op('div'),
-                                         [sub_mgx, sqrt_mgx])
+    norm_mgx = conpute_norm(mgx_module, inp, eps, axes)
 
     weight_mgx = mgx_module.add_instruction(
         migraphx.op('multibroadcast', out_lens=out_shape), [weight])
 
     mul_mgx = mgx_module.add_instruction(migraphx.op('mul'),
-                                         [weight_mgx, div_mgx])
+                                         [weight_mgx, norm_mgx])
 
     bias_mgx = mgx_module.add_instruction(
         migraphx.op('multibroadcast', out_lens=out_shape), [bias])
 
     return mgx_module.add_instruction(migraphx.op('add'), [mul_mgx, bias_mgx])
+
+
+@migraphx_converter(acc_ops.group_norm)
+def acc_ops_group_norm(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    eps = kwargs['eps']
+    num_groups = kwargs['num_groups']
+    weight = kwargs['weight']
+    bias = kwargs['bias']
+
+    out_shape = inp.shape().lens()
+    unsq_dims = [i for i in range(len(out_shape)) if i != 1]
+    num_ch = out_shape[1]
+    assert len(out_shape) > 2 and num_ch % num_groups == 0
+
+    group_size = num_ch // num_groups
+    grouped_shape = [out_shape[0]] + [num_groups, group_size] + out_shape[2:]
+    grouped_inp = mgx_module.add_instruction(
+        migraphx.op('reshape', dims=grouped_shape), [inp])
+
+    axes = list(range(-len(grouped_shape[2:]), 0))
+
+    norm_mgx = conpute_norm(mgx_module, grouped_inp, eps, axes)
+    norm_mgx = mgx_module.add_instruction(
+        migraphx.op('reshape', dims=out_shape), [norm_mgx])
+
+    if weight:
+        weight_mgx = mgx_module.add_instruction(
+            migraphx.op('unsqueeze', axes=unsq_dims), [weight])
+        weight_mgx = mgx_module.add_instruction(
+            migraphx.op('multibroadcast', out_lens=out_shape), [weight_mgx])
+
+        norm_mgx = mgx_module.add_instruction(migraphx.op('mul'),
+                                              [weight_mgx, norm_mgx])
+
+    if bias:
+        bias_mgx = mgx_module.add_instruction(
+            migraphx.op('unsqueeze', axes=unsq_dims), [bias])
+        bias_mgx = mgx_module.add_instruction(
+            migraphx.op('multibroadcast', out_lens=out_shape), [bias_mgx])
+
+        norm_mgx = mgx_module.add_instruction(migraphx.op('add'),
+                                              [norm_mgx, bias_mgx])
+
+    return norm_mgx
 
 
 @migraphx_converter(acc_ops.new_zeros)

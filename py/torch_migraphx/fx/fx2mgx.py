@@ -89,7 +89,7 @@ class MGXInterpreter(torch.fx.Interpreter):
         # handle scalar inputs
         if not shape:
             shape = (1,)
-            stride = (1,)
+            stride = (0,)
 
         mgx_shape = migraphx.shape(lens=list(shape),
                                    type=torch_dtype_to_mgx(dtype),

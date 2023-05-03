@@ -72,6 +72,13 @@ def aten_ops_expand(mgx_module, node, args, kwargs):
                                                     acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.permute.default)
+def aten_ops_permute(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    acc_kwargs = {"input": args[0], "permutation": args[1]}
+    return acc_ops_converters.acc_ops_permute(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.slice.Tensor)
 def aten_ops_slice(mgx_module, node, args, kwargs):
     assert len(args) >= 1
@@ -93,6 +100,53 @@ def aten_ops_slice(mgx_module, node, args, kwargs):
 
     acc_kwargs = {"input": inp, "idx": slices}
     return acc_ops_converters.acc_ops_getitem(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.cat.default)
+def aten_ops_cat(mgx_module, node, args, kwargs):
+    assert len(args) >= 1
+    acc_kwargs = {"tensors": args[0], "dim": args[1] if len(args) == 2 else 0}
+    return acc_ops_converters.acc_ops_cat(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.split.Tensor)
+def aten_ops_split(mgx_module, node, args, kwargs):
+    assert len(args) >= 2
+    inp = args[0]
+    split_size_or_sections = args[1]
+    dim = args[2] if len(args) == 3 else 0
+
+    if isinstance(split_size_or_sections, int):
+        acc_kwargs = {
+            "input": inp,
+            "split_size": split_size_or_sections,
+            "dim": dim
+        }
+        return acc_ops_converters.acc_ops_chunk(mgx_module, node, (),
+                                                acc_kwargs)
+
+    assert isinstance(split_size_or_sections, (list, tuple))
+    start = 0
+    slice_nodes = []
+    for i in split_size_or_sections:
+        assert isinstance(i, int)
+        stop = start + i
+        slc = slice(start, stop, 1)
+
+        if dim >= 0:
+            slices = [slice(None, None, None) for _ in range(dim)]
+            slices.append(slc)
+        else:
+            slices = [Ellipsis, slc]
+            slices.extend([slice(None, None, None) for _ in range(-dim - 1)])
+
+        acc_kwargs = {"input": inp, "idx": slices}
+        slice_nodes.append(
+            acc_ops_converters.acc_ops_getitem(mgx_module, node, (),
+                                               acc_kwargs))
+        start += i
+    
+    return slice_nodes
 
 
 @migraphx_converter(torch.ops.aten.relu.default)
@@ -130,7 +184,29 @@ def aten_ops_softmax(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_softmax(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.sin.default)
+def aten_ops_sin(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+    return acc_ops_converters.acc_ops_sin(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.cos.default)
+def aten_ops_cos(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+    return acc_ops_converters.acc_ops_cos(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.exp.default)
+def aten_ops_exp(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+    return acc_ops_converters.acc_ops_exp(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.bmm.default)
+@migraphx_converter(torch.ops.aten.mm.default)
 def aten_ops_bmm(mgx_module, node, args, kwargs):
     assert len(args) == 2
     acc_kwargs = {"input": args[0], "other": args[1]}
@@ -200,7 +276,7 @@ def aten_ops_div(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_div(mgx_module, node, (), acc_kwargs)
 
 
-@migraphx_converter(torch.ops.aten.batch_norm)
+@migraphx_converter(torch.ops.aten.batch_norm.default)
 @migraphx_converter(torch.ops.aten.miopen_batch_norm.default)
 def aten_ops_batch_norm(mgx_module, node, args, kwargs):
     assert len(args) == 8
@@ -219,6 +295,22 @@ def aten_ops_batch_norm(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_batch_norm(
         mgx_module, node, (),
         acc_kwargs), acc_kwargs["running_mean"], acc_kwargs["running_var"]
+
+
+@migraphx_converter(torch.ops.aten.native_group_norm.default)
+def aten_ops_group_norm(mgx_module, node, args, kwargs):
+    assert len(args) == 8
+
+    acc_kwargs = {
+        "input": args[0],
+        "weight": args[1],
+        "bias": args[2],
+        "num_groups": args[6],
+        "eps": args[7],
+    }
+
+    return acc_ops_converters.acc_ops_group_norm(mgx_module, node, (),
+                                                 acc_kwargs), None, None
 
 
 @migraphx_converter(torch.ops.aten.convolution.default)
