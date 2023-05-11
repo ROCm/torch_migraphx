@@ -34,18 +34,19 @@ from torch_migraphx.fx.converters import acc_ops_converters
 from ..utils import torch_dtype_to_mgx_enum
 
 
-# @migraphx_converter(torch.ops.aten._to_copy.default)
+@migraphx_converter(torch.ops.aten._to_copy.default)
 @migraphx_converter(torch.ops.aten.clone.default)
 def aten_ops_to_copy(mgx_module, node, args, kwargs):
     assert len(args) == 1
 
+    out = args[0]
     if "dtype" in kwargs:
-        return mgx_module.add_instruction(
+        out = mgx_module.add_instruction(
             migraphx.op("convert",
                         target_type=torch_dtype_to_mgx_enum(kwargs["dtype"])),
-            [args[0]])
+            [out])
 
-    return args[0]
+    return out
 
 
 @migraphx_converter(torch.ops.aten.view.default)
@@ -145,7 +146,7 @@ def aten_ops_split(mgx_module, node, args, kwargs):
             acc_ops_converters.acc_ops_getitem(mgx_module, node, (),
                                                acc_kwargs))
         start += i
-    
+
     return slice_nodes
 
 
