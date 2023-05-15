@@ -849,6 +849,36 @@ def topk(*, input, k, dim, largest, sorted):
                       sorted=sorted)
 
 
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.argmax))
+@register_acc_op_mapping(op_and_target=("call_method", "argmax"))
+@register_acc_op
+def argmax(*, input, dim, keepdim):
+    return torch.argmax(input=input, dim=dim, keepdim=keepdim)
+
+
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        nn.functional.embedding))
+@register_acc_op
+def embedding(
+    *,
+    input,
+    weight,
+    padding_idx,
+    max_norm,
+    norm_type,
+    scale_grad_by_freq,
+    sparse,
+):
+    return torch.nn.functional.embedding(input=input,
+                                         weight=weight,
+                                         padding_idx=padding_idx,
+                                         max_norm=max_norm,
+                                         norm_type=norm_type,
+                                         scale_grad_by_freq=scale_grad_by_freq,
+                                         sparse=sparse)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", torch.cat))
 @register_acc_op
 def cat(*, tensors, dim):

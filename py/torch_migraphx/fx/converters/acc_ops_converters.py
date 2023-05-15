@@ -765,6 +765,35 @@ def acc_ops_topk(mgx_module, node, args, kwargs):
     return [val, ind]
 
 
+@migraphx_converter(acc_ops.argmax)
+def acc_ops_argmax(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    dim = kwargs["dim"]
+    keepdim = kwargs["keepdim"]
+
+    if dim is None:
+        assert not keepdim, "keepdim cannot be true when dim is None"
+        inp = acc_ops_flatten(mgx_module, node, (), {"input": inp})
+        dim = 0
+
+    out = mgx_module.add_instruction(migraphx.op('argmax', axis=dim), [inp])
+
+    if not keepdim:
+        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=[dim]),
+                                         [out])
+
+    return out
+
+
+@migraphx_converter(acc_ops.embedding)
+def acc_ops_embedding(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    weight = kwargs['weight']
+
+    return mgx_module.add_instruction(migraphx.op('gather', axis=0),
+                                      [weight, inp])
+
+
 @migraphx_converter(acc_ops.reshape)
 def acc_ops_reshape(mgx_module, node, args, kwargs):
 
