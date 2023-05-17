@@ -6,7 +6,7 @@ from utils import convert_to_mgx, verify_outputs
 @pytest.mark.parametrize("num_embed, embed_dim",
                          [(10, 5), (6,20), (100, 64)])
 def test_embedding(num_embed, embed_dim):
-    inp = torch.tensor([0,5,2]).cuda()
+    inp = torch.tensor([[0,5,2], [1, 1, 3]]).cuda()
 
     mod = torch.nn.Embedding(num_embeddings=num_embed, embedding_dim=embed_dim).cuda()
 
