@@ -447,5 +447,4 @@ def aten_ops_argmax(mgx_module, node, args, kwargs):
         "keepdim": args[2] if len(args) >= 3 else False
     }
 
-    return acc_ops_converters.acc_ops_argmax(mgx_module, node, (),
-                                                acc_kwargs)
+    return acc_ops_converters.acc_ops_argmax(mgx_module, node, (), acc_kwargs)

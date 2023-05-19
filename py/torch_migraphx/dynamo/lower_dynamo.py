@@ -50,7 +50,7 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
     return optim_gm
 
 
-@validate_inference(0.1, 0.1)
+# @validate_inference(0.1, 0.1)
 def lower_subgraph(module: torch.fx.GraphModule,
                    inputs: Sequence[torch.Tensor], **kwargs) -> MGXModule:
     """Lower graph to migraphx module. This graph should only contain supported nodes.

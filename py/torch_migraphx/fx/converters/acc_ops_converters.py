@@ -1121,14 +1121,11 @@ def acc_ops_batch_norm(mgx_module, node, args, kwargs):
     return mgx_module.add_instruction(migraphx.op('add'), [mul_mgx, bias_mgx])
 
 
-def conpute_norm(mgx_module, x, eps, axes):
+def compute_norm(mgx_module, x, eps, axes):
     dtype = get_arg_dtype(x)
     out_shape = x.shape().lens()
 
-    exp_mgx = mgx_module.add_literal(torch.tensor(2, dtype=dtype).numpy())
     eps_mgx = mgx_module.add_literal(torch.tensor(eps, dtype=dtype).numpy())
-    exp_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [exp_mgx])
     eps_mgx = mgx_module.add_instruction(
         migraphx.op('multibroadcast', out_lens=out_shape), [eps_mgx])
 
@@ -1137,10 +1134,19 @@ def conpute_norm(mgx_module, x, eps, axes):
     mean_mgx = mgx_module.add_instruction(
         migraphx.op('multibroadcast', out_lens=out_shape), [mean_mgx])
     sub_mgx = mgx_module.add_instruction(migraphx.op('sub'), [x, mean_mgx])
-    pow_mgx = mgx_module.add_instruction(migraphx.op('pow'),
-                                         [sub_mgx, exp_mgx])
-    var_mgx = mgx_module.add_instruction(migraphx.op('reduce_mean', axes=axes),
+
+    num_reduce_elems = torch.tensor(out_shape)[axes].prod().sqrt().item()
+    sqrt_elems_mgx = mgx_module.add_literal(
+        torch.tensor(num_reduce_elems, dtype=dtype).numpy())
+    sqrt_elems_mgx = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=out_shape), [sqrt_elems_mgx])
+    div_sub_mgx = mgx_module.add_instruction(migraphx.op('div'),
+                                             [sub_mgx, sqrt_elems_mgx])
+    pow_mgx = mgx_module.add_instruction(migraphx.op('mul'),
+                                         [div_sub_mgx, div_sub_mgx])
+    var_mgx = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=axes),
                                          [pow_mgx])
+
     var_mgx = mgx_module.add_instruction(
         migraphx.op('multibroadcast', out_lens=out_shape), [var_mgx])
     add_eps_mgx = mgx_module.add_instruction(migraphx.op('add'),
@@ -1148,7 +1154,9 @@ def conpute_norm(mgx_module, x, eps, axes):
 
     sqrt_mgx = mgx_module.add_instruction(migraphx.op('sqrt'), [add_eps_mgx])
 
-    return mgx_module.add_instruction(migraphx.op('div'), [sub_mgx, sqrt_mgx])
+    out = mgx_module.add_instruction(migraphx.op('div'), [sub_mgx, sqrt_mgx])
+
+    return out
 
 
 @migraphx_converter(acc_ops.layer_norm)
@@ -1162,7 +1170,7 @@ def acc_ops_layer_norm(mgx_module, node, args, kwargs):
     out_shape = inp.shape().lens()
     axes = list(range(-len(normalized_shape), 0))
 
-    norm_mgx = conpute_norm(mgx_module, inp, eps, axes)
+    norm_mgx = compute_norm(mgx_module, inp, eps, axes)
 
     weight_mgx = mgx_module.add_instruction(
         migraphx.op('multibroadcast', out_lens=out_shape), [weight])
@@ -1196,7 +1204,7 @@ def acc_ops_group_norm(mgx_module, node, args, kwargs):
 
     axes = list(range(-len(grouped_shape[2:]), 0))
 
-    norm_mgx = conpute_norm(mgx_module, grouped_inp, eps, axes)
+    norm_mgx = compute_norm(mgx_module, grouped_inp, eps, axes)
     norm_mgx = mgx_module.add_instruction(
         migraphx.op('reshape', dims=out_shape), [norm_mgx])
 

@@ -101,7 +101,7 @@ class MGXModule(torch.nn.Module):
                                                 self.input_mgx_shapes):
             if not inp_val.device.type == 'cuda':
                 warnings.warn(
-                    f"Input {inp_name} not on gpu device. Copying to device before execution,"
+                    f"Input {inp_name} not on gpu device. Copying to device before execution, "
                     "however, this will add extra overhead if running a performance benckmark."
                 )
                 inp_val = inp_val.cuda()

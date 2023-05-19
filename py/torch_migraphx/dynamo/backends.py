@@ -25,17 +25,18 @@ def migraphx(gm_, example_inputs):
 
         example_inputs = [example_inputs[ind] for ind in preserved_arg_indices]
 
-        lowered_gm = lower_aten_to_mgx(opt_model,
-                                       example_inputs,
-                                       verbose=True,
-                                       save_mxr=True)
+        lowered_gm = lower_aten_to_mgx(
+            opt_model,
+            example_inputs,
+            verbose=True,
+        )
         del gm
 
         def wrapper(args):
             args_new = [args[ind] for ind in preserved_arg_indices]
             args.clear()
             return lowered_gm(*args_new)
-        
+
         wrapper._boxed_call = True
         return wrapper
 
@@ -43,5 +44,5 @@ def migraphx(gm_, example_inputs):
 
     with torch.no_grad():
         return aot_module_simplified(gm_,
-                                        example_inputs,
-                                        fw_compiler=migraphx_compiler)
+                                     example_inputs,
+                                     fw_compiler=migraphx_compiler)
