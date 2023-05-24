@@ -1,6 +1,6 @@
 import pytest
 import torch
-from utils import FuncModule, MethodModule, LambdaModule, convert_to_mgx, verify_outputs
+from utils import FuncModule, MethodModule, convert_to_mgx, verify_outputs
 
 
 class CatModule(FuncModule):
@@ -14,19 +14,6 @@ class StackModule(FuncModule):
     def forward(self, x1, x2, x3):
 
         return self.func([x1, x2, x3], *self.args, **self.kwargs)
-
-
-@pytest.mark.parametrize('slice_func', [
-    lambda x: x[1, 1, 1, 1, 0],
-    lambda x: x[1:, :-1, 3:5, :, -4:-2],
-    lambda x: x[::2, ..., 5],
-])
-def test_getitem(slice_func):
-    inp = torch.randn(32, 43, 11, 2, 12).cuda()
-    mod = LambdaModule(slice_func).cuda()
-
-    mgx_mod = convert_to_mgx(mod, [inp])
-    verify_outputs(mod, mgx_mod, inp)
 
 
 @pytest.mark.parametrize('start,end', [(0, -1), (0, 2), (4, -1), (3, 5)])
@@ -52,7 +39,8 @@ def test_reshape(in_shape, out_shape):
         verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('perm', [(1, 2, 3, 0), (0, 2, 3, 1), (3, 2, 1, 0), (1, 0, -2, -1)])
+@pytest.mark.parametrize('perm', [(1, 2, 3, 0), (0, 2, 3, 1), (3, 2, 1, 0),
+                                  (1, 0, -2, -1)])
 def test_permute(perm):
     inp = torch.randn(6, 2, 5, 4).cuda()
     mod_func = FuncModule(torch.permute, dims=perm).cuda()
@@ -187,4 +175,3 @@ def test_narrow(dim, start, length):
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
-

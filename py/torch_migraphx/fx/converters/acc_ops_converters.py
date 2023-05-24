@@ -1128,15 +1128,17 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
         idx_rank = len(gather_idx.shape().lens()) - 1
         offset = num_tensor_dims - idx_rank
 
+        # Remove squeezed dimensions from original permutation
         for d in reversed(dims_to_squeeze):
             p = perm[d]
             perm = [i - 1 if i > p else i for i in perm if i != p]
 
-        is_consecutive = perm[:num_tensor_dims] == list(
-            range(perm[0], perm[0] + num_tensor_dims))
-
         # When tensor idx values are together, index op behaviour is different and
         # requires reverting the original permute
+        # Refer to https://numpy.org/doc/stable/user/basics.indexing.html#advanced-indexing
+        is_consecutive = perm[:num_tensor_dims] == list(
+            range(perm[0], perm[0] + num_tensor_dims))
+        
         if is_consecutive:
             last_tensor_idx = perm[num_tensor_dims - 1]
             new_pos = [i - offset if i > last_tensor_idx else i for i in perm]
