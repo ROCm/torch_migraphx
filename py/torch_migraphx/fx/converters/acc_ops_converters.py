@@ -102,6 +102,21 @@ def broadcast_for_elemwise_op(mgx_module, node, inp, other):
     return inp, other
 
 
+def broadcast_tensors(mgx_module, *tensors):
+    lens = [t.shape().lens() for t in tensors]
+    out_shape = list(torch.broadcast_shapes(*lens))
+    outs = []
+    for t in tensors:
+        if t.shape().lens() != out_shape:
+            outs.append(
+                mgx_module.add_instruction(
+                    migraphx.op('multibroadcast', out_lens=out_shape), [t]))
+        else:
+            outs.append(t)
+
+    return outs
+
+
 @migraphx_converter(acc_ops.linear)
 def acc_ops_linear(mgx_module, node, args, kwargs):
 
@@ -1014,10 +1029,13 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
         idx = (idx, )
 
     in_shape = inp.shape().lens()
-    num_slice_types = sum([1 for i in idx if isinstance(i, (slice, int))])
+    num_slice_types = sum([
+        1 for i in idx if isinstance(i, (slice, int, migraphx.instruction_ref))
+    ])
     implicit_dims = len(in_shape) - num_slice_types
     slices = []
     dims_to_unsqueeze = []
+    tensor_dims = []
     for ax, i in enumerate(idx):
         if i == Ellipsis:
             slices.extend(
@@ -1025,15 +1043,28 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
         elif i is None:
             slices.append(slice(None, None, None))
             dims_to_unsqueeze.append(ax)
+        elif isinstance(i, migraphx.instruction_ref):
+            slices.append(slice(None, None, None))
+            tensor_dims.append(ax)
         else:
             slices.append(i)
 
+    out_mgx = inp
     if dims_to_unsqueeze:
         out_mgx = mgx_module.add_instruction(
-            migraphx.op('unsqueeze', axes=dims_to_unsqueeze), [inp])
-    else:
-        out_mgx = inp
+            migraphx.op('unsqueeze', axes=dims_to_unsqueeze), [out_mgx])
 
+    num_tensor_dims = len(tensor_dims)
+    if num_tensor_dims > 1:
+        new_shape = out_mgx.shape().lens()
+        perm = tensor_dims + [
+            i for i in range(len(new_shape)) if i not in tensor_dims
+        ]
+        out_mgx = mgx_module.add_instruction(
+            migraphx.op('transpose', permutation=perm), [out_mgx])
+        slices = [slices[i] for i in perm if i < len(slices)]
+
+    unsq_perm_shape = out_mgx.shape().lens()
     axes, starts, ends, steps = [], [], [], []
     dims_to_squeeze = []
     dims_to_step = []
@@ -1042,7 +1073,7 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
         if isinstance(s, slice):
             if not all(elem is None for elem in [s.start, s.stop, s.step]):
                 start = s.start if s.start is not None else 0
-                end = s.stop if s.stop is not None else in_shape[i]
+                end = s.stop if s.stop is not None else unsq_perm_shape[i]
                 step = s.step
                 axes.append(i)
                 starts.append(start)
@@ -1051,7 +1082,7 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
                     dims_to_step.append(i)
                     steps.append(step)
 
-        else:
+        elif isinstance(s, int):
             start = s
             end = start + 1
             axes.append(i)
@@ -1059,8 +1090,10 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
             ends.append(end)
             dims_to_squeeze.append(i)
 
-    out_mgx = mgx_module.add_instruction(
-        migraphx.op('slice', axes=axes, starts=starts, ends=ends), [out_mgx])
+    if axes:
+        out_mgx = mgx_module.add_instruction(
+            migraphx.op('slice', axes=axes, starts=starts, ends=ends),
+            [out_mgx])
 
     if dims_to_step:
         out_mgx = mgx_module.add_instruction(
@@ -1069,6 +1102,53 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
     if dims_to_squeeze:
         out_mgx = mgx_module.add_instruction(
             migraphx.op('squeeze', axes=dims_to_squeeze), [out_mgx])
+
+    if num_tensor_dims == 1:
+        ax = tensor_dims[0]
+        idxs = idx[ax]
+        for sq_dim in dims_to_squeeze:
+            if sq_dim < ax:
+                ax = ax - 1
+        out_mgx = mgx_module.add_instruction(migraphx.op('gather', axis=ax),
+                                             [out_mgx, idxs])
+    elif num_tensor_dims > 1:
+        idx_tensors = [idx[ax] for ax in tensor_dims]
+        idx_tensors = broadcast_tensors(mgx_module, *idx_tensors)
+        unsq_idx_tensors = []
+        for t in idx_tensors:
+            unsq_idx_tensors.append(
+                mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]),
+                                           [t]))
+        gather_idx = mgx_module.add_instruction(migraphx.op('concat', axis=-1),
+                                                unsq_idx_tensors)
+
+        out_mgx = mgx_module.add_instruction(migraphx.op('gathernd'),
+                                             [out_mgx, gather_idx])
+
+        idx_rank = len(gather_idx.shape().lens()) - 1
+        offset = num_tensor_dims - idx_rank
+
+        for d in reversed(dims_to_squeeze):
+            p = perm[d]
+            perm = [i - 1 if i > p else i for i in perm if i != p]
+
+        is_consecutive = perm[:num_tensor_dims] == list(
+            range(perm[0], perm[0] + num_tensor_dims))
+
+        # When tensor idx values are together, index op behaviour is different and
+        # requires reverting the original permute
+        if is_consecutive:
+            last_tensor_idx = perm[num_tensor_dims - 1]
+            new_pos = [i - offset if i > last_tensor_idx else i for i in perm]
+            new_pos = list(range(
+                perm[0], perm[0] + idx_rank)) + new_pos[num_tensor_dims:]
+
+            new_perm = [None] * len(new_pos)
+            for i, p in enumerate(new_pos):
+                new_perm[p] = i
+
+            out_mgx = mgx_module.add_instruction(
+                migraphx.op('transpose', permutation=new_perm), [out_mgx])
 
     return out_mgx
 

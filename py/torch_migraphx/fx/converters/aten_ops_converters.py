@@ -103,6 +103,16 @@ def aten_ops_slice(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_getitem(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.index.Tensor)
+def aten_ops_index(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+
+    inp = args[0]
+    idx = [i if i is not None else slice(None, None, None) for i in args[1]]
+    acc_kwargs = {"input": inp, "idx": idx}
+    return acc_ops_converters.acc_ops_getitem(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.cat.default)
 def aten_ops_cat(mgx_module, node, args, kwargs):
     assert len(args) >= 1
