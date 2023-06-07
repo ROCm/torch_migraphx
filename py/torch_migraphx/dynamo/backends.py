@@ -6,8 +6,7 @@ from torch._dynamo.backends.registry import register_backend
 from functorch.compile import make_boxed_func
 from .lower_dynamo import lower_aten_to_mgx
 
-from torch._inductor.freezing import optimize_for_inference
-# from .passes.freezing import optimize_for_inference
+from torch._inductor.freezing import freeze
 
 
 @register_backend
@@ -15,13 +14,12 @@ def migraphx(gm_, example_inputs):
 
     @fake_tensor_unsupported
     def migraphx_compiler(gm, example_inputs):
-        opt_model, preserved_arg_indices = optimize_for_inference(
+        opt_model, preserved_arg_indices = freeze(
             gm_,
             gm,
             example_inputs,
             fw_metadata=torch._guards.TracingContext.get().fw_metadata)
 
-        # opt_model.graph.print_tabular()
 
         example_inputs = [example_inputs[ind] for ind in preserved_arg_indices]
 

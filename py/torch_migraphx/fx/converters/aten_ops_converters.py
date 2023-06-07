@@ -289,8 +289,9 @@ def aten_ops_div(mgx_module, node, args, kwargs):
 
 @migraphx_converter(torch.ops.aten.batch_norm.default)
 @migraphx_converter(torch.ops.aten.miopen_batch_norm.default)
+@migraphx_converter(torch.ops.aten._native_batch_norm_legit_no_training.default)
 def aten_ops_batch_norm(mgx_module, node, args, kwargs):
-    assert len(args) == 8
+    assert len(args) >= 7
 
     acc_kwargs = {
         "input": args[0],
@@ -298,10 +299,11 @@ def aten_ops_batch_norm(mgx_module, node, args, kwargs):
         "bias": args[2],
         "running_mean": args[3],
         "running_var": args[4],
-        "training": args[5],
-        "momentum": args[6],
-        "eps": args[7],
     }
+    if node.target == torch.ops.aten._native_batch_norm_legit_no_training.default:
+        acc_kwargs["momentum"], acc_kwargs["eps"] = args[5], args[6]
+    else:
+        acc_kwargs["momentum"], acc_kwargs["eps"] = args[6], args[7]
 
     return acc_ops_converters.acc_ops_batch_norm(
         mgx_module, node, (),

@@ -925,9 +925,13 @@ def acc_ops_chunk(mgx_module, node, args, kwargs):
 # @migraphx_converter(acc_ops.expand)
 def acc_ops_expand_tensor(mgx_module, node, args, kwargs):
     out_shape = kwargs["sizes"]
+    inp = kwargs['input']
+    in_shape = inp.shape().lens()
+    offset = len(out_shape) - len(in_shape)
+    out_shape = [s if s >= 0 else in_shape[i - offset] for i, s in enumerate(out_shape)]
     return mgx_module.add_instruction(
         migraphx.op('multibroadcast', out_lens=list(out_shape)),
-        [kwargs['input']])
+        [inp])
 
 
 @migraphx_converter(acc_ops.cat)
