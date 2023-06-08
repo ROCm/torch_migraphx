@@ -17,7 +17,6 @@ def migraphx(gm_, example_inputs):
         opt_model, preserved_arg_indices = freeze(
             gm_,
             gm,
-            example_inputs,
             fw_metadata=torch._guards.TracingContext.get().fw_metadata)
 
 
