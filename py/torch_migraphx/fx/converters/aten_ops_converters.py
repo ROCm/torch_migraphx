@@ -53,7 +53,13 @@ def aten_ops_to_copy(mgx_module, node, args, kwargs):
 @migraphx_converter(torch.ops.aten._unsafe_view.default)
 def aten_ops_view(mgx_module, node, args, kwargs):
     assert len(args) == 2
-    acc_kwargs = {"input": args[0], "shape": args[1]}
+    inp, shape = args[0], args[1]
+    inp_size = inp.shape().lens()
+
+    if len(inp_size) == 1 and inp_size[0] == 1 and not shape:
+        return inp
+
+    acc_kwargs = {"input": inp, "shape": shape}
     return acc_ops_converters.acc_ops_reshape(mgx_module, node, (), acc_kwargs)
 
 
@@ -182,6 +188,33 @@ def aten_ops_relu(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_relu(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.leaky_relu.default)
+def aten_ops_leaky_relu(mgx_module, node, args, kwargs):
+    assert len(args) >= 1
+    inp = args[0]
+    neg_slope = 0.01 if len(args) < 2 else args[1]
+
+    acc_kwargs = {'input': inp, 'negative_slope': neg_slope}
+    return acc_ops_converters.acc_ops_leaky_relu(mgx_module, node, (),
+                                                 acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.hardsigmoid.default)
+def aten_ops_hardsigmoid(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+
+    return acc_ops_converters.acc_ops_hard_sigmoid(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.sigmoid.default)
+def aten_ops_sigmoid(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+
+    return acc_ops_converters.acc_ops_sigmoid(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.gelu.default)
 def aten_ops_gelu(mgx_module, node, args, kwargs):
     assert len(args) == 1
@@ -258,6 +291,23 @@ def aten_ops_addmm(mgx_module, node, args, kwargs):
         inp = acc_ops_converters.acc_ops_mul(mgx_module, node, (), mul_kwargs)
 
     add_kwargs = {"input": inp, "other": mm_out}
+    return acc_ops_converters.acc_ops_add(mgx_module, node, (), add_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.addcmul.default)
+def aten_ops_addcmul(mgx_module, node, args, kwargs):
+    assert len(args) == 3
+    inp, mat1, mat2 = args
+    value = kwargs["value"] if "value" in kwargs else 1
+
+    mul_kwargs = {"input": mat1, "other": mat2}
+    mul_out = acc_ops_converters.acc_ops_mul(mgx_module, node, (), mul_kwargs)
+
+    if value != 1:
+        mul_kwargs = {"input": mul_out, "other": value}
+        mul_out = acc_ops_converters.acc_ops_mul(mgx_module, node, (), mul_kwargs)
+    
+    add_kwargs = {"input": inp, "other": mul_out}
     return acc_ops_converters.acc_ops_add(mgx_module, node, (), add_kwargs)
 
 
@@ -399,6 +449,42 @@ def aten_ops_constant_pad(mgx_module, node, args, kwargs):
 
     acc_kwargs = {"input": inp, "pad": pad, "mode": "constant", "value": value}
     return acc_ops_converters.acc_ops_pad(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.unbind.int)
+def aten_ops_unbind(mgx_module, node, args, kwargs):
+    assert len(args) >= 1
+    inp = args[0]
+    dim = 0 if len(args) < 2 else args[1]
+
+    acc_kwargs = {"input": inp, "dim": dim}
+    return acc_ops_converters.acc_ops_unbind(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.split_with_sizes.default)
+def aten_ops_split_with_sizes(mgx_module, node, args, kwargs):
+    assert len(args) >= 2
+    inp, split_sizes = args[0], args[1]
+    dim = 0 if len(args) < 3 else args[2]
+    in_shape = inp.shape().lens()
+
+    start = 0
+    outs = []
+    for i in split_sizes:
+        slices = [slice(None, None, None) for _ in in_shape]
+        end = start + i if start + i <= in_shape[dim] else in_shape[dim]
+        slices[dim] = slice(start, end, 1)
+        outs.append(
+            acc_ops_converters.acc_ops_getitem(mgx_module,
+                                               node, (),
+                                               kwargs={
+                                                   'input': inp,
+                                                   'idx': slices
+                                               }))
+
+        start += i
+
+    return tuple(outs)
 
 
 @migraphx_converter(torch.ops.aten.sum.dim_IntList)

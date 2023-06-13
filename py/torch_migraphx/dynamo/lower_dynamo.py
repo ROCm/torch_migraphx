@@ -32,7 +32,7 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
     if verbose:
         print_graph_info('Traced Model', gm, example_inputs)
 
-    optim_gm = run_aten_passes(gm, verbose=verbose)
+    optim_gm = run_aten_passes(gm, example_inputs, verbose=verbose)
     del gm
 
     for name, mod in optim_gm.named_children():

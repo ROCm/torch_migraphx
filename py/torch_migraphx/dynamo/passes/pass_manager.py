@@ -1,8 +1,20 @@
+from typing import Sequence
+
 import torch
 from .partition import partition
-from .contiguous_outputs import make_module_outputs_contiguous
+from .remove_ops import remove_const_ops
+from .const_fold import const_fold
 
-def run_aten_passes(gm: torch.fx.GraphModule, verbose: bool = False):
+from torch.fx.passes.shape_prop import ShapeProp
+from torch.fx.experimental.const_fold import split_const_subgraphs
+
+
+def run_aten_passes(gm: torch.fx.GraphModule,
+                    inputs: Sequence[torch.Tensor],
+                    verbose: bool = False):
+    ShapeProp(gm).propagate(*inputs)
+    gm = remove_const_ops(gm)
+    gm = const_fold(gm)
     gm = partition(gm, verbose=verbose)
-    # gm = make_module_outputs_contiguous(gm, verbose=verbose)
+
     return gm

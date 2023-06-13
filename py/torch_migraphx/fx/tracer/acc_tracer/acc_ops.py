@@ -212,6 +212,12 @@ def tile(*, input, dims):
     return torch.tile(input=input, dims=dims)
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.unbind))
+@register_acc_op
+def unbind(*, input, dim=0):
+    return torch.unbind(input, dim=dim)
+
+
 @register_custom_acc_mapper_fn(
     op_and_target=("call_function", torch.stack),
     arg_replacement_tuples=[

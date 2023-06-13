@@ -928,10 +928,31 @@ def acc_ops_expand_tensor(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     in_shape = inp.shape().lens()
     offset = len(out_shape) - len(in_shape)
-    out_shape = [s if s >= 0 else in_shape[i - offset] for i, s in enumerate(out_shape)]
+    out_shape = [
+        s if s >= 0 else in_shape[i - offset] for i, s in enumerate(out_shape)
+    ]
     return mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=list(out_shape)),
-        [inp])
+        migraphx.op('multibroadcast', out_lens=list(out_shape)), [inp])
+
+
+@migraphx_converter(acc_ops.unbind)
+def acc_ops_unbind(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    dim = kwargs['dim']
+    in_shape = inp.shape().lens()
+    outs = []
+    for i in range(in_shape[dim]):
+        slices = [slice(None, None, None) for _ in in_shape]
+        slices[dim] = i
+        outs.append(
+            acc_ops_getitem(mgx_module,
+                            node, (),
+                            kwargs={
+                                'input': inp,
+                                'idx': slices
+                            }))
+    
+    return tuple(outs)
 
 
 @migraphx_converter(acc_ops.cat)
@@ -1142,7 +1163,7 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
         # Refer to https://numpy.org/doc/stable/user/basics.indexing.html#advanced-indexing
         is_consecutive = perm[:num_tensor_dims] == list(
             range(perm[0], perm[0] + num_tensor_dims))
-        
+
         if is_consecutive:
             last_tensor_idx = perm[num_tensor_dims - 1]
             new_pos = [i - offset if i > last_tensor_idx else i for i in perm]

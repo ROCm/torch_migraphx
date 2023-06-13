@@ -175,3 +175,16 @@ def test_narrow(dim, start, length):
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('size, dim', [
+    ((24, 2, 4), 1),
+    ((2, ), 0),
+    ((24, 3, 1, 8), -1),
+])
+def test_unbind(size, dim):
+    inp = inp = torch.randn(size).cuda()
+    mod = FuncModule(torch.unbind, dim=dim).cuda()
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
