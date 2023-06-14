@@ -951,7 +951,6 @@ def acc_ops_unbind(mgx_module, node, args, kwargs):
                                 'input': inp,
                                 'idx': slices
                             }))
-    
     return tuple(outs)
 
 
@@ -986,8 +985,14 @@ def acc_ops_sum(mgx_module, node, args, kwargs):
 
     inp = kwargs['input']
     in_shape = inp.shape().lens()
+    dtype = get_arg_dtype(inp)
     dims = list(kwargs['dim']) if 'dim' in kwargs else list(
         range(len(in_shape)))
+
+    if dtype == torch.bool:
+        inp = mgx_module.add_instruction(
+            migraphx.op("convert",
+                        target_type=migraphx.shape.type_t.int64_type), [inp])
 
     sum_ = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=dims),
                                       [inp])
