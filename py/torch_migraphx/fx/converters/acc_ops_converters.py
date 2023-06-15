@@ -935,6 +935,13 @@ def acc_ops_expand_tensor(mgx_module, node, args, kwargs):
         migraphx.op('multibroadcast', out_lens=list(out_shape)), [inp])
 
 
+@migraphx_converter(acc_ops.where)
+def acc_ops_where(mgx_module, node, args, kwargs):
+    cond, inp, other = kwargs["condition"], kwargs["input"], kwargs["other"]
+    cond, inp, other = broadcast_tensors(mgx_module, cond, inp, other)
+    return mgx_module.add_instruction(migraphx.op('where'), [cond, inp, other])
+
+
 @migraphx_converter(acc_ops.unbind)
 def acc_ops_unbind(mgx_module, node, args, kwargs):
     inp = kwargs['input']

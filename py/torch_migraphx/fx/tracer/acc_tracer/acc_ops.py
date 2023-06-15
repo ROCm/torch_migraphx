@@ -573,6 +573,33 @@ def permute(*, input, permutation):
     return input.permute(*permutation)
 
 
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.masked_fill),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("mask", "mask"),
+        ("value", "value"),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_method", "masked_fill"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("mask", "mask"),
+        ("value", "value"),
+    ],
+)
+@register_acc_op
+def masked_fill(*, input, mask, value):
+    return input.masked_fill(mask, value)
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.where))
+@register_acc_op
+def where(*, condition, input, other):
+    return torch.where(condition, input, other)
+
+
 @register_custom_acc_mapper_fn(
     op_and_target=("call_function", torch.square),
     arg_replacement_tuples=[
