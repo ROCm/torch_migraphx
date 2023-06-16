@@ -36,10 +36,14 @@ from ..utils import torch_dtype_to_mgx_enum
 
 @migraphx_converter(torch.ops.aten._to_copy.default)
 @migraphx_converter(torch.ops.aten.clone.default)
+@migraphx_converter(torch.ops.aten.copy.default)
 def aten_ops_to_copy(mgx_module, node, args, kwargs):
-    assert len(args) == 1
-
-    out = args[0]
+    if node.target == torch.ops.aten.copy.default:
+        assert len(args) == 2
+        out = args[1]
+    else:
+        assert len(args) == 1
+        out = args[0]
     if "dtype" in kwargs:
         out = mgx_module.add_instruction(
             migraphx.op("convert",
@@ -51,6 +55,7 @@ def aten_ops_to_copy(mgx_module, node, args, kwargs):
 
 @migraphx_converter(torch.ops.aten.view.default)
 @migraphx_converter(torch.ops.aten._unsafe_view.default)
+@migraphx_converter(torch.ops.aten.reshape)
 def aten_ops_view(mgx_module, node, args, kwargs):
     assert len(args) == 2
     inp, shape = args[0], args[1]
@@ -69,6 +74,13 @@ def aten_ops_unsqueeze(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": args[0], "dim": args[1]}
     return acc_ops_converters.acc_ops_unsqueeze(mgx_module, node, (),
                                                 acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.squeeze.dim)
+def aten_ops_squeeze(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    acc_kwargs = {"input": args[0], "dim": args[1]}
+    return acc_ops_converters.acc_ops_squeeze(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.expand.default)
@@ -131,6 +143,7 @@ def aten_ops_slice(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(torch.ops.aten.index.Tensor)
+@migraphx_converter(torch.ops.aten._unsafe_index.Tensor)
 def aten_ops_index(mgx_module, node, args, kwargs):
     assert len(args) == 2
     inp = args[0]
@@ -185,6 +198,18 @@ def aten_ops_split(mgx_module, node, args, kwargs):
         start += i
 
     return slice_nodes
+
+
+@migraphx_converter(torch.ops.aten.clamp.default)
+def aten_ops_clamp(mgx_module, node, args, kwargs):
+    assert len(args) >= 1
+    acc_kwargs = {
+        "input": args[0],
+        "min": args[1] if len(args) >= 2 else None,
+        "max": args[2] if len(args) == 3 else None
+    }
+
+    return acc_ops_converters.acc_ops_clamp(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.relu.default)

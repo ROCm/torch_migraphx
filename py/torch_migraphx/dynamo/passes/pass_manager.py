@@ -2,7 +2,7 @@ from typing import Sequence
 
 import torch
 from .partition import partition
-from .remove_ops import remove_const_ops
+from .remove_ops import remove_const_ops, remove_clone_ops, remove_view_ops
 from .const_fold import const_fold
 
 from torch.fx.passes.shape_prop import ShapeProp
@@ -14,6 +14,7 @@ def run_aten_passes(gm: torch.fx.GraphModule,
                     verbose: bool = False):
     ShapeProp(gm).propagate(*inputs)
     gm = remove_const_ops(gm)
+    gm = remove_view_ops(gm)
     gm = const_fold(gm)
     gm = partition(gm, verbose=verbose)
 

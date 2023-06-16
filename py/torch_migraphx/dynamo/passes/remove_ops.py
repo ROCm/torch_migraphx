@@ -5,6 +5,7 @@ import torch.fx
 def remove_clone_ops(gm: torch.fx.GraphModule):
     clone_ops = [
         torch.ops.aten.clone.default,
+        torch.ops.aten.copy.default,
     ]
     for node in gm.graph.nodes:
         if node.op == "call_function" and node.target in clone_ops:
@@ -19,6 +20,7 @@ def remove_clone_ops(gm: torch.fx.GraphModule):
 def remove_view_ops(gm: torch.fx.GraphModule):
     view_ops = [
         torch.ops.aten._unsafe_view.default,
+        torch.ops.aten.view.default,
     ]
     for node in gm.graph.nodes:
         if node.op == "call_function" and node.target in view_ops:
