@@ -973,6 +973,13 @@ def acc_ops_cat(mgx_module, node, args, kwargs):
                                       list(kwargs['tensors']))
 
 
+@migraphx_converter(acc_ops.maximum)
+def acc_ops_maximum(mgx_module, node, args, kwargs):
+    inp, other = kwargs["input"], kwargs["other"]
+    inp, other = broadcast_tensors(mgx_module, inp, other)
+    return mgx_module.add_instruction(migraphx.op('max'), [inp, other])
+
+
 @migraphx_converter(acc_ops.mean)
 def acc_ops_mean(mgx_module, node, args, kwargs):
 
@@ -1190,6 +1197,41 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
                 migraphx.op('transpose', permutation=new_perm), [out_mgx])
 
     return out_mgx
+
+
+@migraphx_converter(acc_ops.slice_scatter)
+def acc_ops_slice_scatter(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    src = kwargs["src"]
+    dim = kwargs["dim"]
+    in_shape = inp.shape().lens()
+    src_shape = src.shape().lens()
+    start = kwargs["start"] if kwargs["start"] is not None else 0
+
+    end = kwargs["end"] if kwargs["end"] is not None else in_shape[dim]
+    if end < 0:
+        end = in_shape[dim] + end
+    elif end > in_shape[dim]:
+        end = in_shape[dim]
+
+    step = kwargs["step"]
+
+    # Create indices tensor for equivalent scatter op
+    indices = torch.tensor(list(range(start, end, step)))
+    slice_size = indices.numel()
+    idx_size = [1 for _ in src_shape]
+    idx_size[dim] = slice_size
+    indices = indices.reshape(idx_size)
+    indices = indices.expand(src_shape)
+
+    indices_mgx = mgx_module.add_literal(
+        torch.tensor(indices, dtype=torch.int64).numpy())
+    
+    std_input = mgx_module.add_instruction(migraphx.op('contiguous'), [inp])
+    std_src = mgx_module.add_instruction(migraphx.op('contiguous'), [src])
+
+    return mgx_module.add_instruction(migraphx.op('scatter_none', axis=dim),
+                                      [std_input, indices_mgx, std_src])
 
 
 @migraphx_converter(acc_ops.batch_norm)

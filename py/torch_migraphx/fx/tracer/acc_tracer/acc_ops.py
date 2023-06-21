@@ -159,6 +159,13 @@ def prod_mapper(node: torch.fx.Node,
         return new_node
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.maximum))
+@register_acc_op_mapping(op_and_target=("call_method", "maximum"))
+@register_acc_op
+def maximum(*, input, other):
+    return torch.maximum(input=input, other=other)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", operator.getitem))
 @register_acc_op
 def getitem(*, input, idx):
@@ -175,6 +182,17 @@ def size(*, input):
 @register_acc_op
 def numel(*, input):
     return torch.numel(input)
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.slice_scatter))
+@register_acc_op
+def slice_scatter(*, input, src, dim=0, start=None, end=None, step=1):
+    return torch.slice_scatter(input=input,
+                               src=src,
+                               dim=dim,
+                               start=start,
+                               end=end,
+                               step=step)
 
 
 @register_acc_op_mapping(op_and_target=("call_function", nn.functional.linear))

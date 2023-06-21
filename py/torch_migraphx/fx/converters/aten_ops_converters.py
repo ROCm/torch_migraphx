@@ -98,6 +98,29 @@ def aten_ops_where(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_where(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.slice_scatter.default)
+def aten_ops_slice_scatter(mgx_module, node, args, kwargs):
+    assert len(args) >= 2
+    acc_kwargs = {
+        "input": args[0],
+        "src": args[1],
+        "dim": args[2] if len(args) >= 3 else 0,
+        "start": args[3] if len(args) >= 4 else None,
+        "end": args[4] if len(args) >= 5 else None,
+        "step": args[5] if len(args) >= 6 else 1,
+    }
+
+    return acc_ops_converters.acc_ops_slice_scatter(mgx_module, node, (),
+                                                    acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.maximum.default)
+def aten_ops_maximum(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    acc_kwargs = {"input": args[0], "other": args[1]}
+    return acc_ops_converters.acc_ops_maximum(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.permute.default)
 def aten_ops_permute(mgx_module, node, args, kwargs):
     assert len(args) == 2
@@ -391,6 +414,13 @@ def aten_ops_sub(mgx_module, node, args, kwargs):
 
     acc_kwargs = {"input": inp, "other": other}
     return acc_ops_converters.acc_ops_sub(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.rsub.Scalar)
+@migraphx_converter(torch.ops.aten.rsub.Tensor)
+def aten_ops_rsub(mgx_module, node, args, kwargs):
+    args[0], args[1] = args[1], args[0]
+    return aten_ops_sub(mgx_module, node, args, kwargs)
 
 
 @migraphx_converter(torch.ops.aten.mul.Scalar)
