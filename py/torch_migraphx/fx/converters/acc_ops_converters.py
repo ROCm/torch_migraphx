@@ -942,6 +942,19 @@ def acc_ops_where(mgx_module, node, args, kwargs):
     return mgx_module.add_instruction(migraphx.op('where'), [cond, inp, other])
 
 
+@migraphx_converter(acc_ops.masked_fill)
+def acc_ops_masked_fill(mgx_module, node, args, kwargs):
+    inp, mask, value = kwargs["input"], kwargs["mask"], kwargs["value"]
+
+    dtype = get_arg_dtype(inp)
+    value_mgx = mgx_module.add_literal(
+        torch.tensor(value, dtype=dtype).numpy())
+
+    new_kwargs = {"input": value_mgx, "condition": mask, "other": inp}
+
+    return acc_ops_where(mgx_module, node, (), new_kwargs)
+
+
 @migraphx_converter(acc_ops.unbind)
 def acc_ops_unbind(mgx_module, node, args, kwargs):
     inp = kwargs['input']
@@ -1127,7 +1140,7 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
                     steps.append(step)
 
         elif isinstance(s, int):
-            start = s
+            start = s if s >= 0 else in_shape[i] + s
             end = start + 1
             axes.append(i)
             starts.append(start)
@@ -1207,6 +1220,8 @@ def acc_ops_slice_scatter(mgx_module, node, args, kwargs):
     in_shape = inp.shape().lens()
     src_shape = src.shape().lens()
     start = kwargs["start"] if kwargs["start"] is not None else 0
+    if start < 0:
+        start = in_shape[dim] + start
 
     end = kwargs["end"] if kwargs["end"] is not None else in_shape[dim]
     if end < 0:
@@ -1226,12 +1241,38 @@ def acc_ops_slice_scatter(mgx_module, node, args, kwargs):
 
     indices_mgx = mgx_module.add_literal(
         torch.tensor(indices, dtype=torch.int64).numpy())
-    
+
     std_input = mgx_module.add_instruction(migraphx.op('contiguous'), [inp])
     std_src = mgx_module.add_instruction(migraphx.op('contiguous'), [src])
 
     return mgx_module.add_instruction(migraphx.op('scatter_none', axis=dim),
                                       [std_input, indices_mgx, std_src])
+
+
+@migraphx_converter(acc_ops.select_scatter)
+def acc_ops_select_scatter(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    src = kwargs["src"]
+    dim = kwargs["dim"]
+    idx = kwargs["index"]
+    in_shape = inp.shape().lens()
+
+    idx = idx if idx >= 0 else in_shape[dim] + idx
+    start, end, step = idx, idx + 1, 1
+
+    src = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[dim]),
+                                     [src])
+
+    new_kwargs = {
+        "input": inp,
+        "src": src,
+        "dim": dim,
+        "start": start,
+        "end": end,
+        "step": step
+    }
+
+    return acc_ops_slice_scatter(mgx_module, node, args, new_kwargs)
 
 
 @migraphx_converter(acc_ops.batch_norm)
@@ -1397,3 +1438,36 @@ def acc_ops_new_zeros(mgx_module, node, args, kwargs):
     dtype = get_arg_dtype(kwargs["input"])
 
     return mgx_module.add_literal(torch.zeros(out_shape, dtype=dtype).numpy())
+
+
+@migraphx_converter(acc_ops.as_strided)
+def acc_ops_as_strided(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    size = kwargs["size"]
+    stride = kwargs["stride"]
+    offset = kwargs["storage_offset"]
+    offset = 0 if offset is None else offset
+
+    inp_flat = acc_ops_flatten(mgx_module, node, (), {"input": inp})
+
+    def compute_indices(size, stride, current, dim, indices):
+        if dim == len(size):
+            indices.append(current)
+            return
+        for i in range(size[dim]):
+            current += stride[dim] * i
+            compute_indices(size, stride, current, dim + 1, indices)
+            current -= stride[dim] * i
+
+    indices = []
+    compute_indices(size, stride, 0, 0, indices)
+    indices = torch.tensor(indices) + offset
+    indices_mgx = mgx_module.add_literal(indices.numpy())
+
+    flat_elems = mgx_module.add_instruction(migraphx.op('gather'),
+                                            [inp_flat, indices_mgx])
+
+    return acc_ops_reshape(mgx_module, node, (), {
+        "input": flat_elems,
+        "shape": size
+    })

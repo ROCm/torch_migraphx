@@ -37,6 +37,7 @@ from ..utils import torch_dtype_to_mgx_enum
 @migraphx_converter(torch.ops.aten._to_copy.default)
 @migraphx_converter(torch.ops.aten.clone.default)
 @migraphx_converter(torch.ops.aten.copy.default)
+@migraphx_converter(torch.ops.aten.detach.default)
 def aten_ops_to_copy(mgx_module, node, args, kwargs):
     if node.target == torch.ops.aten.copy.default:
         assert len(args) == 2
@@ -98,6 +99,15 @@ def aten_ops_where(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_where(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.masked_fill.Scalar)
+def aten_ops_masked_fill(mgx_module, node, args, kwargs):
+    assert len(args) == 3
+
+    acc_kwargs = {"input": args[0], "mask": args[1], "value": args[2]}
+    return acc_ops_converters.acc_ops_masked_fill(mgx_module, node, (),
+                                                  acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.slice_scatter.default)
 def aten_ops_slice_scatter(mgx_module, node, args, kwargs):
     assert len(args) >= 2
@@ -112,6 +122,20 @@ def aten_ops_slice_scatter(mgx_module, node, args, kwargs):
 
     return acc_ops_converters.acc_ops_slice_scatter(mgx_module, node, (),
                                                     acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.select_scatter.default)
+def aten_ops_select_scatter(mgx_module, node, args, kwargs):
+    assert len(args) == 4
+    acc_kwargs = {
+        "input": args[0],
+        "src": args[1],
+        "dim": args[2],
+        "index": args[3]
+    }
+
+    return acc_ops_converters.acc_ops_select_scatter(mgx_module, node, (),
+                                                     acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.maximum.default)
@@ -703,3 +727,18 @@ def aten_ops_argmax(mgx_module, node, args, kwargs):
     }
 
     return acc_ops_converters.acc_ops_argmax(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.as_strided.default)
+def aten_ops_as_strided(mgx_module, node, args, kwargs):
+    assert len(args) >= 3
+
+    acc_kwargs = {
+        "input": args[0],
+        "size": args[1],
+        "stride": args[2],
+        "storage_offset": args[3] if len(args) == 4 else 0
+    }
+
+    return acc_ops_converters.acc_ops_as_strided(mgx_module, node, (),
+                                                 acc_kwargs)

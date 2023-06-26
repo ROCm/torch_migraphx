@@ -195,6 +195,12 @@ def slice_scatter(*, input, src, dim=0, start=None, end=None, step=1):
                                step=step)
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.select_scatter))
+@register_acc_op
+def select_scatter(*, input, src, dim, index):
+    return torch.select_scatter(input=input, src=src, dim=dim, index=index)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", nn.functional.linear))
 @register_acc_op
 def linear(*, input, weight, bias):
@@ -1726,3 +1732,29 @@ def lstm_mapper(node: torch.fx.Node, mod: nn.Module) -> torch.fx.Node:
                                           })
         new_node.meta = node.meta.copy()
         return new_node
+
+
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.as_strided),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("size", "size"),
+        ("stride", "stride"),
+        ("storage_offset", "storage_offset", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_method", "as_strided"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("size", "size"),
+        ("stride", "stride"),
+        ("storage_offset", "storage_offset", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def as_strided(*, input, size, stride, storage_offset=0):
+    return torch.as_strided(input=input,
+                            size=size,
+                            stride=stride,
+                            storage_offset=storage_offset)
