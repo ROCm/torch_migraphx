@@ -2,10 +2,13 @@ from typing import Sequence
 
 import torch
 from torch.fx.passes.shape_prop import ShapeProp
+import migraphx
+
 from torch_migraphx.fx.mgx_module import MGXModule
 from torch_migraphx.fx.fx2mgx import MGXInterpreter
 from torch_migraphx.fx.passes.pass_utils import validate_inference
 
+from .passes.pass_manager import run_aten_passes
 from .passes.partition import partition, get_partition_inputs
 from .utils import print_graph_info
 
@@ -29,25 +32,25 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
     if verbose:
         print_graph_info('Traced Model', gm, example_inputs)
 
-    partitioned_gm = partition(gm, verbose=verbose)
+    optim_gm = run_aten_passes(gm, example_inputs, verbose=verbose)
     del gm
-    # return gm
-    for name, mod in partitioned_gm.named_children():
-        partition_inputs = get_partition_inputs(partitioned_gm, mod,
+
+    for name, mod in optim_gm.named_children():
+        partition_inputs = get_partition_inputs(optim_gm, mod,
                                                 example_inputs)
         if verbose:
             print_graph_info(name, mod, partition_inputs)
 
-        mgx_mod = lower_subgraph(mod, partition_inputs, **kwargs)
+        mgx_mod = lower_subgraph(mod, partition_inputs, name=name, **kwargs)
 
-        setattr(partitioned_gm, name, mgx_mod)
+        setattr(optim_gm, name, mgx_mod)
         del mod
         del partition_inputs
 
-    return partitioned_gm
+    return optim_gm
 
 
-@validate_inference(0.1, 0.1)
+# @validate_inference(0.1, 0.1)
 def lower_subgraph(module: torch.fx.GraphModule,
                    inputs: Sequence[torch.Tensor], **kwargs) -> MGXModule:
     """Lower graph to migraphx module. This graph should only contain supported nodes.
@@ -64,9 +67,14 @@ def lower_subgraph(module: torch.fx.GraphModule,
 
     verbose = kwargs['verbose'] if 'verbose' in kwargs else False
     fp16 = kwargs['fp16'] if 'fp16' in kwargs else False
+    save_mxr = kwargs['save_mxr'] if 'save_mxr' in kwargs else False
 
     interpreter = MGXInterpreter(module, inputs, verbose_log=verbose)
     interpreter.run()
+
+    if save_mxr:
+        name = f"{kwargs['name']}.mxr" if 'name' in kwargs else "prog.mxr"
+        migraphx.save(interpreter.program, name)
 
     mgx_module = MGXModule(program=interpreter.program,
                            input_names=interpreter.get_input_names(),

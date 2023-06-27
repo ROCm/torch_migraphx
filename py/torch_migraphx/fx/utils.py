@@ -1,20 +1,20 @@
 #####################################################################################
 # Copyright (c) 2022-present, Advanced Micro Devices, Inc. All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 # 1. Redistributions of source code must retain the above copyright notice, this
 #    list of conditions and the following disclaimer.
-# 
+#
 # 2. Redistributions in binary form must reproduce the above copyright notice,
 #    this list of conditions and the following disclaimer in the documentation
 #    and/or other materials provided with the distribution.
-# 
+#
 # 3. Neither the name of the copyright holder nor the names of its
 #    contributors may be used to endorse or promote products derived from
 #    this software without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -101,8 +101,9 @@ def tensors_from_mgx_arguments_par(args: List[migraphx.argument],
                                    thread_size: int = 1) -> List[torch.tensor]:
 
     ptrs = [a.data_ptr() for a in args]
-    return _C.args_to_tensors_par(ptrs, lens, strides, type_strs, device,
-                                  thread_size)
+    scalars = [a.shape().scalar() for a in args]
+    return _C.args_to_tensors_par(ptrs, lens, strides, type_strs, scalars,
+                                  device, thread_size)
 
 
 def tensors_from_mgx_arguments(
@@ -112,7 +113,7 @@ def tensors_from_mgx_arguments(
 ) -> List[torch.tensor]:
     return [
         _C.tensor_from_ptr(a.data_ptr(), s.lens(), s.strides(),
-                           s.type_string(), device)
+                           s.type_string(), s.scalar(), device)
         for a, s in zip(args, mgx_shapes)
     ]
 
@@ -178,6 +179,7 @@ def req_torch_version(min_torch_version: str = "2.dev"):
     """
 
     def nested_decorator(f: Callable):
+
         def function_wrapper(*args, **kwargs):
             # Parse minimum and current Torch versions
             min_version = version.parse(min_torch_version)
@@ -186,8 +188,8 @@ def req_torch_version(min_torch_version: str = "2.dev"):
             if current_version < min_version:
                 raise AssertionError(
                     f"Expected Torch version {min_torch_version} or greater, "
-                    + f"when calling {f}. Detected version {torch.__version__}"
-                )
+                    +
+                    f"when calling {f}. Detected version {torch.__version__}")
             else:
                 return f(*args, **kwargs)
 

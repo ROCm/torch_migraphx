@@ -21,6 +21,8 @@ class MGXOperatorSupport(OperatorSupport):
     def is_node_supported(self, submodules: Mapping[str, torch.nn.Module],
                           node: torch.fx.Node) -> bool:
 
+        if node.op == "get_attr": return True
+
         if node.target in CONVERTERS.keys():
             if not node.is_impure():
                 self.supported.add(node.target)
