@@ -23,4 +23,3 @@ RUN /install_migraphx.sh && rm /install_migraphx.sh
 ENV PYTHONPATH=/opt/rocm/lib
 ENV TORCH_USE_RTLD_GLOBAL=YES
 ENV LD_LIBRARY_PATH=/opt/rocm/lib
-ENV MIGRAPHX_ENABLE_HIPRTC_WORKAROUNDS=1

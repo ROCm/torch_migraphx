@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 project(_torch_migraphx)
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm /opt/rocm/hipfft /opt/rocm/rocblas /opt/rocm/hiprand /opt/rocm/hipsparse)
 find_package(hip REQUIRED)
@@ -22,4 +22,4 @@ pybind11_add_module(_torch_migraphx ${SOURCES} "${SOURCE_DIR}/torch_migraphx_py.
 
 target_link_libraries(_torch_migraphx PUBLIC migraphx::c "${TORCH_LIBRARIES}")
 
-set_property(TARGET _torch_migraphx PROPERTY CXX_STANDARD 14)
+set_property(TARGET _torch_migraphx PROPERTY CXX_STANDARD 17)
