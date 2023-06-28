@@ -86,6 +86,11 @@ class MGXInterpreter(torch.fx.Interpreter):
         dtype, shape, stride = self.input_specs[self._input_iter]
         self._input_iter += 1
 
+        # handle scalar inputs
+        if not shape:
+            shape = (1,)
+            stride = (0,)
+
         mgx_shape = migraphx.shape(lens=list(shape),
                                    type=torch_dtype_to_mgx(dtype),
                                    strides=list(stride))
@@ -130,6 +135,13 @@ class MGXInterpreter(torch.fx.Interpreter):
     def get_attr(self, node, args, kwargs):
         assert isinstance(node.target, str)
         attr = self.fetch_attr(node.target)
+
+        if isinstance(attr, torch.nn.ParameterList):
+            mgx_attrs = []
+            for a in attr:
+                mgx_attrs.append(self.mm.add_literal(a.cpu().detach().numpy()))
+            return tuple(mgx_attrs)
+        
         return self.mm.add_literal(attr.cpu().detach().numpy())
 
     def output(self, node, args, kwargs):

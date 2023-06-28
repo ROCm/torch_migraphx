@@ -26,59 +26,49 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
-from collections.abc import Iterable
-import numpy as np
+
 import torch
-import migraphx
+import torch._dynamo as dynamo
+from torch._dynamo.backends.common import device_from_inputs, fake_tensor_unsupported, aot_autograd
+from torch._functorch.aot_autograd import aot_module_simplified
+from torch._dynamo.backends.registry import register_backend
+from functorch.compile import make_boxed_func
+from .lower_dynamo import lower_aten_to_mgx
+
+from torch._inductor.freezing import freeze
 
 
-def extend_attr(val, num_elem):
-    if not isinstance(val, Iterable):
-        return [val for _ in range(num_elem)]
-    else:
-        return list(val)
+@register_backend
+def migraphx(gm_, example_inputs):
+
+    @fake_tensor_unsupported
+    def migraphx_compiler(gm, example_inputs):
+        opt_model, preserved_arg_indices = freeze(
+            gm_,
+            gm,
+            fw_metadata=torch._guards.TracingContext.get().fw_metadata)
 
 
-def compute_same_padding(in_shape, kernel_size, strides, dilation):
-    pads = [
-        int(
-            max((np.ceil(in_shape[i] / strides[i]) - 1) * strides[i] +
-                (kernel_size[i] - 1) * dilation[i] + 1 - in_shape[i], 0))
-        for i in range(len(in_shape))
-    ]
+        example_inputs = [example_inputs[ind] for ind in preserved_arg_indices]
 
-    res = []
-    for i in range(len(in_shape)):
-        res.append(pads[i] // 2)
-        res.append(pads[i] - pads[i] // 2)
+        lowered_gm = lower_aten_to_mgx(
+            opt_model,
+            example_inputs,
+            verbose=True,
+        )
+        del gm
 
-    return res
+        def wrapper(args):
+            args_new = [args[ind] for ind in preserved_arg_indices]
+            args.clear()
+            return lowered_gm(*args_new)
 
+        wrapper._boxed_call = True
+        return wrapper
 
-def ceildiv(a, b):
-    return -(a // -b)
+    gm_ = gm_.cuda().eval()
 
-
-def normalize_permutation(ax):
-    if len(ax) == 1 and isinstance(ax[0], Iterable):
-        ax = ax[0]
-
-    return [len(ax) + i if i < 0 else i for i in ax]
-
-
-def debug_print(f):
-
-    def f_with_print(mgx_module, node, args, kwargs):
-        print(node.name, ' ', node.op)
-        for i, a in enumerate(args):
-            if isinstance(a, migraphx.instruction_ref):
-                print(f"arg{i}: {a.shape().lens()}")
-            else:
-                print(f"arg{i}: {a}")
-
-        out = f(mgx_module, node, args, kwargs)
-        real_out = out[0] if isinstance(out, (list, tuple)) else out
-        print(f"output: {out.shape().lens()}")
-        return out
-
-    return f_with_print
+    with torch.no_grad():
+        return aot_module_simplified(gm_,
+                                     example_inputs,
+                                     fw_compiler=migraphx_compiler)

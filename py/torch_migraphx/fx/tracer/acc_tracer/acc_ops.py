@@ -2,21 +2,21 @@
 # Copyright (c) 2022-present, Advanced Micro Devices, Inc. All rights reserved.
 # Copyright (c) 2020-present, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) Meta Platforms, Inc. and affiliates.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 # 1. Redistributions of source code must retain the above copyright notice, this
 #    list of conditions and the following disclaimer.
-# 
+#
 # 2. Redistributions in binary form must reproduce the above copyright notice,
 #    this list of conditions and the following disclaimer in the documentation
 #    and/or other materials provided with the distribution.
-# 
+#
 # 3. Neither the name of the copyright holder nor the names of its
 #    contributors may be used to endorse or promote products derived from
 #    this software without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -159,6 +159,13 @@ def prod_mapper(node: torch.fx.Node,
         return new_node
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.maximum))
+@register_acc_op_mapping(op_and_target=("call_method", "maximum"))
+@register_acc_op
+def maximum(*, input, other):
+    return torch.maximum(input=input, other=other)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", operator.getitem))
 @register_acc_op
 def getitem(*, input, idx):
@@ -175,6 +182,23 @@ def size(*, input):
 @register_acc_op
 def numel(*, input):
     return torch.numel(input)
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.slice_scatter))
+@register_acc_op
+def slice_scatter(*, input, src, dim=0, start=None, end=None, step=1):
+    return torch.slice_scatter(input=input,
+                               src=src,
+                               dim=dim,
+                               start=start,
+                               end=end,
+                               step=step)
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.select_scatter))
+@register_acc_op
+def select_scatter(*, input, src, dim, index):
+    return torch.select_scatter(input=input, src=src, dim=dim, index=index)
 
 
 @register_acc_op_mapping(op_and_target=("call_function", nn.functional.linear))
@@ -210,6 +234,12 @@ def clamp(*, input, min=None, max=None):
 @register_acc_op
 def tile(*, input, dims):
     return torch.tile(input=input, dims=dims)
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.unbind))
+@register_acc_op
+def unbind(*, input, dim=0):
+    return torch.unbind(input, dim=dim)
 
 
 @register_custom_acc_mapper_fn(
@@ -567,6 +597,33 @@ def permute(*, input, permutation):
     return input.permute(*permutation)
 
 
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.masked_fill),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("mask", "mask"),
+        ("value", "value"),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_method", "masked_fill"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("mask", "mask"),
+        ("value", "value"),
+    ],
+)
+@register_acc_op
+def masked_fill(*, input, mask, value):
+    return input.masked_fill(mask, value)
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.where))
+@register_acc_op
+def where(*, condition, input, other):
+    return torch.where(condition, input, other)
+
+
 @register_custom_acc_mapper_fn(
     op_and_target=("call_function", torch.square),
     arg_replacement_tuples=[
@@ -796,6 +853,19 @@ def layer_norm(*, input, normalized_shape, weight, bias, eps):
     )
 
 
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        nn.functional.group_norm))
+@register_acc_op
+def group_norm(*, input, num_groups, weight, bias, eps):
+    return nn.functional.group_norm(
+        input=input,
+        num_groups=num_groups,
+        weight=weight,
+        bias=bias,
+        eps=eps,
+    )
+
+
 @register_acc_op_properties(AccOpProperty.pointwise)
 @register_acc_op_mapping(op_and_target=("call_function", torch.fmod))
 @register_acc_op_mapping(op_and_target=("call_method", "fmod"))
@@ -829,7 +899,41 @@ def tan(*, input):
 @register_acc_op_mapping(op_and_target=("call_function", torch.topk))
 @register_acc_op
 def topk(*, input, k, dim, largest, sorted):
-    return torch.topk(input=input, k=k, dim=dim, largest=largest, sorted=sorted)
+    return torch.topk(input=input,
+                      k=k,
+                      dim=dim,
+                      largest=largest,
+                      sorted=sorted)
+
+
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.argmax))
+@register_acc_op_mapping(op_and_target=("call_method", "argmax"))
+@register_acc_op
+def argmax(*, input, dim, keepdim):
+    return torch.argmax(input=input, dim=dim, keepdim=keepdim)
+
+
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        nn.functional.embedding))
+@register_acc_op
+def embedding(
+    *,
+    input,
+    weight,
+    padding_idx,
+    max_norm,
+    norm_type,
+    scale_grad_by_freq,
+    sparse,
+):
+    return torch.nn.functional.embedding(input=input,
+                                         weight=weight,
+                                         padding_idx=padding_idx,
+                                         max_norm=max_norm,
+                                         norm_type=norm_type,
+                                         scale_grad_by_freq=scale_grad_by_freq,
+                                         sparse=sparse)
 
 
 @register_acc_op_mapping(op_and_target=("call_function", torch.cat))
@@ -1628,3 +1732,29 @@ def lstm_mapper(node: torch.fx.Node, mod: nn.Module) -> torch.fx.Node:
                                           })
         new_node.meta = node.meta.copy()
         return new_node
+
+
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.as_strided),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("size", "size"),
+        ("stride", "stride"),
+        ("storage_offset", "storage_offset", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_method", "as_strided"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("size", "size"),
+        ("stride", "stride"),
+        ("storage_offset", "storage_offset", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def as_strided(*, input, size, stride, storage_offset=0):
+    return torch.as_strided(input=input,
+                            size=size,
+                            stride=stride,
+                            storage_offset=storage_offset)

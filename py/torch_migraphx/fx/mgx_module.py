@@ -1,20 +1,20 @@
 #####################################################################################
 # Copyright (c) 2022-present, Advanced Micro Devices, Inc. All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 # 1. Redistributions of source code must retain the above copyright notice, this
 #    list of conditions and the following disclaimer.
-# 
+#
 # 2. Redistributions in binary form must reproduce the above copyright notice,
 #    this list of conditions and the following disclaimer in the documentation
 #    and/or other materials provided with the distribution.
-# 
+#
 # 3. Neither the name of the copyright holder nor the names of its
 #    contributors may be used to endorse or promote products derived from
 #    this software without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
 from typing import Sequence
+import warnings
 
 import torch
 import migraphx
@@ -98,6 +99,13 @@ class MGXModule(torch.nn.Module):
 
         for inp_name, inp_val, mgx_shape in zip(self.input_names, inputs,
                                                 self.input_mgx_shapes):
+            if not inp_val.device.type == 'cuda':
+                warnings.warn(
+                    f"Input {inp_name} not on gpu device. Copying to device before execution, "
+                    "however, this will add extra overhead if running a performance benckmark."
+                )
+                inp_val = inp_val.cuda()
+
             self.mgx_buffers[inp_name] = mgx_argument_from_ptr(
                 inp_val.data_ptr(), mgx_shape)
 
@@ -130,7 +138,8 @@ class MGXModule(torch.nn.Module):
         for param_name in names:
             param_shape = self.program.get_parameter_shapes()[param_name]
             if param_shape.type_string() == 'tuple_type':
-                raise RuntimeError('Tuple return types are not currently supoprted')
+                raise RuntimeError(
+                    'Tuple return types are not currently supoprted')
 
             type_str, lens = param_shape.type_string(), param_shape.lens()
             strides = param_shape.strides()
@@ -225,8 +234,6 @@ class SplitModule(torch.fx.GraphModule):
         all mgx modules with more than 'num_outs' outputs
         '''
         for module_name, module in self.named_children():
-            if isinstance(module,
-                          MGXModule) and len(module.output_names) >= num_outs:
+            if isinstance(module, MGXModule) and len(
+                    module.output_names) >= num_outs:
                 module.enable_par_conversion = True
-
-                

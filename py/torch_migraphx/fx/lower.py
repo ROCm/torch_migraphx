@@ -1,20 +1,20 @@
 #####################################################################################
 # Copyright (c) 2022-present, Advanced Micro Devices, Inc. All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 # 1. Redistributions of source code must retain the above copyright notice, this
 #    list of conditions and the following disclaimer.
-# 
+#
 # 2. Redistributions in binary form must reproduce the above copyright notice,
 #    this list of conditions and the following disclaimer in the documentation
 #    and/or other materials provided with the distribution.
-# 
+#
 # 3. Neither the name of the copyright holder nor the names of its
 #    contributors may be used to endorse or promote products derived from
 #    this software without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -44,6 +44,7 @@ from torch_migraphx.fx.tracer.acc_tracer.acc_shape_prop import AccShapeProp
 from .tools.mgx_splitter import MGXSplitter, MGXSplitterSetting
 
 from .tracer.acc_tracer import acc_tracer
+from .tracer.aten_tracer import aten_tracer
 from .mgx_module import MGXModule
 from .utils import LowerPrecision
 
@@ -64,6 +65,7 @@ def lower_to_mgx(module: nn.Module,
                  input,
                  lower_precision=LowerPrecision.FP32,
                  min_acc_module_size=10,
+                 use_aten=False,
                  verbose_log=False,
                  suppress_accuracy_check=False,
                  save_subgraph_programs=False,
@@ -74,13 +76,15 @@ def lower_to_mgx(module: nn.Module,
     into lowered module.
     Args:
         module: Original module for lowering.
-        input: Input for module.
-        lower_precision: lower_precision config.
-        verbose_log: Enable verbose log.
-        timing_cache_prefix: Timing cache file name for timing cache used by fx2acc.
-        save_timing_cache: Update timing cache with current timing cache data if set to True.
+        input: Input for module (list of tensors).
+        lower_precision: Precision to use for lowered program (default FP32).
+        use_aten: Export graph to aten ops rather than using acc converters (default False).
+        verbose_log: Enable verbose log (default False).
+        suppress_accuracy_check: Suppress accuracy errors detected on lowered modules (default False).
+        tracer_base_cls: FX Tracer to use for tracing model (default torch.fx.Tracer).
+        leaf_modules: List of modules to be treated as leaf nodes by FX tracer (default None).
     Returns:
-        A torch.nn.Module lowered by accelerator.
+        A SplitModule object containing MGXModule (lowered graphs) and torch.fx.GraphModule (unsupported graphs) objects.
     """
     module = module.cuda().eval()
     input = [to_device(x) for x in input]
@@ -92,6 +96,7 @@ def lower_to_mgx(module: nn.Module,
         save_subgraph_programs=save_subgraph_programs,
         tracer_base_cls=tracer_base_cls,
         leaf_module_list=leaf_modules,
+        use_aten=use_aten,
     )
     lowerer = Lowerer.create(lower_setting=lower_setting)
     return lowerer(module, input)
@@ -159,19 +164,14 @@ def default_lower_pass(
 
 @dc.dataclass(frozen=True)
 class Lowerer:
-    """Lowers a module using fx2acc.
-    This is a composable class to facilitate fx2acc. A normal fx2acc process
-    composes of the following passes to transform an `fx.GraphModule`:
-        1. trace - use torch.fx to trace the module so we can get the graph
-            representation of the model.
-        2. split - the graph module is split into several submodules,
-            running either via accelerator, or via regular troch implementation.
-    For each split that need to run via ACC, the following passes are
-    invoked:
-        3. `ACCInterpreter` - build the ACC engine for the submodule that
-            can be supported through `ACCInterpreter`.
-        4. Wraps the executable ACC engine into an acc module, which is an `nn.Module`.
-        5. The converted submodule is then set back onto the top-level module
+    """Lowers a module using fx2mgx.
+        1. Trace torch module to get graph representation (fx or aten export)
+        2. Split the generated graph into subgraphs based on ops supported by the accelerator
+    
+    For each subgraph that can be lowered to accelerator:
+        1. Use MGXInterpreter to create a MIGraphX program
+        2. Wrap this program into MGXModule so that it can be treated as nn.Module
+        3. Attach submodule to SplitModule object that contains the full program execution path
     """
 
     lower_pass_manager_builder: LowerPassManagerBuilder
@@ -185,40 +185,58 @@ class Lowerer:
     ) -> "Lowerer":
         """Instantiate a `Lowerer` instance."""
 
-        atol = 5e-1 if lower_setting.lower_precision == LowerPrecision.FP16 else 1e-1
-        rtol = 5e-1 if lower_setting.lower_precision == LowerPrecision.FP16 else 1e-1
+        if not lower_setting.use_aten:
+            return cls(lower_pass_manager_builder=LowerPassManagerBuilder(
+                lower_setting=lower_setting,
+                trace_func=lambda module, inputs: acc_tracer.trace(
+                    module,
+                    inputs,
+                    ast_rewriter_allow_list=lower_setting.
+                    ast_rewriter_allow_list,
+                    leaf_module_list=lower_setting.leaf_module_list,
+                    tracer_cls=lower_setting.tracer_base_cls,
+                ),
+                split_func=split_func,
+                lower_func=default_lower_pass(interpreter_builder),
+            ))
+        else:
+            return cls(lower_pass_manager_builder=LowerPassManagerBuilder(
+                lower_setting=lower_setting,
+                trace_func=lambda module, inputs: aten_tracer.trace(
+                    module,
+                    inputs,
+                ),
+                split_func=split_func,
+                lower_func=default_lower_pass(interpreter_builder),
+            ))
 
-        cls.__call__ = decorate_method(
-            validate_inference(atol=atol,
-                               rtol=rtol,
-                               suppress_accuracy_check_failure=lower_setting.
-                               suppress_accuracy_check))(cls.__call__)
-
-        return cls(lower_pass_manager_builder=LowerPassManagerBuilder(
-            lower_setting=lower_setting,
-            trace_func=lambda module, inputs: acc_tracer.trace(
-                module,
-                inputs,  # type: ignore[arg-type]
-                ast_rewriter_allow_list=lower_setting.ast_rewriter_allow_list,
-                leaf_module_list=lower_setting.leaf_module_list,
-                tracer_cls=lower_setting.tracer_base_cls,
-            ),
-            split_func=split_func,
-            lower_func=default_lower_pass(interpreter_builder),
-        ))
-
-    # @decorate_method(validate_inference(atol=1e-1, rtol=1e-1))
     def __call__(
         self,
         module: nn.Module,
         inputs: Input,
         additional_inputs: Optional[Input] = None,
     ) -> nn.Module:
-        module.eval()
+        lower_setting = self.lower_pass_manager_builder.lower_setting
+        atol = lower_setting.correctness_atol
+        rtol = lower_setting.correctness_rtol
 
-        pm = self.lower_pass_manager_builder.build_mgx_lower_pipeline(
-            inputs, additional_inputs)
+        @validate_inference(
+            atol=atol,
+            rtol=rtol,
+            suppress_accuracy_check_failure=lower_setting.suppress_accuracy_check
+        )
+        def lower_mod(module: nn.Module, inputs: Input) -> nn.Module:
+            module.eval()
 
-        lower_result = pm(module)
+            if lower_setting.use_aten:
+                pm = self.lower_pass_manager_builder.build_mgx_aten_lower_pipeline(
+                    inputs, additional_inputs)
+            else:
+                pm = self.lower_pass_manager_builder.build_mgx_lower_pipeline(
+                    inputs, additional_inputs)
 
-        return lower_result
+            lower_result = pm(module)
+
+            return lower_result
+
+        return lower_mod(module, inputs)

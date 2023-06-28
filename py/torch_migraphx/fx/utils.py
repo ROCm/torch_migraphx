@@ -1,20 +1,20 @@
 #####################################################################################
 # Copyright (c) 2022-present, Advanced Micro Devices, Inc. All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 # 1. Redistributions of source code must retain the above copyright notice, this
 #    list of conditions and the following disclaimer.
-# 
+#
 # 2. Redistributions in binary form must reproduce the above copyright notice,
 #    this list of conditions and the following disclaimer in the documentation
 #    and/or other materials provided with the distribution.
-# 
+#
 # 3. Neither the name of the copyright holder nor the names of its
 #    contributors may be used to endorse or promote products derived from
 #    this software without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -28,6 +28,8 @@
 #####################################################################################
 import os
 from enum import Enum
+from typing import List, Callable
+from packaging import version
 import random
 import torch
 import migraphx
@@ -45,7 +47,7 @@ class LowerPrecision(Enum):
     INT8 = "int8"
 
 
-type_map = {
+TYPE_MAP = {
     torch.bool: 'bool_type',
     torch.half: 'half_type',
     torch.float: 'float_type',
@@ -57,15 +59,23 @@ type_map = {
     torch.long: 'int64_type'
 }
 
-inv_type_map = {v: k for k, v in type_map.items()}
+INV_TYPE_MAP = {v: k for k, v in TYPE_MAP.items()}
 
 
 def torch_dtype_to_mgx(dtype: torch.dtype) -> str:
-    return type_map[dtype]
+    return TYPE_MAP[dtype]
 
 
 def torch_dtype_from_mgx(type_string: str) -> torch.dtype:
-    return inv_type_map[type_string]
+    return INV_TYPE_MAP[type_string]
+
+
+def mgx_type_str_to_enum(type_string: str) -> migraphx.shape.type_t:
+    return getattr(migraphx.shape.type_t, type_string)
+
+
+def torch_dtype_to_mgx_enum(dtype: torch.dtype) -> migraphx.shape.type_t:
+    return mgx_type_str_to_enum(torch_dtype_to_mgx(dtype))
 
 
 def mgx_argument_from_tensor(tensor: torch.tensor) -> migraphx.argument:
@@ -91,8 +101,9 @@ def tensors_from_mgx_arguments_par(args: List[migraphx.argument],
                                    thread_size: int = 1) -> List[torch.tensor]:
 
     ptrs = [a.data_ptr() for a in args]
-    return _C.args_to_tensors_par(ptrs, lens, strides, type_strs, device,
-                                  thread_size)
+    scalars = [a.shape().scalar() for a in args]
+    return _C.args_to_tensors_par(ptrs, lens, strides, type_strs, scalars,
+                                  device, thread_size)
 
 
 def tensors_from_mgx_arguments(
@@ -102,7 +113,7 @@ def tensors_from_mgx_arguments(
 ) -> List[torch.tensor]:
     return [
         _C.tensor_from_ptr(a.data_ptr(), s.lens(), s.strides(),
-                           s.type_string(), device)
+                           s.type_string(), s.scalar(), device)
         for a, s in zip(args, mgx_shapes)
     ]
 
@@ -153,3 +164,35 @@ def tensor_meta_str(tm) -> str:
         return ' '.join([tensor_meta_str(i) for i in tm])
     else:
         return ''
+
+
+def req_torch_version(min_torch_version: str = "2.dev"):
+    """
+    Create a decorator which verifies the Torch version installed
+    against a specified version range
+    Args:
+        min_torch_version (str): The minimum required Torch version
+        for the decorated function to work properly
+    Returns:
+        A decorator which raises a descriptive error message if
+        an unsupported Torch version is used
+    """
+
+    def nested_decorator(f: Callable):
+
+        def function_wrapper(*args, **kwargs):
+            # Parse minimum and current Torch versions
+            min_version = version.parse(min_torch_version)
+            current_version = version.parse(torch.__version__)
+
+            if current_version < min_version:
+                raise AssertionError(
+                    f"Expected Torch version {min_torch_version} or greater, "
+                    +
+                    f"when calling {f}. Detected version {torch.__version__}")
+            else:
+                return f(*args, **kwargs)
+
+        return function_wrapper
+
+    return nested_decorator
