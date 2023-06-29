@@ -43,18 +43,13 @@ def migraphx(gm_, example_inputs):
 
     @fake_tensor_unsupported
     def migraphx_compiler(gm, example_inputs):
-        opt_model, preserved_arg_indices = freeze(
-            gm_,
-            gm,
-            fw_metadata=torch._guards.TracingContext.get().fw_metadata)
-
+        opt_model, preserved_arg_indices = freeze(gm_, gm, example_inputs)
 
         example_inputs = [example_inputs[ind] for ind in preserved_arg_indices]
 
         lowered_gm = lower_aten_to_mgx(
             opt_model,
             example_inputs,
-            verbose=True,
         )
         del gm
 
