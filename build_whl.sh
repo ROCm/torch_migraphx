@@ -1,5 +1,9 @@
 cd /workspace/torch_migraphx/py
 
+# Example use:
+# docker build -t tm_ci -f ci.Dockerfile .
+# docker run -it -v$(pwd):/workspace/torch_migraphx tm_ci /bin/bash /workspace/torch_migraphx/build_whl.sh
+
 build_py38() {
     /opt/python/cp38-cp38/bin/python -m pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/rocm5.5
     /opt/python/cp38-cp38/bin/python -m pip install -r requirements.txt
