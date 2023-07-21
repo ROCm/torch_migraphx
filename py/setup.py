@@ -118,7 +118,7 @@ setup(
     long_description_content_type='text/markdown',
     long_description=long_description,
     install_requires=[
-    "torch>=1.11.0+rocm4.5.2",
+    "torch>=1.11.0",
     "numpy>=1.20.0",
     "pybind11-global",
     "packaging",

@@ -8,4 +8,4 @@ PY_BUILD_CODE=cp38-cp38
 PY_DIR=/opt/python/${PY_BUILD_CODE}
 ${PY_DIR}/bin/python -m pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/rocm5.5
 ${PY_DIR}/bin/python -m pip install -r requirements.txt
-${PY_DIR}/bin/python setup.py sdist
+${PY_DIR}/bin/python setup.py clean sdist
