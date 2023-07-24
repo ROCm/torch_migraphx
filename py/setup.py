@@ -41,6 +41,8 @@ from setuptools.command.test import test as TestCommand
 
 import torch
 
+__version__ = open("version.txt").read().strip()
+
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=''):
         Extension.__init__(self, name, sources=[])
@@ -103,12 +105,36 @@ class CMakeBuild(build_ext):
 
         print()
 
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
 
-setup(name='torch_migraphx',
-      version='0.0',
-      author='AMD',
-      description='Intergrate PyTorch with MIGraphX acceleration engine',
-      packages=find_packages('torch_migraphx'),
-      package_dir={'': 'torch_migraphx'},
-      ext_modules=[CMakeExtension('_torch_migraphx')],
-      cmdclass=dict(build_ext=CMakeBuild))
+setup(
+    name='torch_migraphx',
+    version=__version__,
+    author='AMD',
+    author_email='Shivad.Bhavsar@amd.com',
+    url='https://github.com/ROCmSoftwarePlatform/torch_migraphx',
+    description='Intergrate PyTorch with MIGraphX acceleration engine',
+    long_description_content_type='text/markdown',
+    long_description=long_description,
+    install_requires=[
+    "torch>=1.11.0",
+    "numpy>=1.20.0",
+    "pybind11-global",
+    "packaging",
+    ],
+    packages=find_packages(),
+    package_dir={'torch_migraphx': 'torch_migraphx'},
+    ext_modules=[CMakeExtension('_torch_migraphx')],
+    cmdclass=dict(build_ext=CMakeBuild),
+    license="BSD",
+    classifiers = [
+        "Programming Language :: Python :: 3",
+        "Programming Language :: C++",
+        "License :: OSI Approved :: BSD License",
+        "Operating System :: POSIX :: Linux",
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    ],
+    python_requires=">=3.7",
+    include_package_data=True,
+)
