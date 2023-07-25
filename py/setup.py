@@ -122,6 +122,7 @@ setup(
     "numpy>=1.20.0",
     "pybind11-global",
     "packaging",
+    "tabulate",
     ],
     packages=find_packages(),
     package_dir={'torch_migraphx': 'torch_migraphx'},
