@@ -1,9 +1,8 @@
 import pytest
 import torch
-from utils import FuncModule, convert_to_mgx, verify_outputs, acc_tracer
-
+from utils import FuncModule, convert_to_mgx, verify_outputs
 import torch_migraphx
-import torch_migraphx.dynamo
+
 if not hasattr(torch_migraphx, "dynamo"):
     pytest.skip(allow_module_level=True)
 

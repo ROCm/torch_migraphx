@@ -1,17 +1,10 @@
 import pytest
 import torch
-from utils import FuncModule, convert_to_mgx, verify_outputs, acc_tracer
-
+from utils import FuncModuleFirstOut, convert_to_mgx, verify_outputs
 import torch_migraphx
-import torch_migraphx.dynamo
+
 if not hasattr(torch_migraphx, "dynamo"):
     pytest.skip(allow_module_level=True)
-
-
-class NormModule(FuncModule):
-
-    def forward(self, x):
-        return self.func(x, *self.args, **self.kwargs)[0]
 
 
 @pytest.mark.parametrize('op_alias', [
@@ -33,22 +26,21 @@ def test_batchnorm(op_alias, bn, in_shape):
     inp = torch.randn(8, num_feat, *in_shape).cuda()
 
     if op_alias == torch.ops.aten._native_batch_norm_legit_no_training.default:
-        mod = NormModule(op_alias, weight, bias, mean, var, momentum,
-                         eps).cuda()
+        mod = FuncModuleFirstOut(op_alias, weight, bias, mean, var, momentum,
+                                 eps)
     elif op_alias == torch.ops.aten.miopen_batch_norm.default:
-        mod = NormModule(op_alias, weight, bias, mean, var, False, momentum,
-                         eps).cuda()
+        mod = FuncModuleFirstOut(op_alias, weight, bias, mean, var, False,
+                                 momentum, eps)
     else:
-        mod = NormModule(op_alias, weight, bias, mean, var, False, momentum,
-                         eps, False).cuda()
+        mod = FuncModuleFirstOut(op_alias, weight, bias, mean, var, False,
+                                 momentum, eps, False)
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('op_alias', [
-    torch.ops.aten.native_group_norm.default,
-])
+@pytest.mark.parametrize('op_alias',
+                         [torch.ops.aten.native_group_norm.default])
 @pytest.mark.parametrize('gn', [
     torch.nn.GroupNorm(num_groups=3, num_channels=6, eps=1e-5).cuda().eval(),
     torch.nn.GroupNorm(num_groups=4, num_channels=4, eps=1e-2).cuda().eval(),
@@ -59,7 +51,23 @@ def test_groupnorm(op_alias, gn):
     weight, bias, eps = gn.weight, gn.bias, gn.eps
     inp = torch.randn(8, num_channels, 25, 25).cuda()
 
-    mod = NormModule(op_alias, weight, bias, 8, num_channels, 25 * 25,
-                     num_groups, eps).cuda()
+    mod = FuncModuleFirstOut(op_alias, weight, bias, 8, num_channels, 25 * 25,
+                             num_groups, eps)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('op_alias',
+                         [torch.ops.aten.native_layer_norm.default])
+@pytest.mark.parametrize('ln', [
+    torch.nn.LayerNorm((50, ), 1e-5).cuda().eval(),
+    torch.nn.LayerNorm((50, 50), 1e-2).cuda().eval(),
+    torch.nn.LayerNorm((6, 50, 50), 1e-10).cuda().eval(),
+])
+def test_layernorm(op_alias, ln):
+    inp = torch.randn(8, 6, 50, 50).cuda()
+    norm_shape, weight, bias, eps = ln.normalized_shape, ln.weight, ln.bias, ln.eps
+    mod = FuncModuleFirstOut(op_alias, norm_shape, weight, bias, eps)
+
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)

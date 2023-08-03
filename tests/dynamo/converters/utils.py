@@ -18,27 +18,35 @@ class FuncModule(torch.nn.Module):
     def forward(self, x):
         return self.func(x, *self.args, **self.kwargs)
 
-class MultiInFuncModule(torch.nn.Module):
 
-    def __init__(self, func, *args, **kwargs):
-        super(MultiInFuncModule, self).__init__()
-        self.func = func
-        self.args = args
-        self.kwargs = kwargs
+class TupleInFuncModule(FuncModule):
 
     def forward(self, *inputs):
         return self.func(inputs, *self.args, **self.kwargs)
+
+
+class MultiInFuncModule(FuncModule):
+
+    def forward(self, *inputs):
+        return self.func(*inputs, *self.args, **self.kwargs)
+
+
+class FuncModuleFirstOut(FuncModule):
+
+    def forward(self, x):
+        return self.func(x, *self.args, **self.kwargs)[0]
+
 
 def unsqueeze_out(out):
     if isinstance(out, (list, tuple)) and len(out) == 1:
         return out[0]
     return out
 
+
 def verify_outputs(mod1, mod2, inp, rtol=3e-3, atol=1e-2, equal_nan=False):
     if not isinstance(inp, (list, tuple)):
         inp = (inp, )
     out1, out2 = unsqueeze_out(mod1(*inp)), unsqueeze_out(mod2(*inp))
-
 
     if isinstance(out1, (list, tuple)):
         assert len(out1) == len(out2), f"{len(out1)}, {len(out2)}"
