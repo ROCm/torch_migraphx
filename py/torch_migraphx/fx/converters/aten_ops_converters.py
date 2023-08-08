@@ -57,6 +57,7 @@ def aten_ops_to_copy(mgx_module, node, args, kwargs):
 @migraphx_converter(torch.ops.aten.view.default)
 @migraphx_converter(torch.ops.aten._unsafe_view.default)
 @migraphx_converter(torch.ops.aten.reshape)
+@migraphx_converter(torch.ops.aten.reshape.default)
 def aten_ops_view(mgx_module, node, args, kwargs):
     assert len(args) == 2
     inp, shape = args[0], args[1]
@@ -220,7 +221,7 @@ def aten_ops_split(mgx_module, node, args, kwargs):
             "split_size": split_size_or_sections,
             "dim": dim
         }
-        return acc_ops_converters.acc_ops_chunk(mgx_module, node, (),
+        return acc_ops_converters.acc_ops_split(mgx_module, node, (),
                                                 acc_kwargs)
 
     assert isinstance(split_size_or_sections, (list, tuple))
@@ -443,8 +444,9 @@ def aten_ops_sub(mgx_module, node, args, kwargs):
 @migraphx_converter(torch.ops.aten.rsub.Scalar)
 @migraphx_converter(torch.ops.aten.rsub.Tensor)
 def aten_ops_rsub(mgx_module, node, args, kwargs):
+    args = list(args)
     args[0], args[1] = args[1], args[0]
-    return aten_ops_sub(mgx_module, node, args, kwargs)
+    return aten_ops_sub(mgx_module, node, tuple(args), kwargs)
 
 
 @migraphx_converter(torch.ops.aten.mul.Scalar)
@@ -479,8 +481,8 @@ def aten_ops_pow(mgx_module, node, args, kwargs):
 
 @migraphx_converter(torch.ops.aten.batch_norm.default)
 @migraphx_converter(torch.ops.aten.miopen_batch_norm.default)
-@migraphx_converter(torch.ops.aten._native_batch_norm_legit_no_training.default
-                    )
+@migraphx_converter(
+    torch.ops.aten._native_batch_norm_legit_no_training.default)
 def aten_ops_batch_norm(mgx_module, node, args, kwargs):
     assert len(args) >= 7
 
@@ -496,9 +498,10 @@ def aten_ops_batch_norm(mgx_module, node, args, kwargs):
     else:
         acc_kwargs["momentum"], acc_kwargs["eps"] = args[6], args[7]
 
-    return acc_ops_converters.acc_ops_batch_norm(
-        mgx_module, node, (),
-        acc_kwargs), acc_kwargs["running_mean"], acc_kwargs["running_var"]
+    bn = acc_ops_converters.acc_ops_batch_norm(mgx_module, node, (),
+                                               acc_kwargs)
+                                               
+    return bn, acc_kwargs["running_mean"], acc_kwargs["running_var"]
 
 
 @migraphx_converter(torch.ops.aten.native_group_norm.default)

@@ -900,7 +900,7 @@ def acc_ops_chunk(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.split)
-def acc_ops_chunk(mgx_module, node, args, kwargs):
+def acc_ops_split(mgx_module, node, args, kwargs):
 
     inp = kwargs['input']
     inp_shape = inp.shape().lens()
