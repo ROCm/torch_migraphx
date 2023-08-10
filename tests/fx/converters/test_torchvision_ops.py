@@ -1,6 +1,6 @@
 import pytest
 import torch
-from utils import FuncModule, convert_to_mgx, verify_outputs
+from fx_test_utils import FuncModule, convert_to_mgx, verify_outputs
 import sys
 try:
     import torchvision

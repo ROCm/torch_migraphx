@@ -1,6 +1,6 @@
 import pytest
 import torch
-from utils import FuncModule, MethodModule, convert_to_mgx, verify_outputs
+from fx_test_utils import FuncModule, MethodModule, convert_to_mgx, verify_outputs
 
 
 @pytest.mark.parametrize('in_size, dim, src_dims, slc', [
@@ -25,22 +25,17 @@ def test_slice_scatter(in_size, dim, src_dims, slc):
     verify_outputs(mod, mgx_mod, inp)
 
 
-
 @pytest.mark.parametrize('in_size, dim, src_dims, idx', [
     ([4, 8, 11, 2, 12], 0, [8, 11, 2, 12], 1),
     ([4, 8, 11, 2, 12], -1, [4, 8, 11, 2], 3),
     ([4, 8, 11, 2, 12], 2, [4, 8, 2, 12], -1),
     ([4, 8, 11, 2, 12], -2, [4, 8, 11, 12], 0),
-
 ])
 def test_select_scatter(in_size, dim, src_dims, idx):
     inp = torch.zeros(*in_size).cuda()
     src = torch.randn(*src_dims).cuda()
 
-    mod = FuncModule(torch.select_scatter,
-                     src=src,
-                     dim=dim,
-                     index=idx).cuda()
+    mod = FuncModule(torch.select_scatter, src=src, dim=dim, index=idx).cuda()
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)

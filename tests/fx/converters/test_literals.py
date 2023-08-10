@@ -1,6 +1,6 @@
 import pytest
 import torch
-from utils import MethodModule, convert_to_mgx, verify_outputs
+from fx_test_utils import MethodModule, convert_to_mgx, verify_outputs
 
 
 @pytest.mark.parametrize('size', [(2, 4, 1), (1, ), (2, 6, 7, 5, 4)])
