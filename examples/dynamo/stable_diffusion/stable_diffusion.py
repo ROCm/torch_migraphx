@@ -2,7 +2,11 @@ import argparse
 import torch
 from diffusers import StableDiffusionPipeline
 
-import torch_migraphx
+# import torch_migraphx
+# Need to export dynamo explictly till torch 2.1 release
+import torch_migraphx.dynamo
+
+torch._dynamo.reset()
 
 parser = argparse.ArgumentParser(description='Conversion parameters')
 
@@ -35,6 +39,7 @@ parser.add_argument('--fp16',
                     action='store_true',
                     help='Load fp16 version of the pipeline')
 
+
 def run(args):
     dtype = torch.float16 if args.fp16 else torch.float32
     pipe = StableDiffusionPipeline.from_pretrained(args.model_repo,
@@ -51,8 +56,9 @@ def run(args):
                  num_inference_steps=args.num_steps,
                  negative_prompt=args.neg_prompts,
                  num_images_per_prompt=1).images[0]
-    
+
     image.save(args.fname)
+
 
 if __name__ == '__main__':
     args = parser.parse_args()
