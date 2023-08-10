@@ -26,44 +26,37 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
+from typing import Sequence
 
 import torch
 import torch._dynamo as dynamo
-from torch._dynamo.backends.common import device_from_inputs, fake_tensor_unsupported, aot_autograd
-from torch._functorch.aot_autograd import aot_module_simplified
-from torch._dynamo.backends.registry import register_backend
-from functorch.compile import make_boxed_func
+from torch._guards import TracingContext
+from torch._functorch.aot_autograd import aot_export_joint_simple
 from .lower_dynamo import lower_aten_to_mgx
 
-from torch._inductor.freezing import freeze
+
+@dynamo.register_backend(name="migraphx")
+def migraphx_backend(gm: torch.fx.GraphModule,
+                     example_inputs: Sequence[torch.Tensor], **kwargs):
+    # Any logic to pick default dynamo backend should be placed here
+    return migraphx_aot_backend(gm, example_inputs, **kwargs)
 
 
-@register_backend
-def migraphx(gm_, example_inputs):
+@dynamo.register_backend(name="migraphx_aot")
+def migraphx_aot_backend(gm: torch.fx.GraphModule,
+                         example_inputs: Sequence[torch.Tensor], **kwargs):
+    # TODO: add logic to parse kwargs. torch.compile wraps original kwargs in the "options" key
+    gm = gm.cuda().eval()
 
-    @fake_tensor_unsupported
-    def migraphx_compiler(gm, example_inputs):
-        opt_model, preserved_arg_indices = freeze(gm_, gm, example_inputs)
+    # TODO: cleaner way to invoke aot autograd with real inputs?
+    TracingContext.get().fake_mode.allow_non_fake_inputs = True
 
-        example_inputs = [example_inputs[ind] for ind in preserved_arg_indices]
+    # TODO: Investigate other variants for invoking aot_autograd:
+    # https://github.com/pytorch/pytorch/blob/main/torch/_functorch/aot_autograd.py
 
-        lowered_gm = lower_aten_to_mgx(
-            opt_model,
-            example_inputs,
-        )
-        del gm
+    aten_gm = aot_export_joint_simple(gm, example_inputs, trace_joint=False)
 
-        def wrapper(args):
-            args_new = [args[ind] for ind in preserved_arg_indices]
-            args.clear()
-            return lowered_gm(*args_new)
+    # TODO: Add decompositions
+    # https://github.com/pytorch/pytorch/blob/main/torch/_decomp/decompositions.py
 
-        wrapper._boxed_call = True
-        return wrapper
-
-    gm_ = gm_.cuda().eval()
-
-    with torch.no_grad():
-        return aot_module_simplified(gm_,
-                                     example_inputs,
-                                     fw_compiler=migraphx_compiler)
+    return lower_aten_to_mgx(aten_gm, example_inputs, **kwargs)
