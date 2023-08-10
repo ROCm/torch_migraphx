@@ -1,6 +1,6 @@
 import pytest
 import torch
-from utils import convert_to_mgx, verify_outputs
+from fx_test_utils import convert_to_mgx, verify_outputs
 
 
 @pytest.mark.parametrize('num_feat, eps, momentum', [(3, 1e-5, 0.1),

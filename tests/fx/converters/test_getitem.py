@@ -1,6 +1,6 @@
 import pytest
 import torch
-from utils import LambdaModule, convert_to_mgx, verify_outputs
+from fx_test_utils import LambdaModule, convert_to_mgx, verify_outputs
 
 
 @pytest.mark.parametrize('slice_func', [

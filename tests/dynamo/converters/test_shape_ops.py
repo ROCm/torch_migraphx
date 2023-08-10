@@ -1,6 +1,6 @@
 import pytest
 import torch
-from utils import FuncModule, TupleInFuncModule, convert_to_mgx, verify_outputs, acc_tracer
+from dynamo_test_utils import FuncModule, TupleInFuncModule, convert_to_mgx, verify_outputs, acc_tracer
 import torch_migraphx
 
 if not hasattr(torch_migraphx, "dynamo"):

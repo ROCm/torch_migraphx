@@ -1,6 +1,6 @@
 import pytest
 import torch
-from utils import randbounds, FuncModule, MethodModule, convert_to_mgx, verify_outputs
+from fx_test_utils import randbounds, FuncModule, MethodModule, convert_to_mgx, verify_outputs
 
 
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),

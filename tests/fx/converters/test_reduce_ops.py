@@ -1,9 +1,10 @@
 import pytest
 import torch
-from utils import FuncModule, MethodModule, convert_to_mgx, verify_outputs
+from fx_test_utils import FuncModule, MethodModule, convert_to_mgx, verify_outputs
 
 
-@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False), (3, False), ([-1, -2], True)])
+@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False), (3, False),
+                                          ([-1, -2], True)])
 def test_mean(dim, keepdim):
     inp = torch.randn(32, 43, 11, 2, 12).cuda()
     mod_func = FuncModule(torch.mean, dim=dim, keepdim=keepdim).cuda()
@@ -14,8 +15,8 @@ def test_mean(dim, keepdim):
         verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False), ([2,3], False),
-                                          (None, None)])
+@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False),
+                                          ([2, 3], False), (None, None)])
 def test_sum(dim, keepdim):
     inp = torch.randn(32, 43, 11, 2, 12).cuda()
     if dim is not None:

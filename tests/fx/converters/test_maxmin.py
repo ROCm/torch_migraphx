@@ -1,6 +1,6 @@
 import pytest
 import torch
-from utils import FuncModule, MethodModule, convert_to_mgx, verify_outputs
+from fx_test_utils import FuncModule, MethodModule, convert_to_mgx, verify_outputs
 
 
 class TopKModule(torch.nn.Module):
