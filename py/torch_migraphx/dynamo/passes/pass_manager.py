@@ -37,11 +37,11 @@ from .freezing import constant_fold
 from torch.fx.passes.shape_prop import ShapeProp
 from torch.fx.experimental.const_fold import split_const_subgraphs
 
+
 # TODO: Use torch fx pass manager to run the below passes
 def run_aten_passes(gm: torch.fx.GraphModule,
                     inputs: Sequence[torch.Tensor],
                     verbose: bool = False):
-    ShapeProp(gm).propagate(*inputs)
     gm = remove_new_const_ops(gm)
     gm = remove_view_ops(gm)
     gm = remove_const_like_ops(gm)
