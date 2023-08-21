@@ -27,25 +27,34 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
 
-from typing import Sequence
+from torch._inductor.freezing import ConstantFolder, replace_node_with_constant, freeze
 
-import torch
-from .partition import partition
-from .remove_ops import remove_new_const_ops, remove_clone_ops, remove_view_ops, remove_const_like_ops
-from .freezing import constant_fold
+# freeze function in the inductor freezing module does much more manipulation than
+# required by the migraphx interpreter. aot_export_joint_simple is sufficient for
+# generating graphs with constant parameters. 
 
-from torch.fx.passes.shape_prop import ShapeProp
-from torch.fx.experimental.const_fold import split_const_subgraphs
+# This func is copied directly from _inductor.freezing with a single modification:
+# We prevent the ConstantFolder from skipping constructors (resons for doing so 
+# are inductor specific).
+# TODO: Find a better way of reusing the original function
+def constant_fold(gm):
+    cf = ConstantFolder(gm, skip_constructors=False)
+    cf.run()
 
-# TODO: Use torch fx pass manager to run the below passes
-def run_aten_passes(gm: torch.fx.GraphModule,
-                    inputs: Sequence[torch.Tensor],
-                    verbose: bool = False):
-    ShapeProp(gm).propagate(*inputs)
-    gm = remove_new_const_ops(gm)
-    gm = remove_view_ops(gm)
-    gm = remove_const_like_ops(gm)
-    gm = constant_fold(gm)
-    gm = partition(gm, verbose=verbose)
+    for node, constant in cf.node_replacements.items():
+        replace_node_with_constant(gm, node, constant)
+
+    erased_params = []
+    for node in gm.graph.nodes:
+        if node.op == "get_attr" and len(node.users) == 0:
+            delattr(gm, node.target)
+            erased_params.append(node)
+
+    for node in erased_params:
+        gm.graph.erase_node(node)
+
+    gm.graph.eliminate_dead_code()
+    gm.graph.lint()
+    gm.recompile()
 
     return gm
