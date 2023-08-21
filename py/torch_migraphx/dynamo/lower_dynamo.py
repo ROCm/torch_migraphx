@@ -65,8 +65,7 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
     del gm
 
     for name, mod in optim_gm.named_children():
-        partition_inputs = get_partition_inputs(optim_gm, mod,
-                                                example_inputs)
+        partition_inputs = get_partition_inputs(optim_gm, mod, example_inputs)
         if verbose:
             print_graph_info(name, mod, partition_inputs)
 
@@ -91,8 +90,6 @@ def lower_subgraph(module: torch.fx.GraphModule,
     Returns:
         MGXModule: Callable module that executes graph via MIGraphX
     """
-
-    ShapeProp(module).propagate(*inputs)
 
     verbose = kwargs['verbose'] if 'verbose' in kwargs else False
     fp16 = kwargs['fp16'] if 'fp16' in kwargs else False
