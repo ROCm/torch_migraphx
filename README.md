@@ -6,7 +6,7 @@ Torch-MIGraphX integrates AMD's graph inference engine with the PyTorch ecosyste
 It is highly recommended to use the provided Dockerfile to create the environment requried to use Torch-MIGraphX. Build the container using:
 
 ```
-docker build -t torch_migraphx .
+./build_image.sh <image_tag> <dockerfile>
 ```
 
 Run the container:

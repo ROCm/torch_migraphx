@@ -1,4 +1,5 @@
 FROM rocm/pytorch:latest
+
 ARG PREFIX=/usr/local
 ARG GPU_ARCH
 
