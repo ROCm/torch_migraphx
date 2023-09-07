@@ -38,7 +38,7 @@ from ..converter_registry import migraphx_converter
 from ..tracer.acc_tracer import acc_ops
 from torch.fx.node import Argument, Target
 from .utils import *
-from ..utils import torch_dtype_from_mgx, torch_dtype_to_mgx, torch_dtype_to_mgx_enum
+from ..utils import torch_dtype_from_mgx, torch_dtype_to_mgx_enum
 
 
 def get_arg_dtype(arg):
@@ -52,42 +52,29 @@ def get_arg_dtype(arg):
     return dtype
 
 
-def get_binary_op_dtype(in1, in2):
-    dtype1 = get_arg_dtype(in1)
-    dtype2 = get_arg_dtype(in2)
-    out_type = None
-
-    if dtype1 and dtype2:
-        assert dtype1 == dtype2, f"got args of {dtype1} and {dtype2}"
-        out_type = dtype1
-    elif dtype1:
-        out_type = dtype1
-    elif dtype2:
-        out_type = dtype2
-
-    return out_type
+def convert_arg(mgx_module, arg, out_type):
+    if not isinstance(arg, migraphx.instruction_ref):
+        arg = mgx_module.add_literal(torch.tensor(arg, dtype=out_type).numpy())
+    elif torch_dtype_from_mgx(arg.shape().type_string()) != out_type:
+        arg = mgx_module.add_instruction(
+            migraphx.op("convert",
+                        target_type=torch_dtype_to_mgx_enum(out_type)), [arg])
+    return arg
 
 
 def broadcast_for_elemwise_op(mgx_module, node, inp, other):
     if (inp == other):
         return inp, other
 
-    dtype = get_binary_op_dtype(inp, other)
-    if dtype is None and "tensor_meta" in node.meta:
+    if "tensor_meta" in node.meta:
         dtype = node.meta['tensor_meta'].dtype
-
-    if isinstance(inp, migraphx.instruction_ref):
-        inp_shape = inp.shape().lens()
     else:
-        inp_shape = np.array(inp).shape
-        inp = mgx_module.add_literal(torch.tensor(inp, dtype=dtype).numpy())
+        dtype = get_arg_dtype(inp) or get_arg_dtype(other)
 
-    if isinstance(other, migraphx.instruction_ref):
-        other_shape = other.shape().lens()
-    else:
-        other_shape = np.array(other).shape
-        other = mgx_module.add_literal(
-            torch.tensor(other, dtype=dtype).numpy())
+    inp = convert_arg(mgx_module, inp, dtype)
+    other = convert_arg(mgx_module, other, dtype)
+    inp_shape = inp.shape().lens()
+    other_shape = other.shape().lens()
 
     out_shape = np.broadcast_shapes(inp_shape, other_shape)
     if len(out_shape) == 0 or inp_shape == other_shape:
