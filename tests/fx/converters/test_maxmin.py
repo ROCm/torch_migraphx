@@ -17,8 +17,8 @@ class TopKModule(torch.nn.Module):
         vals, inds = func_out[0], func_out[1]
         size = [s for s in self.size]
         size[self.dim] = self.k
-        vals = vals + torch.ones(size, dtype=torch.float32).cuda()
-        inds = inds + torch.ones(size, dtype=torch.long).cuda()
+        vals = vals + torch.ones(size, dtype=torch.float32)
+        inds = inds + torch.ones(size, dtype=torch.long)
         return [vals, inds]
 
 
@@ -28,8 +28,8 @@ class TopKModule(torch.nn.Module):
     (5, 2, False),
 ])
 def test_topk(k, dim, largest):
-    inp = torch.randn(10, 2, 12, 8, 14).cuda()
-    mod = TopKModule(size=inp.size(), k=k, dim=dim, largest=largest).cuda()
+    inp = torch.randn(10, 2, 12, 8, 14)
+    mod = TopKModule(size=inp.size(), k=k, dim=dim, largest=largest)
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
@@ -41,10 +41,10 @@ def test_topk(k, dim, largest):
     (None, False),
 ])
 def test_argmax(dim, keepdim):
-    inp = torch.randn(10, 2, 12, 8, 14).cuda()
+    inp = torch.randn(10, 2, 12, 8, 14)
 
-    mod_func = FuncModule(torch.argmax, dim=dim, keepdim=keepdim).cuda()
-    mod_method = MethodModule('argmax', dim=dim, keepdim=keepdim).cuda()
+    mod_func = FuncModule(torch.argmax, dim=dim, keepdim=keepdim)
+    mod_method = MethodModule('argmax', dim=dim, keepdim=keepdim)
 
     for mod in [mod_func, mod_method]:
         mgx_mod = convert_to_mgx(mod, [inp])

@@ -23,11 +23,11 @@ class RNNModule(torch.nn.Module):
     ])
 def test_lstm(input_size, hidden_size, num_layers, batch_first, bidirectional):
     batch_size = 1
-    inp = torch.randn(4, batch_size, input_size).cuda()
+    inp = torch.randn(4, batch_size, input_size)
     inp = inp.transpose(0, 1) if batch_first else inp
     num_dir = 2 if bidirectional else 1
-    h0 = torch.randn(num_dir * num_layers, batch_size, hidden_size).cuda()
-    c0 = torch.randn(num_dir * num_layers, batch_size, hidden_size).cuda()
+    h0 = torch.randn(num_dir * num_layers, batch_size, hidden_size)
+    c0 = torch.randn(num_dir * num_layers, batch_size, hidden_size)
 
     mod = RNNModule(
         torch.nn.LSTM(
@@ -36,7 +36,7 @@ def test_lstm(input_size, hidden_size, num_layers, batch_first, bidirectional):
             num_layers=num_layers,
             batch_first=batch_first,
             bidirectional=bidirectional,
-        )).cuda()
+        ))
     mod.eval()
 
     mgx_mod = convert_to_mgx(mod, [inp, h0, c0])

@@ -52,9 +52,9 @@ logger = logging.getLogger(__name__)
 Input = Sequence[Any]
 
 
-def to_device(x):
+def to_device(x, device):
     if isinstance(x, torch.Tensor):
-        return x.cuda()
+        return x.to(device)
     elif isinstance(x, (tuple, list)):
         return [to_device(y) for y in x]
     else:
@@ -86,8 +86,8 @@ def lower_to_mgx(module: nn.Module,
     Returns:
         A SplitModule object containing MGXModule (lowered graphs) and torch.fx.GraphModule (unsupported graphs) objects.
     """
-    module = module.cuda().eval()
-    input = [to_device(x) for x in input]
+    module = module.cpu().eval()
+    input = [to_device(x, "cpu") for x in input]
     lower_setting = LowerSetting(
         lower_precision=lower_precision,
         verbose_log=verbose_log,

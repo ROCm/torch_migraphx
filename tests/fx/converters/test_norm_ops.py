@@ -7,11 +7,11 @@ from fx_test_utils import convert_to_mgx, verify_outputs
                                                      (25, 1e-2, 0.4),
                                                      (2, 1e-10, 0.7)])
 def test_batchnorm2d(num_feat, eps, momentum):
-    inp = torch.randn(8, num_feat, 50, 50).cuda()
+    inp = torch.randn(8, num_feat, 50, 50)
 
     mod = torch.nn.BatchNorm2d(num_features=num_feat,
                                eps=eps,
-                               momentum=momentum).cuda().eval()
+                               momentum=momentum).eval()
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
@@ -21,10 +21,10 @@ def test_batchnorm2d(num_feat, eps, momentum):
                                                    ((50, 50), 1e-2),
                                                    ((6, 50, 50), 1e-10)])
 def test_layernorm(normalized_shape, eps):
-    inp = torch.randn(8, 6, 50, 50).cuda()
+    inp = torch.randn(8, 6, 50, 50)
 
     mod = torch.nn.LayerNorm(normalized_shape=normalized_shape,
-                             eps=eps).cuda().eval()
+                             eps=eps).eval()
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
@@ -34,11 +34,11 @@ def test_layernorm(normalized_shape, eps):
                                                            (4, 4, 1e-2),
                                                            (1, 3, 1e-10)])
 def test_groupnorm(num_groups, num_channels, eps):
-    inp = torch.randn(8, num_channels, 50, 50).cuda()
+    inp = torch.randn(8, num_channels, 50, 50)
 
     mod = torch.nn.GroupNorm(num_groups=num_groups,
                              num_channels=num_channels,
-                             eps=eps).cuda().eval()
+                             eps=eps).eval()
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)

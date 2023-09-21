@@ -21,8 +21,8 @@ from fx_test_utils import LambdaModule, convert_to_mgx, verify_outputs
                 torch.tensor([1, 0])],
 ])
 def test_getitem(slice_func):
-    inp = torch.randn(32, 43, 11, 2, 12).cuda()
-    mod = LambdaModule(slice_func).cuda()
+    inp = torch.randn(32, 43, 11, 2, 12)
+    mod = LambdaModule(slice_func)
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
