@@ -24,15 +24,15 @@ DEFAULT_RTOL, DEFAULT_ATOL = 3e-3, 1e-2
         (models.inception_v3(), 1e-1, 1e-1),
     ])
 def test_vision_model(model, rtol, atol):
-    model = model.cuda()
-    sample_inputs = [torch.randn(4, 3, 244, 244).cuda()]
-
-    mgx_model = lower_to_mgx(model, sample_inputs, verbose_log=True)
-
-    mgx_out = mgx_model(*sample_inputs)
+    model = model.eval()
+    sample_inputs = [torch.randn(4, 3, 244, 244)]
     torch_out = model(*sample_inputs)
 
-    assert torch.allclose(mgx_out, torch_out, rtol=rtol, atol=atol)
+    mgx_model = lower_to_mgx(model, sample_inputs, verbose_log=True)
+    mgx_inputs = [i.cuda() for i in sample_inputs]
+    mgx_out = mgx_model(*mgx_inputs)
+    
+    assert torch.allclose(mgx_out.cpu(), torch_out, rtol=rtol, atol=atol)
 
     del mgx_model
     del model

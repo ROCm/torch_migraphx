@@ -23,12 +23,12 @@ from fx_test_utils import FuncModule, MethodModule, convert_to_mgx, verify_outpu
         marks=pytest.mark.skip(reason="trunc_div converter not implemented")),
 ])
 def test_pointwise_func(oper):
-    inps1 = [torch.randn(4, 7, 3).cuda(), torch.randn(4, 7, 3).cuda()]
-    inps2 = [torch.randn(4, 7, 3).cuda(), 2]
-    inps3 = [torch.randn(4, 7, 3).cuda(), torch.randn(1, 1, 3).cuda()]
+    inps1 = [torch.randn(4, 7, 3), torch.randn(4, 7, 3)]
+    inps2 = [torch.randn(4, 7, 3), 2]
+    inps3 = [torch.randn(4, 7, 3), torch.randn(1, 1, 3)]
 
     for inps in [inps1, inps2, inps3]:
-        mod = FuncModule(oper, inps[1]).cuda()
+        mod = FuncModule(oper, inps[1])
         mgx_mod = convert_to_mgx(mod, [inps[0]])
         verify_outputs(mod, mgx_mod, inps[0], equal_nan=True)
 
@@ -42,12 +42,12 @@ def test_pointwise_func(oper):
     'pow',
 ])
 def test_pointwise_method(method):
-    inps1 = [torch.randn(4, 7, 3).cuda(), torch.randn(4, 7, 3).cuda()]
-    inps2 = [torch.randn(4, 7, 3).cuda(), 2]
-    inps3 = [torch.randn(4, 7, 3).cuda(), torch.randn(1, 1, 3).cuda()]
+    inps1 = [torch.randn(4, 7, 3), torch.randn(4, 7, 3)]
+    inps2 = [torch.randn(4, 7, 3), 2]
+    inps3 = [torch.randn(4, 7, 3), torch.randn(1, 1, 3)]
 
     for inps in [inps1, inps2, inps3]:
-        mod = MethodModule(method, inps[-1]).cuda()
+        mod = MethodModule(method, inps[-1])
         mgx_mod = convert_to_mgx(mod, [inps[0]])
         verify_outputs(mod, mgx_mod, inps[0], equal_nan=True)
 
@@ -64,17 +64,17 @@ def test_pointwise_method(method):
     torch.ceil,
 ])
 def test_unary_func(oper):
-    inp = torch.randn(2, 9, 11, 1).cuda()
+    inp = torch.randn(2, 9, 11, 1)
 
-    mod = FuncModule(oper).cuda()
+    mod = FuncModule(oper)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
 
 
 @pytest.mark.parametrize('oper', [torch.log, torch.log1p])
 def test_log(oper):
-    inp = torch.abs(torch.randn(2, 9, 11, 1)).cuda()
-    mod = FuncModule(oper).cuda()
+    inp = torch.abs(torch.randn(2, 9, 11, 1))
+    mod = FuncModule(oper)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
@@ -91,8 +91,8 @@ def test_log(oper):
     torch.atan,
 ])
 def test_trig_func(oper):
-    inp = torch.randn(2, 9, 11, 1).cuda()
+    inp = torch.randn(2, 9, 11, 1)
 
-    mod = FuncModule(oper).cuda()
+    mod = FuncModule(oper)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)

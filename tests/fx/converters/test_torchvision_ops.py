@@ -11,10 +11,10 @@ except ImportError:
 @pytest.mark.skipif('torchvision' not in sys.modules,
                     reason="requires the torchvision library")
 def test_stochastic_depth():
-    inp = torch.randn(5, 7, 4, 2).cuda()
+    inp = torch.randn(5, 7, 4, 2)
     mod = FuncModule(torchvision.ops.stochastic_depth,
                      p=0.5,
                      mode='batch',
-                     training=False).cuda().eval()
+                     training=False).eval()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)

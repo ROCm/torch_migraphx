@@ -40,20 +40,21 @@ class MethodModule(torch.nn.Module):
         return m(*self.args, **self.kwargs)
 
 
-def verify_outputs(mod1, mod2, inp, rtol=3e-3, atol=1e-2, equal_nan=False):
+def verify_outputs(mod, mgx_mod, inp, rtol=3e-3, atol=1e-2, equal_nan=False):
     if not isinstance(inp, (list, tuple)):
         inp = (inp, )
-    out1, out2 = mod1(*inp), mod2(*inp)
+    inp_mgx = [i.cuda() for i in inp]
+    out1, out2 = mod(*inp), mgx_mod(*inp_mgx)
 
     if isinstance(out1, (list, tuple)):
         assert len(out1) == len(out2)
         assert all(
-            torch.allclose(o1, o2, rtol=rtol, atol=atol, equal_nan=equal_nan)
+            torch.allclose(o1.cpu(), o2.cpu(), rtol=rtol, atol=atol, equal_nan=equal_nan)
             for o1, o2 in zip(out1, out2))
 
     else:
-        assert torch.allclose(out1,
-                              out2,
+        assert torch.allclose(out1.cpu(),
+                              out2.cpu(),
                               rtol=rtol,
                               atol=atol,
                               equal_nan=equal_nan)
