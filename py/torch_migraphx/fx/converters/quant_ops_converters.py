@@ -44,6 +44,24 @@ from ..utils import (
 from .acc_ops_converters import broadcast_tensors
 
 
+# Propagate quantized outputs as QInstructionRef type. This should only
+# represent outputs of intermediate quantization ops, and never the
+# final output of a MGXModule
+class QInstructionRef:
+
+    def __init__(self, instr_ref, scale=1, zero_point=0, axis=None):
+        self.instr_ref = instr_ref
+        self.scale = scale
+        self.zero_point = zero_point
+        self.axis = axis
+
+    def mgx_type(self):
+        return self.instr_ref.shape().type_string()
+
+    def torch_qtype(self):
+        return torch_qdtype_from_mgx(self.mgx_type())
+
+
 def add_quantize_linear(mgx_module,
                         inp,
                         scale,
@@ -89,14 +107,7 @@ def add_quantize_linear(mgx_module,
     q_ins = mgx_module.add_instruction(migraphx.op("quantizelinear"),
                                        [inp, mb_scale, mb_zero_point])
 
-    # TODO: Find better way to propagate quantization params.
-    # For now patch it onto the instruction ref
-    q_ins.qparams = {
-        "scale": scale,
-        "zero_point": zero_point,
-        "axis": per_ch_axis
-    }
-    return q_ins
+    return QInstructionRef(q_ins, scale, zero_point, per_ch_axis)
 
 
 def add_dequantize_linear(mgx_module,
@@ -117,14 +128,17 @@ def add_dequantize_linear(mgx_module,
                 scale, dtype=torch.float32).numpy()
         scale = mgx_module.add_literal(scale)
 
+    inp, scale, zero_point = broadcast_tensors(mgx_module, inp, scale,
+                                               zero_point)
+
     return mgx_module.add_instruction(migraphx.op("dequantizelinear"),
                                       [inp, scale, zero_point])
 
 
-@migraphx_converter(torch.nn.intrinsic.quantized.LinearReLU)
-def module_quantized_linear_relu(mgx_module, torch_mod, node, args, kwargs):
-    inp = args[0]
-    assert hasattr(inp, "qparams")
+def add_quantized_fc(mgx_module, torch_mod, node, args, kwargs):
+    q_inp = args[0]
+    assert isinstance(q_inp, QInstructionRef)
+    inp = q_inp.instr_ref
     in_shape = inp.shape().lens()
 
     weight = torch_mod.weight()
@@ -147,14 +161,15 @@ def module_quantized_linear_relu(mgx_module, torch_mod, node, args, kwargs):
                                          [inp, A_T_mgx])
 
     # Compute scale quant_dot output
-    inp_scale = inp.qparams["scale"]
+    inp_scale = q_inp.scale
     if weight.qscheme() == torch.per_tensor_affine:
-        weight_scale = weight.q_scale()
+        weight_scale = torch.tensor(weight.q_scale(), dtype=torch.float32)
         q_axis = None
     else:
         weight_scale = weight.q_per_channel_scales()
         q_axis = weight.q_per_channel_axis()
 
+    weight_scale = mgx_module.add_literal(weight_scale.cpu().numpy())
     inp_scale, weight_scale = broadcast_tensors(mgx_module, inp_scale,
                                                 weight_scale)
     dot_scale = mgx_module.add_instruction(migraphx.op("mul"),
@@ -168,12 +183,41 @@ def module_quantized_linear_relu(mgx_module, torch_mod, node, args, kwargs):
                                         dot_scale,
                                         0,
                                         target_type=torch.qint32)
-        out_mgx, qbias_mgx = broadcast_tensors(mgx_module, out_mgx, qbias_mgx)
+        out_mgx, qbias_mgx = broadcast_tensors(mgx_module, out_mgx,
+                                               qbias_mgx.instr_ref)
         out_mgx = mgx_module.add_instruction(migraphx.op("add"),
                                              [out_mgx, qbias_mgx])
 
     # Dequantize int32 result
-    out_mgx = add_dequantize_linear(mgx_module, out_mgx, dot_scale, 0, q_axis)
+    return add_dequantize_linear(mgx_module, out_mgx, dot_scale, 0, q_axis)
+
+
+@migraphx_converter(torch.nn.quantized.Linear)
+def module_quantized_linear(mgx_module, torch_mod, node, args, kwargs):
+
+    out_mgx = add_quantized_fc(mgx_module, torch_mod, node, args, kwargs)
+
+    # Requantize to output specs. Output of this layer in torch fx is expected to be quint8 type.
+    # Lowered modules cannot output quantized tensors so any quantized tensor will be a part of
+    # an accelerator subgraph. For MIGraphX these need to be in int8 format rather than uint8.
+    out_scale = torch_mod.scale
+    out_zero_point = torch_mod.zero_point
+    out_mgx = add_quantize_linear(mgx_module,
+                                  out_mgx,
+                                  out_scale,
+                                  out_zero_point,
+                                  zp_offset=-128,
+                                  target_type=torch.qint8)
+    return out_mgx
+
+
+@migraphx_converter(torch.nn.intrinsic.quantized.LinearReLU)
+def module_quantized_linear_relu(mgx_module, torch_mod, node, args, kwargs):
+
+    out_mgx = add_quantized_fc(mgx_module, torch_mod, node, args, kwargs)
+
+    # TODO: Test whether its better performance to apply ReLU before requantization
+    out_mgx = mgx_module.add_instruction(migraphx.op('relu'), [out_mgx])
 
     # Requantize to output specs. Output of this layer in torch fx is expected to be quint8 type.
     # Lowered modules cannot output quantized tensors so any quantized tensor will be a part of
@@ -208,11 +252,9 @@ def acc_ops_quantize_per_tensor(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.dequantize)
-def acc_ops_quantize_per_tensor(mgx_module, node, args, kwargs):
-    inp = kwargs["input"]
-    assert hasattr(inp, "qparams")
-    scale, zero_point = inp.qparams["scale"], inp.qparams["zero_point"]
-    axis = inp.qparams["axis"]
+def acc_ops_dequantize_per_tensor(mgx_module, node, args, kwargs):
+    q_inp = kwargs["input"]
+    assert isinstance(q_inp, QInstructionRef)
 
-    q_ins = add_dequantize_linear(mgx_module, inp, scale, zero_point, axis)
-    return q_ins
+    return add_dequantize_linear(mgx_module, q_inp.instr_ref, q_inp.scale,
+                                 q_inp.zero_point, q_inp.axis)
