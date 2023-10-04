@@ -294,6 +294,7 @@ def create_acc_tracer(cls=Tracer):
             torch.nn.quantized.Linear,
             torch.nn.quantized.Conv2d,
             torch.nn.intrinsic.quantized.ConvReLU2d,
+            torch.nn.intrinsic.quantized.LinearReLU,
             jit.ScriptModule,
             jit.RecursiveScriptModule,
             torch.nn.LSTM,
@@ -409,7 +410,7 @@ def _rewrite(
             # into RewrittenModule.
             for method_name in dir(base_class):
                 method = getattr(base_class, method_name, None)
-                if method is None and method_name not in {"__doc__"}:
+                if method is None and method_name not in {"__doc__", "_compiled_call_impl"}:
                     _LOGGER.warning(
                         f"{__qualname__} does not have attribute {method_name}"
                     )

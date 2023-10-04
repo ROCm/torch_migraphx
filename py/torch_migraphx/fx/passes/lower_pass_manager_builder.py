@@ -148,6 +148,9 @@ class LowerPassManagerBuilder:
                     _LOGGER.info(
                         f"Lowering submodule {submod_name} elapsed time {datetime.datetime.now() - lowering_start_time}"
                     )
+                else:
+                    # Move non-acc modules to gpu
+                    setattr(split_result.split_module, submod_name, submod.cuda())
 
             return SplitModule(split_result.split_module,
                                split_result.submodule_inputs,
