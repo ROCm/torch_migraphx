@@ -1,6 +1,5 @@
 from typing import Sequence
 import torch
-# import torch_migraphx.fx.tracer.acc_tracer.acc_tracer as acc_tracer
 import torch_migraphx.fx.tracer.aten_tracer.aten_tracer as aten_tracer
 import torch_migraphx.fx.tracer.acc_tracer.acc_tracer as acc_tracer
 from torch_migraphx.fx.fx2mgx import MGXInterpreter

@@ -409,7 +409,7 @@ def _rewrite(
             # into RewrittenModule.
             for method_name in dir(base_class):
                 method = getattr(base_class, method_name, None)
-                if method is None and method_name not in {"__doc__"}:
+                if method is None and method_name not in {"__doc__", "_compiled_call_impl"}:
                     _LOGGER.warning(
                         f"{__qualname__} does not have attribute {method_name}"
                     )
