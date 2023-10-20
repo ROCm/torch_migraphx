@@ -35,6 +35,7 @@ from ..converter_registry import migraphx_converter
 from ..tracer.acc_tracer import acc_ops
 from torch.fx.node import Argument, Target
 from .utils import *
+from ..fx2mgx import MGXInstruction
 
 
 def add_lstm_layer(
