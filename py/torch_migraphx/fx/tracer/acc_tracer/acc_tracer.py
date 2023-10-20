@@ -294,6 +294,7 @@ def create_acc_tracer(cls=Tracer):
             torch.nn.quantized.Linear,
             torch.nn.quantized.Conv2d,
             torch.nn.intrinsic.quantized.ConvReLU2d,
+            torch.nn.intrinsic.quantized.LinearReLU,
             jit.ScriptModule,
             jit.RecursiveScriptModule,
             torch.nn.LSTM,

@@ -118,15 +118,19 @@ def module_lstm(mgx_module, torch_mod, node, args, kwargs):
     if torch_mod.proj_size > 0:
         raise RuntimeError('LSTMs with projections not supported')
 
-    input = kwargs['input']
-    in_shape = node.all_input_nodes[0].meta['tensor_meta'].shape
-    h0, c0 = kwargs['hx'] if 'hx' in kwargs and kwargs['hx'] is not None else (
-        None, None)
+    inp = kwargs['input']
+    assert not inp.is_quantized()
+    inp = inp.instr_ref
+    in_shape = inp.shape().lens()
+    
+    h0, c0 = kwargs.get('hx', (None, None))
+    h0 = h0.instr_ref if isinstance(h0, MGXInstruction) else h0
+    c0 = c0.instr_ref if isinstance(c0, MGXInstruction) else c0
 
     if torch_mod.batch_first:
         # Need shape [seq_length, batch_size, input_size]
-        input = mgx_module.add_instruction(
-            migraphx.op('transpose', permutation=[1, 0, 2]), [input])
+        inp = mgx_module.add_instruction(
+            migraphx.op('transpose', permutation=[1, 0, 2]), [inp])
 
     hidden_size = torch_mod.hidden_size
     has_bias = torch_mod.bias
@@ -176,7 +180,7 @@ def module_lstm(mgx_module, torch_mod, node, args, kwargs):
             mgx_module,
             hidden_size,
             direction,
-            input,
+            inp,
             ih_weights,
             hh_weights,
             biases,
@@ -185,7 +189,7 @@ def module_lstm(mgx_module, torch_mod, node, args, kwargs):
         )  # shape [seq_length, num_directions, batch_size, hidden_size]
 
         # Input to next layer needs to be [seq_length, batch_size, num_directions*hidden_size]
-        input = mgx_module.add_instruction(
+        inp = mgx_module.add_instruction(
             migraphx.op(
                 'reshape',
                 dims=[seq_len, batch_size, num_directions * hidden_size]),
@@ -204,4 +208,4 @@ def module_lstm(mgx_module, torch_mod, node, args, kwargs):
     else:
         hn, cn = hiddens[0], cells[0]
 
-    return input, (hn, cn)
+    return MGXInstruction(inp), (MGXInstruction(hn), MGXInstruction(cn))

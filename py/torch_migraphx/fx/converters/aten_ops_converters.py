@@ -32,6 +32,7 @@ import torch
 from ..converter_registry import migraphx_converter
 from torch_migraphx.fx.converters import acc_ops_converters
 from ..utils import torch_dtype_to_mgx_enum
+from ..fx2mgx import MGXInstruction
 
 
 @migraphx_converter(torch.ops.aten._to_copy.default)
@@ -46,10 +47,12 @@ def aten_ops_to_copy(mgx_module, node, args, kwargs):
         assert len(args) == 1
         out = args[0]
     if "dtype" in kwargs:
+        assert not out.is_quantized()
         out = mgx_module.add_instruction(
             migraphx.op("convert",
                         target_type=torch_dtype_to_mgx_enum(kwargs["dtype"])),
-            [out])
+            [out.instr_ref])
+        out = MGXInstruction(out)
 
     return out
 

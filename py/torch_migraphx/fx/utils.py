@@ -61,6 +61,14 @@ TYPE_MAP = {
 
 INV_TYPE_MAP = {v: k for k, v in TYPE_MAP.items()}
 
+QTYPE_MAP = {
+    torch.quint8: 'uint8_type',
+    torch.qint8: 'int8_type',
+    torch.qint32: 'int32_type',
+}
+
+INV_QTYPE_MAP = {v: k for k, v in QTYPE_MAP.items()}
+
 
 def torch_dtype_to_mgx(dtype: torch.dtype) -> str:
     return TYPE_MAP[dtype]
@@ -70,12 +78,24 @@ def torch_dtype_from_mgx(type_string: str) -> torch.dtype:
     return INV_TYPE_MAP[type_string]
 
 
+def torch_qdtype_to_mgx(dtype: torch.dtype) -> str:
+    return QTYPE_MAP[dtype]
+
+
+def torch_qdtype_from_mgx(type_string: str) -> torch.dtype:
+    return INV_QTYPE_MAP[type_string]
+
+
 def mgx_type_str_to_enum(type_string: str) -> migraphx.shape.type_t:
     return getattr(migraphx.shape.type_t, type_string)
 
 
 def torch_dtype_to_mgx_enum(dtype: torch.dtype) -> migraphx.shape.type_t:
     return mgx_type_str_to_enum(torch_dtype_to_mgx(dtype))
+
+
+def torch_qdtype_to_mgx_enum(dtype: torch.dtype) -> migraphx.shape.type_t:
+    return mgx_type_str_to_enum(torch_qdtype_to_mgx(dtype))
 
 
 def mgx_argument_from_tensor(tensor: torch.tensor) -> migraphx.argument:
