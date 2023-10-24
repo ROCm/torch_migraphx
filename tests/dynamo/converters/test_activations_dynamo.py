@@ -7,7 +7,8 @@ if not hasattr(torch_migraphx, "dynamo"):
     pytest.skip(allow_module_level=True)
 
 
-@pytest.mark.parametrize('op_alias', [torch.ops.aten.clamp.default])
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.clamp.default,
+                                      torch.ops.aten.hardtanh.default])
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
                                       (1, 3, 6, 128, 128)])
 def test_clamp(op_alias, inp_size):

@@ -248,15 +248,19 @@ def aten_ops_split(mgx_module, node, args, kwargs):
     return slice_nodes
 
 
+@migraphx_converter(torch.ops.aten.hardtanh.default)
 @migraphx_converter(torch.ops.aten.clamp.default)
 def aten_ops_clamp(mgx_module, node, args, kwargs):
     assert len(args) >= 1
+    min_, max_ = None, None
+    if node.target == torch.ops.aten.hardtanh.default:
+        min_, max_ = -1, 1
+
     acc_kwargs = {
         "input": args[0],
-        "min": args[1] if len(args) >= 2 else None,
-        "max": args[2] if len(args) == 3 else None
+        "min": args[1] if len(args) >= 2 else min_,
+        "max": args[2] if len(args) == 3 else max_
     }
-
     return acc_ops_converters.acc_ops_clamp(mgx_module, node, (), acc_kwargs)
 
 
