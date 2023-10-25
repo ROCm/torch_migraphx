@@ -290,6 +290,14 @@ def aten_ops_leaky_relu(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_leaky_relu(mgx_module, node, (),
                                                  acc_kwargs)
 
+@migraphx_converter(torch.ops.aten.hardswish.default)
+def aten_ops_hardswish(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+
+    return acc_ops_converters.acc_ops_hard_swish(mgx_module, node, (),
+                                                   acc_kwargs)
+
 
 @migraphx_converter(torch.ops.aten.hardsigmoid.default)
 def aten_ops_hardsigmoid(mgx_module, node, args, kwargs):

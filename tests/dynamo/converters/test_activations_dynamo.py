@@ -23,6 +23,7 @@ def test_clamp(op_alias, inp_size):
     torch.ops.aten.relu.default,
     torch.ops.aten.tanh.default,
     torch.ops.aten.hardsigmoid.default,
+    torch.ops.aten.hardswish.default,
     torch.ops.aten.sigmoid.default,
     torch.ops.aten.gelu.default,
     torch.ops.aten.silu.default,
