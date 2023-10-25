@@ -7,7 +7,10 @@ if not hasattr(torch_migraphx, "dynamo"):
     pytest.skip(allow_module_level=True)
 
 
-@pytest.mark.parametrize('op_alias', [torch.ops.aten.argmax.default])
+@pytest.mark.parametrize('op_alias', 
+                        [torch.ops.aten.argmax.default,
+                         torch.ops.aten.max.default,
+])
 @pytest.mark.parametrize('dim, keepdim', [
     (2, True),
     (-1, False),
