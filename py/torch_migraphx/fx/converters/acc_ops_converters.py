@@ -399,7 +399,7 @@ def acc_ops_elu(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.selu)
-def acc_ops_elu(mgx_module, node, args, kwargs):
+def acc_ops_selu(mgx_module, node, args, kwargs):
 
     inp = kwargs['input']
     dtype = get_arg_dtype(inp)
@@ -442,7 +442,7 @@ def acc_ops_elu(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.softsign)
-def acc_ops_elu(mgx_module, node, args, kwargs):
+def acc_ops_softsign(mgx_module, node, args, kwargs):
 
     inp = kwargs['input']
     dtype = get_arg_dtype(inp)
