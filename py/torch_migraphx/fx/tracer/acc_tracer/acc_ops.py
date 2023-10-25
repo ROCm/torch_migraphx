@@ -446,11 +446,6 @@ def hardsigmoid(*, input):
     return nn.functional.hardsigmoid(input)
 
 
-@register_acc_op
-def hardswish(*, input):
-    return nn.functional.hardswish(input)
-
-
 @register_acc_op_mapping(
     op_and_target=("call_method", "softmax"),
     arg_replacement_tuples=[

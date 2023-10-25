@@ -589,32 +589,6 @@ def acc_ops_hard_sigmoid(mgx_module, node, args, kwargs):
     return mgx_module.add_instruction(migraphx.op('clip'), [add, zeros, ones])
 
 
-@migraphx_converter(acc_ops.hardswish)
-def acc_ops_hard_swish(mgx_module, node, args, kwargs):
-
-    inp = kwargs['input']
-    dtype = get_arg_dtype(inp)
-    shape = inp.shape().lens()
-
-    alpha = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=shape),
-        [mgx_module.add_literal(torch.tensor([1 / 6], dtype=dtype).numpy())])
-
-    beta = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=shape),
-        [mgx_module.add_literal(torch.tensor([1 / 2], dtype=dtype).numpy())])
-
-    zeros = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=shape),
-        [mgx_module.add_literal(torch.tensor([0], dtype=dtype).numpy())])
-
-    mul  = mgx_module.add_instruction(migraphx.op('mul'), [alpha, inp])
-    add = mgx_module.add_instruction(migraphx.op('add'), [beta, mul])
-
-    mul2 = mgx_module.add_instruction(migraphx.op('mul'), [add, inp])
-    return mgx_module.add_instruction(migraphx.op('clip'), [zeros, inp, mul2])
-
-
 @migraphx_converter(acc_ops.softmax)
 def acc_ops_softmax(mgx_module, node, args, kwargs):
 
