@@ -21,6 +21,7 @@ def test_clamp(op_alias, inp_size):
 
 @pytest.mark.parametrize('op_alias', [
     torch.ops.aten.relu.default,
+    torch.ops.aten.elu.default,
     torch.ops.aten.tanh.default,
     torch.ops.aten.hardsigmoid.default,
     torch.ops.aten.hardswish.default,
@@ -35,7 +36,10 @@ def test_noparam_activation_funcs(op_alias):
     verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('op_alias', [torch.ops.aten.leaky_relu.default])
+@pytest.mark.parametrize('op_alias', [
+    torch.ops.aten.elu.default,
+    torch.ops.aten.leaky_relu.default,
+])
 @pytest.mark.parametrize('inp_size, alpha', [
     ((11, 3, 9), 0.1),
     ((6, 12, 32, 6), 0.05),

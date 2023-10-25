@@ -280,6 +280,16 @@ def aten_ops_tanh(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_tanh(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.elu.default)
+def aten_ops_elu(mgx_module, node, args, kwargs):
+    assert len(args) >= 1
+    inp = args[0]
+    alpha = 1.0 if len(args) < 2 else args[1]
+
+    acc_kwargs = {'input': inp, 'alpha': alpha}
+    return acc_ops_converters.acc_ops_elu(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.leaky_relu.default)
 def aten_ops_leaky_relu(mgx_module, node, args, kwargs):
     assert len(args) >= 1
