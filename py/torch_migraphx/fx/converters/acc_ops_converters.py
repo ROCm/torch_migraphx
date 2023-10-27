@@ -42,25 +42,7 @@ from ..utils import torch_dtype_from_mgx, torch_dtype_to_mgx_enum
 from ..fx2mgx import MGXInstruction
 
 
-def get_arg_dtype(arg):
-    if isinstance(arg, migraphx.instruction_ref):
-        dtype = torch_dtype_from_mgx(arg.shape().type_string())
-    elif isinstance(arg, torch.Tensor):
-        dtype = arg.dtype
-    else:
-        dtype = None
 
-    return dtype
-
-
-def convert_arg(mgx_module, arg, out_type):
-    if not isinstance(arg, migraphx.instruction_ref):
-        arg = mgx_module.add_literal(torch.tensor(arg, dtype=out_type).numpy())
-    elif torch_dtype_from_mgx(arg.shape().type_string()) != out_type:
-        arg = mgx_module.add_instruction(
-            migraphx.op("convert",
-                        target_type=torch_dtype_to_mgx_enum(out_type)), [arg])
-    return arg
 
 
 def broadcast_for_elemwise_op(mgx_module, node, inp, other):
@@ -92,20 +74,6 @@ def broadcast_for_elemwise_op(mgx_module, node, inp, other):
 
     return inp, other
 
-
-def broadcast_tensors(mgx_module, *tensors):
-    lens = [t.shape().lens() for t in tensors]
-    out_shape = list(torch.broadcast_shapes(*lens))
-    outs = []
-    for t in tensors:
-        if t.shape().lens() != out_shape:
-            outs.append(
-                mgx_module.add_instruction(
-                    migraphx.op('multibroadcast', out_lens=out_shape), [t]))
-        else:
-            outs.append(t)
-
-    return outs
 
 
 @migraphx_converter(acc_ops.linear)
