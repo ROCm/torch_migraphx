@@ -11,6 +11,9 @@ if not hasattr(torch_migraphx, "dynamo"):
                         [torch.ops.aten.argmax.default,
                          torch.ops.aten.max.default,
                          torch.ops.aten.max.dim,
+                         torch.ops.aten.min.default,
+                         torch.ops.aten.min.dim,
+
 ])
 @pytest.mark.parametrize('dim, keepdim', [
     (2, True),

@@ -173,6 +173,13 @@ def max(*, input, dim, keepdim=False):
     return torch.max(input=input, dim=dim, keepdim=keepdim)
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.min))
+@register_acc_op_mapping(op_and_target=("call_method", "min"))
+@register_acc_op
+def min(*, input, dim, keepdim=False):
+    return torch.min(input=input, dim=dim, keepdim=keepdim)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", operator.getitem))
 @register_acc_op
 def getitem(*, input, idx):

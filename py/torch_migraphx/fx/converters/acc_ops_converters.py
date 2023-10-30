@@ -993,6 +993,18 @@ def acc_ops_max(mgx_module, node, args, kwargs):
         migraphx.op('squeeze', axes=list(kwargs['dim'])), [max])
 
 
+@migraphx_converter(acc_ops.min)
+def acc_ops_min(mgx_module, node, args, kwargs):
+    min = mgx_module.add_instruction(
+        migraphx.op('reduce_min', axes=list(kwargs['dim'])),
+        [kwargs['input']])
+
+    if 'keepdim' in kwargs and kwargs['keepdim']:
+        return min
+
+    return mgx_module.add_instruction(
+        migraphx.op('squeeze', axes=list(kwargs['dim'])), [min])
+
 
 @migraphx_converter(acc_ops.mean)
 def acc_ops_mean(mgx_module, node, args, kwargs):
