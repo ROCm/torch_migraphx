@@ -756,6 +756,7 @@ def aten_ops_argmax(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_argmax(mgx_module, node, (), acc_kwargs)
 
 @migraphx_converter(torch.ops.aten.max.default)
+@migraphx_converter(torch.ops.aten.max.dim)
 def aten_ops_max(mgx_module, node, args, kwargs):
     assert len(args) >= 1
     
@@ -765,7 +766,7 @@ def aten_ops_max(mgx_module, node, args, kwargs):
         "keepdim": args[2] if len(args) >= 3 else False
     }
     
-    return acc_ops_converters.acc_ops_maximum(mgx_module, node, (), acc_kwargs)
+    return acc_ops_converters.acc_ops_max(mgx_module, node, (), acc_kwargs)
 
 @migraphx_converter(torch.ops.aten.as_strided.default)
 def aten_ops_as_strided(mgx_module, node, args, kwargs):

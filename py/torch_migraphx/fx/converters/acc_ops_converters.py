@@ -980,6 +980,12 @@ def acc_ops_maximum(mgx_module, node, args, kwargs):
     return mgx_module.add_instruction(migraphx.op('max'), [inp, other])
 
 
+@migraphx_converter(acc_ops.max)
+def acc_ops_max(mgx_module, node, args, kwargs):
+    inp, dim, keepdims = kwargs["input"], kwargs["dim"], kwargs["keepdims"]
+    return mgx_module.add_instruction(migraphx.op('reduce_max'), [inp, dim, keepdims])
+
+
 @migraphx_converter(acc_ops.mean)
 def acc_ops_mean(mgx_module, node, args, kwargs):
 
