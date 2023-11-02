@@ -1749,3 +1749,47 @@ def quantize_per_tensor(*, input, scale, zero_point, dtype):
 @register_acc_op
 def dequantize(*, input):
     return torch.dequantize(input)
+
+
+@register_acc_op_properties(AccOpProperty.quantized)
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.ops.quantized.add),
+                         arg_replacement_tuples=[
+                             ("qa", "input"),
+                             ("qb", "other"),
+                             ("scale", "scale"),
+                             ("zero_point", "zero_point"),
+                         ])
+@register_acc_op
+def quantized_add(*, input, other, scale, zero_point):
+    return torch.ops.quantized.add(input, other, scale, zero_point)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.ops.quantized.add_relu),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("other", "other"),
+        ("scale", "scale"),
+        ("zero_point", "zero_point"),
+    ],
+)
+def add_relu_unfuse_mapper(node: torch.fx.Node,
+                           mod: torch.fx.GraphModule) -> torch.fx.Node:
+    with node.graph.inserting_before(node):
+        add_kwargs = {
+            "input": node.kwargs["input"],
+            "other": node.kwargs["other"],
+            "scale": node.kwargs["scale"],
+            "zero_point": node.kwargs["zero_point"],
+        }
+        add_node = node.graph.call_function(quantized_add, kwargs=add_kwargs)
+        add_node.meta = node.meta.copy()
+
+        relu_node = node.graph.call_function(relu,
+                                             kwargs={
+                                                 "input": add_node,
+                                                 "inplace": False
+                                             })
+        relu_node.meta = node.meta
+        return relu_node

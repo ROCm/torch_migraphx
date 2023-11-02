@@ -48,70 +48,6 @@ from torch_migraphx.fx.converters import acc_ops_converters
 _LOGGER = logging.getLogger(__name__)
 
 
-def add_quantize_linear(mgx_module,
-                        inp,
-                        scale,
-                        zero_point,
-                        per_ch_axis=None,
-                        zp_offset=0,
-                        target_type=torch.qint8):
-    assert isinstance(inp, migraphx.instruction_ref)
-
-    if not isinstance(scale, migraphx.instruction_ref):
-        scale = scale.detach().cpu().numpy() if isinstance(
-            scale, torch.Tensor) else torch.tensor(
-                scale, dtype=torch.float32).numpy()
-        scale = mgx_module.add_literal(scale)
-
-    # if not isinstance(zero_point, migraphx.instruction_ref):
-    #     zero_point = zero_point.detach().cpu().numpy() if isinstance(
-    #         zero_point, torch.Tensor) else torch.tensor(zero_point).numpy()
-    #     zero_point = mgx_module.add_literal(zero_point)
-    zero_point = mgx_module.add_literal(torch.tensor(0).numpy())
-
-    if scale.shape().lens() != zero_point.shape().lens():
-        scale, zero_point = broadcast_tensors(mgx_module, scale, zero_point)
-
-    # if zp_offset != 0:
-    #     zp_dtype = torch_dtype_from_mgx(zero_point.shape().type_string())
-    #     zp_offset = mgx_module.add_literal(
-    #         torch.tensor(zp_offset, dtype=zp_dtype).numpy())
-    #     zero_point, zp_offset = broadcast_tensors(mgx_module, zero_point,
-    #                                               zp_offset)
-    #     zero_point = mgx_module.add_instruction(migraphx.op("add"),
-    #                                             [zero_point, zp_offset])
-    zero_point = mgx_module.add_instruction(
-        migraphx.op("convert",
-                    target_type=torch_qdtype_to_mgx_enum(target_type)),
-        [zero_point])
-
-    if per_ch_axis is None:
-        inp, mb_scale, mb_zero_point = broadcast_tensors(
-            mgx_module, inp, scale, zero_point)
-    else:
-        inp_shape = inp.shape().lens()
-        if inp_shape != scale.shape().lens():
-            mb_scale = mgx_module.add_instruction(
-                migraphx.op('broadcast', axis=per_ch_axis, out_lens=inp_shape),
-                [scale])
-        else:
-            mb_scale = scale
-
-        if inp_shape != zero_point.shape().lens():
-            mb_zero_point = mgx_module.add_instruction(
-                migraphx.op('broadcast', axis=per_ch_axis, out_lens=inp_shape),
-                [zero_point])
-        else:
-            mb_zero_point = zero_point
-
-    q_ins = mgx_module.add_instruction(migraphx.op("quantizelinear"),
-                                       [inp, mb_scale, mb_zero_point])
-
-    qparams = {"scale": scale, "zero_point": zero_point, "axis": per_ch_axis}
-
-    return MGXInstruction(q_ins, qparams=qparams)
-
-
 @migraphx_converter(acc_ops.quantize_per_tensor)
 def acc_ops_quantize_per_tensor(mgx_module, node, args, kwargs):
     inp, scale = kwargs["input"], kwargs["scale"]
@@ -143,41 +79,6 @@ def acc_ops_quantize_per_tensor(mgx_module, node, args, kwargs):
     return q_ins
 
 
-def add_dequantize_linear(mgx_module,
-                          inp,
-                          scale,
-                          zero_point,
-                          per_ch_axis=None):
-    assert isinstance(inp, migraphx.instruction_ref)
-
-    if not isinstance(zero_point, migraphx.instruction_ref):
-        zp_dtype = torch_dtype_from_mgx(inp.shape().type_string())
-        zero_point = mgx_module.add_literal(
-            torch.tensor(zero_point, dtype=zp_dtype).numpy())
-
-    if isinstance(scale, torch.Tensor):
-        scale = scale.detach().cpu().to(dtype=torch.float32).numpy()
-        scale = mgx_module.add_literal(scale)
-    elif not isinstance(scale, migraphx.instruction_ref):
-        scale = torch.tensor(scale, dtype=torch.float32).numpy()
-        scale = mgx_module.add_literal(scale)
-
-    if per_ch_axis is None:
-        inp, scale, zero_point = broadcast_tensors(mgx_module, inp, scale,
-                                                   zero_point)
-    else:
-        inp_shape = inp.shape().lens()
-        scale = mgx_module.add_instruction(
-            migraphx.op('broadcast', axis=per_ch_axis, out_lens=inp_shape),
-            [scale])
-        zero_point = mgx_module.add_instruction(
-            migraphx.op('broadcast', axis=per_ch_axis, out_lens=inp_shape),
-            [zero_point])
-
-    return mgx_module.add_instruction(migraphx.op("dequantizelinear"),
-                                      [inp, scale, zero_point])
-
-
 @migraphx_converter(acc_ops.dequantize)
 def acc_ops_dequantize_per_tensor(mgx_module, node, args, kwargs):
     q_inp = kwargs["input"]
@@ -189,68 +90,6 @@ def acc_ops_dequantize_per_tensor(mgx_module, node, args, kwargs):
                                    qparams["axis"])
 
     return MGXInstruction(dq_ins)
-
-
-@migraphx_converter(torch.nn.quantized.Linear)
-def module_quantized_linear(mgx_module, torch_mod, node, args, kwargs):
-    q_inp = args[0]
-    assert q_inp.qparams is not None
-
-    in_shape = q_inp.shape().lens()
-    dq_inp = add_dequantize_linear(mgx_module, q_inp.instr_ref,
-                                   q_inp.qparams["scale"],
-                                   q_inp.qparams["zero_point"],
-                                   q_inp.qparams["axis"])
-
-    weight = torch_mod.weight()
-    bias = torch_mod.bias()
-
-    weight_mgx, weight_qparams = add_dequantize_tensor(mgx_module, weight)
-
-    # Requantize bias to int32
-    if bias is None:
-        bias_mgx = bias
-    else:
-        bias_mgx = add_literal(mgx_module, bias)
-        inp_scale = add_literal(mgx_module,
-                                q_inp.qparams["scale"],
-                                dtype=torch.float32)
-        weight_scale = add_literal(mgx_module,
-                                   weight_qparams["scale"],
-                                   dtype=torch.float32)
-        inp_scale, weight_scale = broadcast_tensors(mgx_module, inp_scale,
-                                                    weight_scale)
-        bias_scale = mgx_module.add_instruction(migraphx.op("mul"),
-                                                [inp_scale, weight_scale])
-        rq_bais = add_requantize_tensor(mgx_module, bias_mgx, bias_scale, 0,
-                                        torch.qint32)
-
-    fc_args = {
-        "input": MGXInstruction(dq_inp),
-        "weight": MGXInstruction(weight_mgx),
-        "bias": MGXInstruction(rq_bais)
-    }
-
-    out_mgx = acc_ops_converters.acc_ops_linear(mgx_module, node, (), fc_args)
-
-    # Requantize to output specs. Output of this layer in torch fx is expected to be quint8 type.
-    # Lowered modules cannot output quantized tensors so any quantized tensor will be a part of
-    # an accelerator subgraph. For MIGraphX these need to be in int8 format rather than uint8.
-    out_scale = torch_mod.scale
-    out_zero_point = torch_mod.zero_point
-
-    zp_offset = -128
-    if hasattr(node, "meta"):
-        dtype = node.meta["tensor_meta"].dtype
-        if dtype == torch.qint8: zp_offset = 0
-
-    out_mgx = add_quantize_linear(mgx_module,
-                                  out_mgx.instr_ref,
-                                  out_scale,
-                                  out_zero_point,
-                                  zp_offset=zp_offset,
-                                  target_type=torch.qint8)
-    return out_mgx
 
 
 def add_dequantize_tensor(mgx_module, tensor):
@@ -277,8 +116,9 @@ def add_requantize_tensor(mgx_module,
                           rq_axis=None,
                           rq_dtype=torch.qint32):
 
+    tensor_mgx = add_literal(mgx_module, tensor)
     q_bias = add_quantize_linear(mgx_module,
-                                 tensor,
+                                 tensor_mgx,
                                  rq_scale,
                                  0,
                                  per_ch_axis=rq_axis,
@@ -291,3 +131,239 @@ def add_requantize_tensor(mgx_module,
                                     per_ch_axis=q_bias.qparams["axis"])
 
     return dq_bias
+
+
+def add_output_scale(mgx_module, inp_scale, weight_scale):
+    inp_scale = add_literal(mgx_module, inp_scale, dtype=torch.float32)
+    weight_scale = add_literal(mgx_module, weight_scale, dtype=torch.float32)
+    inp_scale, weight_scale = broadcast_tensors(mgx_module, inp_scale,
+                                                weight_scale)
+    return mgx_module.add_instruction(migraphx.op("mul"),
+                                      [inp_scale, weight_scale])
+
+
+def add_dequantize_fc(mgx_module, inp, weight, bias):
+    assert inp.is_quantized()
+
+    dq_inp = add_dequantize_linear(mgx_module, inp.instr_ref,
+                                   inp.qparams["scale"],
+                                   inp.qparams["zero_point"],
+                                   inp.qparams["axis"])
+
+    weight_mgx, weight_qparams = add_dequantize_tensor(mgx_module, weight)
+
+    # Requantize bias to int32
+    if bias is None:
+        rq_bais = bias
+    else:
+        bias_scale = add_output_scale(mgx_module, inp.qparams["scale"],
+                                      weight_qparams["scale"])
+        rq_bais = add_requantize_tensor(mgx_module, bias, bias_scale, 0,
+                                        torch.qint32)
+
+    fc_kwargs = {
+        "input": MGXInstruction(dq_inp),
+        "weight": MGXInstruction(weight_mgx),
+        "bias": MGXInstruction(rq_bais)
+    }
+
+    return acc_ops_converters.acc_ops_linear(mgx_module, None, (), fc_kwargs)
+
+
+@migraphx_converter(torch.nn.quantized.Linear)
+def module_quantized_linear(mgx_module, torch_mod, node, args, kwargs):
+    q_inp = args[0]
+    assert q_inp.is_quantized()
+
+    out_mgx = add_dequantize_fc(mgx_module, q_inp, torch_mod.weight(),
+                                torch_mod.bias())
+
+    # Requantize to output specs. Output of this layer in torch fx is expected to be quint8 type.
+    # Lowered modules cannot output quantized tensors so any quantized tensor will be a part of
+    # an accelerator subgraph. For MIGraphX these need to be in int8 format rather than uint8.
+    out_scale = torch_mod.scale
+    out_zero_point = torch_mod.zero_point
+
+    zp_offset = -128
+    if hasattr(node, "meta"):
+        dtype = node.meta["tensor_meta"].dtype
+        if dtype == torch.qint8: zp_offset = 0
+
+    out_mgx = add_quantize_linear(mgx_module,
+                                  out_mgx.instr_ref,
+                                  out_scale,
+                                  out_zero_point,
+                                  zp_offset=zp_offset,
+                                  target_type=torch.qint8)
+    return out_mgx
+
+
+@migraphx_converter(torch.nn.intrinsic.quantized.LinearReLU)
+def module_quantized_linear(mgx_module, torch_mod, node, args, kwargs):
+    q_inp = args[0]
+    assert q_inp.is_quantized()
+
+    fc_mgx = add_dequantize_fc(mgx_module, q_inp, torch_mod.weight(),
+                               torch_mod.bias())
+
+    out_mgx = acc_ops_converters.acc_ops_relu(mgx_module, node, (),
+                                              {"input": fc_mgx})
+
+    # Requantize to output specs. Output of this layer in torch fx is expected to be quint8 type.
+    # Lowered modules cannot output quantized tensors so any quantized tensor will be a part of
+    # an accelerator subgraph. For MIGraphX these need to be in int8 format rather than uint8.
+    out_scale = torch_mod.scale
+    out_zero_point = torch_mod.zero_point
+
+    zp_offset = -128
+    if hasattr(node, "meta"):
+        dtype = node.meta["tensor_meta"].dtype
+        if dtype == torch.qint8: zp_offset = 0
+
+    out_mgx = add_quantize_linear(mgx_module,
+                                  out_mgx.instr_ref,
+                                  out_scale,
+                                  out_zero_point,
+                                  zp_offset=zp_offset,
+                                  target_type=torch.qint8)
+    return out_mgx
+
+
+def add_dequantize_conv(mgx_module, inp, weight, bias, conv_params):
+    assert inp.is_quantized()
+
+    dq_inp = add_dequantize_linear(mgx_module, inp.instr_ref,
+                                   inp.qparams["scale"],
+                                   inp.qparams["zero_point"],
+                                   inp.qparams["axis"])
+
+    weight_mgx, weight_qparams = add_dequantize_tensor(mgx_module, weight)
+
+    # Requantize bias to int32
+    if bias is None:
+        rq_bais = bias
+    else:
+        bias_scale = add_output_scale(mgx_module, inp.qparams["scale"],
+                                      weight_qparams["scale"])
+        rq_bais = add_requantize_tensor(mgx_module, bias, bias_scale, 0,
+                                        torch.qint32)
+
+    conv_kwargs = {
+        "input": MGXInstruction(dq_inp),
+        "weight": MGXInstruction(weight_mgx),
+        "bias": MGXInstruction(rq_bais),
+        **conv_params
+    }
+
+    return acc_ops_converters.acc_ops_convnd(mgx_module, None, (), conv_kwargs)
+
+
+@migraphx_converter(torch.nn.quantized.Conv1d)
+@migraphx_converter(torch.nn.quantized.Conv2d)
+@migraphx_converter(torch.nn.quantized.Conv3d)
+def module_quantized_conv(mgx_module, torch_mod, node, args, kwargs):
+    q_inp = args[0]
+    assert q_inp.is_quantized()
+
+    conv_params = {
+        "stride": torch_mod.stride,
+        "padding": torch_mod.padding,
+        "dilation": torch_mod.dilation,
+        "groups": torch_mod.groups
+    }
+
+    out_mgx = add_dequantize_conv(mgx_module, q_inp, torch_mod.weight(),
+                                  torch_mod.bias(), conv_params)
+
+    # Requantize to output specs. Output of this layer in torch fx is expected to be quint8 type.
+    # Lowered modules cannot output quantized tensors so any quantized tensor will be a part of
+    # an accelerator subgraph. For MIGraphX these need to be in int8 format rather than uint8.
+    out_scale = torch_mod.scale
+    out_zero_point = torch_mod.zero_point
+
+    zp_offset = -128
+    if hasattr(node, "meta"):
+        dtype = node.meta["tensor_meta"].dtype
+        if dtype == torch.qint8: zp_offset = 0
+
+    out_mgx = add_quantize_linear(mgx_module,
+                                  out_mgx.instr_ref,
+                                  out_scale,
+                                  out_zero_point,
+                                  zp_offset=zp_offset,
+                                  target_type=torch.qint8)
+    return out_mgx
+
+
+@migraphx_converter(torch.nn.intrinsic.quantized.ConvReLU1d)
+@migraphx_converter(torch.nn.intrinsic.quantized.ConvReLU2d)
+@migraphx_converter(torch.nn.intrinsic.quantized.ConvReLU3d)
+def module_quantized_conv(mgx_module, torch_mod, node, args, kwargs):
+    q_inp = args[0]
+    assert q_inp.is_quantized()
+
+    conv_params = {
+        "stride": torch_mod.stride,
+        "padding": torch_mod.padding,
+        "dilation": torch_mod.dilation,
+        "groups": torch_mod.groups
+    }
+
+    conv_mgx = add_dequantize_conv(mgx_module, q_inp, torch_mod.weight(),
+                                   torch_mod.bias(), conv_params)
+
+    out_mgx = acc_ops_converters.acc_ops_relu(mgx_module, node, (),
+                                              {"input": conv_mgx})
+
+    # Requantize to output specs. Output of this layer in torch fx is expected to be quint8 type.
+    # Lowered modules cannot output quantized tensors so any quantized tensor will be a part of
+    # an accelerator subgraph. For MIGraphX these need to be in int8 format rather than uint8.
+    out_scale = torch_mod.scale
+    out_zero_point = torch_mod.zero_point
+
+    zp_offset = -128
+    if hasattr(node, "meta"):
+        dtype = node.meta["tensor_meta"].dtype
+        if dtype == torch.qint8: zp_offset = 0
+
+    out_mgx = add_quantize_linear(mgx_module,
+                                  out_mgx.instr_ref,
+                                  out_scale,
+                                  out_zero_point,
+                                  zp_offset=zp_offset,
+                                  target_type=torch.qint8)
+    return out_mgx
+
+
+@migraphx_converter(acc_ops.quantized_add)
+def acc_ops_quantized_add(mgx_module, node, args, kwargs):
+    inp, other = kwargs["input"], kwargs["other"]
+    scale, zp = kwargs["scale"], kwargs["zero_point"]
+    assert inp.is_quantized() and other.is_quantized()
+
+    dq_inp = add_dequantize_linear(mgx_module, inp.instr_ref,
+                                   inp.qparams["scale"],
+                                   inp.qparams["zero_point"],
+                                   inp.qparams["axis"])
+
+    dq_other = add_dequantize_linear(mgx_module, other.instr_ref,
+                                     other.qparams["scale"],
+                                     other.qparams["zero_point"],
+                                     other.qparams["axis"])
+
+    out_mgx = acc_ops_converters.acc_ops_add(mgx_module, None, (), {
+        "input": MGXInstruction(dq_inp),
+        "other": MGXInstruction(dq_other)
+    })
+
+    zp_offset = -128
+    if hasattr(node, "meta"):
+        dtype = node.meta["tensor_meta"].dtype
+        if dtype == torch.qint8: zp_offset = 0
+
+    return add_quantize_linear(mgx_module,
+                               out_mgx.instr_ref,
+                               scale.instr_ref,
+                               zp.instr_ref,
+                               zp_offset=zp_offset,
+                               target_type=torch.qint8)

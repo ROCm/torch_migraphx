@@ -42,9 +42,6 @@ from ..utils import torch_dtype_from_mgx, torch_dtype_to_mgx_enum
 from ..fx2mgx import MGXInstruction
 
 
-
-
-
 def broadcast_for_elemwise_op(mgx_module, node, inp, other):
     inp = inp.instr_ref if isinstance(inp, MGXInstruction) else inp
     other = other.instr_ref if isinstance(other, MGXInstruction) else other
@@ -52,7 +49,7 @@ def broadcast_for_elemwise_op(mgx_module, node, inp, other):
     if (inp == other):
         return inp, other
 
-    if "tensor_meta" in node.meta:
+    if node is not None and "tensor_meta" in node.meta:
         dtype = node.meta['tensor_meta'].dtype
     else:
         dtype = get_arg_dtype(inp) or get_arg_dtype(other)
@@ -73,7 +70,6 @@ def broadcast_for_elemwise_op(mgx_module, node, inp, other):
         migraphx.op('multibroadcast', out_lens=list(out_shape)), [other])
 
     return inp, other
-
 
 
 @migraphx_converter(acc_ops.linear)
@@ -722,7 +718,15 @@ def acc_ops_tile(mgx_module, node, args, kwargs):
 @migraphx_converter(acc_ops.adaptive_avg_pool2d)
 def acc_ops_adaptive_avg_pool2d(mgx_module, node, args, kwargs):
 
-    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
+    node_inp = kwargs['input']
+    if node_inp.is_quantized():
+        inp = add_dequantize_linear(mgx_module, node_inp.instr_ref,
+                                    node_inp.qparams["scale"],
+                                    node_inp.qparams["zero_point"],
+                                    node_inp.qparams["axis"])
+    else:
+        inp = node_inp.instr_ref
+
     out_shape = extend_attr(kwargs['output_size'], 2)
     in_shape = inp.shape().lens()
     if not all(i % o == 0 for i, o in zip(in_shape[-2:], out_shape)):
@@ -748,13 +752,29 @@ def acc_ops_adaptive_avg_pool2d(mgx_module, node, args, kwargs):
                     stride=strides,
                     lengths=kernel_size), [inp])
 
-    return MGXInstruction(out, qparams=qparams)
+    if node_inp.is_quantized():
+        return add_quantize_linear(mgx_module,
+                                   out,
+                                   node_inp.qparams["scale"],
+                                   node_inp.qparams["zero_point"],
+                                   per_ch_axis=node_inp.qparams["axis"],
+                                   target_type=torch.qint8)
+
+    return MGXInstruction(out, qparams=node_inp.qparams)
 
 
 @migraphx_converter(acc_ops.max_pool2d)
 def acc_ops_max_pool2d(mgx_module, node, args, kwargs):
 
-    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
+    node_inp = kwargs['input']
+    if node_inp.is_quantized():
+        inp = add_dequantize_linear(mgx_module, node_inp.instr_ref,
+                                    node_inp.qparams["scale"],
+                                    node_inp.qparams["zero_point"],
+                                    node_inp.qparams["axis"])
+    else:
+        inp = node_inp.instr_ref
+
     padding = extend_attr(kwargs['padding'], 2)
     stride = extend_attr(kwargs['stride'], 2)
     dilation = extend_attr(kwargs['dilation'], 2)
@@ -776,7 +796,16 @@ def acc_ops_max_pool2d(mgx_module, node, args, kwargs):
                     stride=stride,
                     lengths=lengths,
                     ceil_mode=ceil_mode), [inp])
-    return MGXInstruction(out, qparams=qparams)
+
+    if node_inp.is_quantized():
+        return add_quantize_linear(mgx_module,
+                                   out,
+                                   node_inp.qparams["scale"],
+                                   node_inp.qparams["zero_point"],
+                                   per_ch_axis=node_inp.qparams["axis"],
+                                   target_type=torch.qint8)
+
+    return MGXInstruction(out, qparams=node_inp.qparams)
 
 
 @migraphx_converter(acc_ops.avg_pool2d)

@@ -50,7 +50,7 @@ def get_migraphx_backend_config() -> BackendConfig:
     ]
 
     return BackendConfig("migraphx") \
-        .set_backend_pattern_configs(_get_conv_configs([conv_dtype_configs])) \
+        .set_backend_pattern_configs(_get_conv_configs(conv_dtype_configs)) \
         .set_backend_pattern_configs(_get_linear_configs(linear_dtype_configs)) \
         .set_backend_pattern_configs(_get_binary_op_configs(binary_op_dtype_configs)) \
         .set_backend_pattern_configs(_get_share_qparams_op_configs(share_qparams_op_dtype_configs)) \
