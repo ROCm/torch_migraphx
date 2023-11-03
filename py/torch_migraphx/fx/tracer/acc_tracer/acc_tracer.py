@@ -2,21 +2,21 @@
 # Copyright (c) 2022-present, Advanced Micro Devices, Inc. All rights reserved.
 # Copyright (c) 2020-present, NVIDIA CORPORATION. All rights reserved.
 # Copyright (c) Meta Platforms, Inc. and affiliates.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 # 1. Redistributions of source code must retain the above copyright notice, this
 #    list of conditions and the following disclaimer.
-# 
+#
 # 2. Redistributions in binary form must reproduce the above copyright notice,
 #    this list of conditions and the following disclaimer in the documentation
 #    and/or other materials provided with the distribution.
-# 
+#
 # 3. Neither the name of the copyright holder nor the names of its
 #    contributors may be used to endorse or promote products derived from
 #    this software without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -292,7 +292,9 @@ def create_acc_tracer(cls=Tracer):
             ConditionalExceptionBoolCondWrapper,
             ConditionalExceptionWrapper,
             torch.nn.quantized.Linear,
+            torch.nn.quantized.Conv1d,
             torch.nn.quantized.Conv2d,
+            torch.nn.quantized.Conv3d,
             torch.nn.intrinsic.quantized.ConvReLU2d,
             torch.nn.intrinsic.quantized.LinearReLU,
             jit.ScriptModule,
@@ -410,7 +412,9 @@ def _rewrite(
             # into RewrittenModule.
             for method_name in dir(base_class):
                 method = getattr(base_class, method_name, None)
-                if method is None and method_name not in {"__doc__", "_compiled_call_impl"}:
+                if method is None and method_name not in {
+                        "__doc__", "_compiled_call_impl"
+                }:
                     _LOGGER.warning(
                         f"{__qualname__} does not have attribute {method_name}"
                     )
@@ -466,7 +470,7 @@ def _rewrite(
                             if getattr(
                                     mod_v, "_base_class_origin", type(mod_v)
                             ) in leaf_module_list:  # type: ignore[operator]
-                                print(
+                                _LOGGER.info(
                                     f"Skip rewriting leaf module {type(mod_v)}"
                                 )
                                 self._modules[mod_k] = mod_v
