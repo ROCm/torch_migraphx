@@ -57,7 +57,7 @@ class MGXInstruction:
         dtype_map = torch_qdtype_from_mgx if self.is_quantized(
         ) else torch_dtype_from_mgx
         return dtype_map(self.mgx_type())
-    
+
     def shape(self):
         return self.instr_ref.shape()
 
@@ -166,15 +166,19 @@ class MGXInterpreter(torch.fx.Interpreter):
         if isinstance(attr, torch.nn.ParameterList):
             mgx_attrs = []
             for a in attr:
+                t, qparams = get_qparams(a)
                 mgx_attrs.append(
                     MGXInstruction(
-                        self.mm.add_literal(a.cpu().detach().numpy()),
+                        self.mm.add_literal(t.cpu().detach().numpy()),
                         torch_attr_value=a,
+                        qparams=qparams,
                     ))
             return tuple(mgx_attrs)
 
-        return MGXInstruction(self.mm.add_literal(attr.cpu().detach().numpy()),
-                              torch_attr_value=attr)
+        t, qparams = get_qparams(attr)
+        return MGXInstruction(self.mm.add_literal(t.cpu().detach().numpy()),
+                              torch_attr_value=attr,
+                              qparams=qparams)
 
     def output(self, node, args, kwargs):
         assert len(args) == 1

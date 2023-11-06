@@ -138,6 +138,24 @@ def tensors_from_mgx_arguments(
     ]
 
 
+def get_qparams(tensor: torch.Tensor) -> (torch.Tensor, dict):
+    if not tensor.is_quantized:
+        return tensor, None
+
+    if tensor.qscheme() in (torch.per_tensor_affine,
+                            torch.per_tensor_symmetric):
+        q_scale = tensor.q_scale()
+        q_zero_point = tensor.q_zero_point()
+        q_axis = None
+    else:
+        q_scale = tensor.q_per_channel_scales()
+        q_zero_point = tensor.q_per_channel_zero_points()
+        q_axis = tensor.q_per_channel_axis()
+
+    q_params = {"scale": q_scale, "zero_point": q_zero_point, "axis": q_axis}
+    return tensor.int_repr(), q_params
+
+
 # TODO: currently the migraphx api does not support directly interacting
 # with program bytes. To work around this, we let it create a dummy file
 # and read from it. Update this once it is supported by the api

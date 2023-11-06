@@ -15,7 +15,7 @@ if not hasattr(torch_migraphx, "dynamo"):
     (torch.nn.Conv2d(3, 16, 3, 3, (1, 2), 2).cuda(), (50, 50)),
     (torch.nn.Conv3d(3, 16, 3, 3, (3, 1, 2), 2).cuda(), (50, 50, 100)),
 ])
-def test_conv1d(op_alias, conv_mod, in_shape):
+def test_convnd(op_alias, conv_mod, in_shape):
     weight, bias = conv_mod.weight, conv_mod.bias
     stride, padding, dilation = conv_mod.stride, conv_mod.padding, conv_mod.dilation
     inp = torch.randn(8, 3, *in_shape).cuda()

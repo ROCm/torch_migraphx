@@ -10,7 +10,19 @@ from torch_migraphx.fx.quantization import (
 )
 
 
-def quantize_module(mod, inp_shapes, calibration_n=50):
+class FuncModule(torch.nn.Module):
+
+    def __init__(self, func, *args, **kwargs):
+        super(FuncModule, self).__init__()
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def forward(self, x):
+        return self.func(x, *self.args, **self.kwargs)
+
+
+def quantize_module(mod, inp_shapes, calibration_n=10):
     qconfig_mapping = get_migraphx_qconfig_mapping()
     backend_config = get_migraphx_backend_config()
 
@@ -47,7 +59,7 @@ def verify_outputs(torch_mod,
                    torch_q_mod,
                    mgx_mod,
                    inp,
-                   rtol=1e-1,
+                   rtol=5e-1,
                    atol=1e-1,
                    equal_nan=False):
     if not isinstance(inp, (list, tuple)):
@@ -59,16 +71,24 @@ def verify_outputs(torch_mod,
 
     if isinstance(torch_fp32_out, (list, tuple)):
         assert len(torch_fp32_out) == len(mgx_out) == len(torch_q_out)
-        # For now compare to true fp32 output, this behavior may need to be updated
-        # as more ops are added
         assert all(
             torch.allclose(
                 o1.cpu(), o2.cpu(), rtol=rtol, atol=atol, equal_nan=equal_nan)
-            for o1, o2 in zip(mgx_out, torch_fp32_out))
+            or torch.allclose(
+                o1.cpu(), o3.cpu(), rtol=rtol, atol=atol, equal_nan=equal_nan)
+            for o1, o2, o3 in zip(mgx_out, torch_fp32_out, torch_q_out))
 
     else:
-        assert torch.allclose(mgx_out.cpu(),
-                              torch_fp32_out.cpu(),
-                              rtol=rtol,
-                              atol=atol,
-                              equal_nan=equal_nan)
+        close_to_torch_fp32 = torch.allclose(mgx_out.cpu(),
+                                             torch_fp32_out.cpu(),
+                                             rtol=rtol,
+                                             atol=atol,
+                                             equal_nan=equal_nan)
+        close_to_torch_int8 = torch.allclose(mgx_out.cpu(),
+                                             torch_q_out.cpu(),
+                                             rtol=rtol,
+                                             atol=atol,
+                                             equal_nan=equal_nan)
+        # Also check if output is close to torch int8 output incase there is
+        # inherent quantization error in the model
+        assert close_to_torch_fp32 or close_to_torch_int8

@@ -199,7 +199,7 @@ def module_quantized_linear(mgx_module, torch_mod, node, args, kwargs):
 
 
 @migraphx_converter(torch.nn.intrinsic.quantized.LinearReLU)
-def module_quantized_linear(mgx_module, torch_mod, node, args, kwargs):
+def module_quantized_linear_relu(mgx_module, torch_mod, node, args, kwargs):
     q_inp = args[0]
     assert q_inp.is_quantized()
 
@@ -298,7 +298,7 @@ def module_quantized_conv(mgx_module, torch_mod, node, args, kwargs):
 @migraphx_converter(torch.nn.intrinsic.quantized.ConvReLU1d)
 @migraphx_converter(torch.nn.intrinsic.quantized.ConvReLU2d)
 @migraphx_converter(torch.nn.intrinsic.quantized.ConvReLU3d)
-def module_quantized_conv(mgx_module, torch_mod, node, args, kwargs):
+def module_quantized_conv_relu(mgx_module, torch_mod, node, args, kwargs):
     q_inp = args[0]
     assert q_inp.is_quantized()
 
