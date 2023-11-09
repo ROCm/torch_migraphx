@@ -149,3 +149,16 @@ def test_as_strided(op_alias, size, new_size, strides, offset):
     mod = FuncModule(op_alias, new_size, strides, offset)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+class StackModule(FuncModule):
+    def forward(self, x1, x2, x3):
+        return self.func([x1, x2, x3], *self.args, **self.kwargs)
+
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.stack.default])
+@pytest.mark.parametrize('dim', [0, 3, -1])
+def test_stack(op_alias, dim):
+    inp = [torch.randn(20, 12, 15, 40).cuda() for _ in range(3)]
+    mod = StackModule(op_alias, dim=dim)
+    mgx_mod = convert_to_mgx(mod, inp)
+    verify_outputs(mod, mgx_mod, inp)
+    

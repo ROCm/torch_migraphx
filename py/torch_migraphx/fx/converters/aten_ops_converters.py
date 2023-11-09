@@ -29,6 +29,7 @@
 
 import migraphx
 import torch
+from typing import cast, Iterable, List, Sequence
 from ..converter_registry import migraphx_converter
 from torch_migraphx.fx.converters import acc_ops_converters
 from ..utils import torch_dtype_to_mgx_enum
@@ -781,6 +782,37 @@ def aten_ops_min(mgx_module, node, args, kwargs):
     
     return acc_ops_converters.acc_ops_min(mgx_module, node, (), acc_kwargs)
 
+@migraphx_converter(torch.ops.aten.stack.default)
+def aten_ops_stack(mgx_module, node, args, kwargs):
+    assert  len(args) >= 1
+
+    """
+    Map aten.stack to unsqueeze + cat acc ops.
+    """
+    inputs = args[0]
+    assert isinstance(inputs, Sequence)
+
+    print(inputs)
+
+    dims = args[1] if len(args) > 1 else 0
+
+    unsqueeze_kwargs={
+    "dim": dims
+    }
+    cat_kwargs={
+    "dim": dims
+    }
+
+    unsqueeze_nodes = []
+    for i, t in enumerate(inputs):
+        unsqueeze_kwargs["input"] = t
+        unsq_res = acc_ops_converters.acc_ops_unsqueeze(mgx_module, node, (), unsqueeze_kwargs)
+        unsqueeze_nodes.append(unsq_res)
+
+    cat_kwargs["tensors"] = unsqueeze_nodes
+    return acc_ops_converters.acc_ops_cat(mgx_module, node, (), cat_kwargs)
+
+   
 @migraphx_converter(torch.ops.aten.as_strided.default)
 def aten_ops_as_strided(mgx_module, node, args, kwargs):
     assert len(args) >= 3
