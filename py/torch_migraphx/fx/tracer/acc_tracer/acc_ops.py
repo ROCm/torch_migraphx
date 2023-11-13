@@ -928,6 +928,14 @@ def argmax(*, input, dim, keepdim):
     return torch.argmax(input=input, dim=dim, keepdim=keepdim)
 
 
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.argmin))
+@register_acc_op_mapping(op_and_target=("call_method", "argmin"))
+@register_acc_op
+def argmin(*, input, dim, keepdim):
+    return torch.argmin(input=input, dim=dim, keepdim=keepdim)
+
+
 @register_acc_op_mapping(op_and_target=("call_function",
                                         nn.functional.embedding))
 @register_acc_op
