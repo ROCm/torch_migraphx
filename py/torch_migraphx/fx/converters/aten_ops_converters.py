@@ -775,10 +775,15 @@ def aten_ops_max(mgx_module, node, args, kwargs):
     
     acc_kwargs = {
         "input": args[0],
-        "dim": args[1] if len(args) >= 2 else None,
-        "keepdim": args[2] if len(args) >= 3 else False
+        "keepdim": False,
     }
     
+    if len(args) >= 2:
+        acc_kwargs["dim"] = args[1]
+        
+    if len(args) >= 3:
+        acc_kwargs["keepdim"] = args[2] 
+
     return acc_ops_converters.acc_ops_max(mgx_module, node, (), acc_kwargs)
 
 @migraphx_converter(torch.ops.aten.min.default)
@@ -788,9 +793,14 @@ def aten_ops_min(mgx_module, node, args, kwargs):
     
     acc_kwargs = {
         "input": args[0],
-        "dim": args[1] if len(args) >= 2 else None,
-        "keepdim": args[2] if len(args) >= 3 else False
+        "keepdim": False
     }
+    
+    if len(args) >= 2:
+        acc_kwargs["dim"] = args[1]
+        
+    if len(args) >= 3:
+        acc_kwargs["keepdim"] = args[2] 
     
     return acc_ops_converters.acc_ops_min(mgx_module, node, (), acc_kwargs)
 
