@@ -926,15 +926,14 @@ def acc_ops_argmax(mgx_module, node, args, kwargs):
         inp = acc_ops_flatten(mgx_module, node, (), {"input": inp})
         dim = 0
 
-    inp, qparams = inp.instr_ref, inp.qparams
-
+    inp = inp.instr_ref
     out = mgx_module.add_instruction(migraphx.op('argmax', axis=dim), [inp])
 
     if not keepdim:
         out = mgx_module.add_instruction(migraphx.op('squeeze', axes=[dim]),
                                          [out])
 
-    return MGXInstruction(out, qparams=qparams)
+    return MGXInstruction(out)
 
 
 @migraphx_converter(acc_ops.argmin)
@@ -948,13 +947,14 @@ def acc_ops_argmin(mgx_module, node, args, kwargs):
         inp = acc_ops_flatten(mgx_module, node, (), {"input": inp})
         dim = 0
 
+    inp = inp.instr_ref
     out = mgx_module.add_instruction(migraphx.op('argmin', axis=dim), [inp])
 
     if not keepdim:
         out = mgx_module.add_instruction(migraphx.op('squeeze', axes=[dim]),
                                          [out])
 
-    return out
+    return MGXInstruction(out)
 
 
 @migraphx_converter(acc_ops.embedding)
@@ -1173,50 +1173,60 @@ def acc_ops_maximum(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.max)
 def acc_ops_max(mgx_module, node, args, kwargs):
-    inp = kwargs['input']
+    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
     in_shape = inp.shape().lens()
 
     if 'dim' not in kwargs:
         dims = list(range(len(in_shape)))
-        max_ = mgx_module.add_instruction(
-        migraphx.op('reduce_max', axes=dims), [inp])
-        return mgx_module.add_instruction(migraphx.op('squeeze', axes=dims), [max_])
+        max_ = mgx_module.add_instruction(migraphx.op('reduce_max', axes=dims),
+                                          [inp])
+        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
+                                         [max_])
+        return MGXInstruction(out, qparams=qparams)
     else:
         dims = kwargs['dim']
         indicies = acc_ops_argmax(mgx_module, node, args, kwargs)
         max_ = mgx_module.add_instruction(
-        migraphx.op('reduce_max', axes=[dims]), [inp])
+            migraphx.op('reduce_max', axes=[dims]), [inp])
 
         if 'keepdim' in kwargs and kwargs['keepdim']:
-            return [max_, indicies]
+            return [MGXInstruction(max_, qparams=qparams), indicies]
 
         max_ = mgx_module.add_instruction(
-        migraphx.op('reduce_max', axes=[dims]), [inp])
-        return [mgx_module.add_instruction(migraphx.op('squeeze', axes=[dims]), [max_]), indicies]
+            migraphx.op('reduce_max', axes=[dims]), [inp])
+
+        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=[dims]),
+                                         [max_])
+        return [MGXInstruction(out, qparams=qparams), indicies]
 
 
 @migraphx_converter(acc_ops.min)
 def acc_ops_min(mgx_module, node, args, kwargs):
-    inp = kwargs['input']
+    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
     in_shape = inp.shape().lens()
 
     if 'dim' not in kwargs:
         dims = list(range(len(in_shape)))
-        min_ = mgx_module.add_instruction(
-        migraphx.op('reduce_min', axes=dims), [inp])
-        return mgx_module.add_instruction(migraphx.op('squeeze', axes=dims), [min_])
+        min_ = mgx_module.add_instruction(migraphx.op('reduce_min', axes=dims),
+                                          [inp])
+        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
+                                         [min_])
+        return MGXInstruction(out, qparams=qparams)
     else:
         dims = kwargs['dim']
         indicies = acc_ops_argmin(mgx_module, node, args, kwargs)
         min_ = mgx_module.add_instruction(
-        migraphx.op('reduce_min', axes=[dims]), [inp])
+            migraphx.op('reduce_min', axes=[dims]), [inp])
 
         if 'keepdim' in kwargs and kwargs['keepdim']:
-            return [min_, indicies]
+            return [MGXInstruction(min_, qparams=qparams), indicies]
 
         min_ = mgx_module.add_instruction(
-        migraphx.op('reduce_min', axes=[dims]), [inp])
-        return [mgx_module.add_instruction(migraphx.op('squeeze', axes=[dims]), [min_]), indicies]
+            migraphx.op('reduce_min', axes=[dims]), [inp])
+
+        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=[dims]),
+                                         [min_])
+        return [MGXInstruction(out, qparams=qparams), indicies]
 
 
 @migraphx_converter(acc_ops.mean)
