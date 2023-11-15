@@ -20,3 +20,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-
 # Install PyTorch 2.1 stable releace for rocm
 RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm5.6
 RUN pip3 install pybind11-global
+
+# Install torch_migraphx from pip package
+RUN pip3 install torch_migraphx
