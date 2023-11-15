@@ -166,6 +166,54 @@ def maximum(*, input, other):
     return torch.maximum(input=input, other=other)
 
 
+@register_acc_op_mapping(
+    op_and_target=("call_method", "max"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.max),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def max(*, input, dim=None, keepdim=False):
+    if dim is not None:
+        return torch.max(input, dim=dim, keepdim=keepdim)
+    else:
+        return torch.max(input)
+
+
+@register_acc_op_mapping(
+    op_and_target=("call_method", "min"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.min),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def min(*, input, dim=None, keepdim=False):
+    if dim is not None:
+        return torch.min(input, dim=dim, keepdim=keepdim)
+    else:
+        return torch.min(input)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", operator.getitem))
 @register_acc_op
 def getitem(*, input, idx):
@@ -912,6 +960,14 @@ def topk(*, input, k, dim, largest, sorted):
 @register_acc_op
 def argmax(*, input, dim, keepdim):
     return torch.argmax(input=input, dim=dim, keepdim=keepdim)
+
+
+@register_acc_op_properties(AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.argmin))
+@register_acc_op_mapping(op_and_target=("call_method", "argmin"))
+@register_acc_op
+def argmin(*, input, dim, keepdim):
+    return torch.argmin(input=input, dim=dim, keepdim=keepdim)
 
 
 @register_acc_op_mapping(op_and_target=("call_function",

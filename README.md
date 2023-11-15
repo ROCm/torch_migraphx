@@ -1,53 +1,57 @@
 # Torch-MIGraphX
 
-Torch-MIGraphX integrates AMD's graph inference engine with the PyTorch ecosystem. It provides a `mgx_module` object that may be invoked in the same manner as any other torch module, but utilizes the MIGraphX inference engine internally. Additionally, it provides functionallity to lower a PyTorch model to a MIGraphX program via the `torch.fx` library.
+Torch-MIGraphX integrates AMD's graph inference engine with the PyTorch ecosystem. It provides a `mgx_module` object that may be invoked in the same manner as any other torch module, but utilizes the MIGraphX inference engine internally. 
 
-## Installation
-It is highly recommended to use the provided Dockerfile to create the environment requried to use Torch-MIGraphX. Build the container using:
-
-```
-./build_image.sh <image_tag> <dockerfile>
-```
-
-Run the container:
-```
-sudo docker run -it --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=`pwd`:/code/torch_migraphx torch_migraphx
-```
-
-In the docker container, navigate to the py directory of this repository. Install pip prerequisites:
-
-```
- pip install -r requirements.txt 
-```
-Install torch_migraphx:
-```
-python setup.py install
-```
-Add torch_migraphx to the pythonpath environment variable:
-```
-export PYTHONPATH=<path to torch_migraphx/py>:$PYTHONPATH
-```
-
-## Run Unit Tests
-Tests are written using pytest and are located in the Tests directory. Tests can be run using:
-```
-pytest
-```
-To run all test cases, execute this command in the `/tests` directory. To run specific tests, navigate to the specific test directory before running this command. For more options, refer to the [pytest documentation](https://docs.pytest.org/en/7.1.x/contents.html).
+This library currently supports two paths for lowering:
+1. FX Tracing: Uses tracing API provided by the `torch.fx` library.
+2. Dynamo Backend: Importing torch_migraphx automatically registers the "migraphx" backend that can be used with the `torch.compile` API.
 
 
-## Run Performance Tests
-Performance benchmarks for torchvision models can be run using:
+## Getting Started
+The simplest and recommended way to get started is using the provided Dockerfile.
+Build using:
 ```
-python tools/perf/benchmark_torchvision.py -m <model name> -b <batch size> <--fp16>
+./build_image.sh
+```
+Start container using:
+```
+sudo docker run -it --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined torch_migraphx
+```
 
-# Examples:
-python tools/perf/benchmark_torchvision.py -m alexnet -b 1 --fp16
-python tools/perf/benchmark_torchvision.py -m resnet50 -b 1
+The default Dockerfile builds on the nightly pytorch container and installs the latest source version of MIGraphX and torch_migraphx. For more builds refer to the docker directory.
+
+
+## Example Usage
+```
+# FX Tracing
+torch_migraphx.fx.lower_to_mgx(torch_model, sample_inputs)
+
+# Dynamo Backend
+torch.compile(torch_model, backend="migraphx")
 ```
 
-For benchmarking custom models, inidividual subgraph performance can be evaluated using:
+### Lower resnet50 using FX Tracing
 ```
-torch_migraphx.fx.mgx_benchmark.benchmark(split_module, sample_inputs)
+import torch
+import torchvision
+import torch_migraphx
+
+resnet = torchvision.models.resnet50()
+sample_input = torch.randn(2, 3, 64, 64)
+resnet_mgx = torch_migraphx.fx.lower_to_mgx(resnet, [sample_input])
+result = resnet_mgx(sample_input)
 ```
-Refer to `tools/perf/benchmark_torchvision.py` for example usage.
+
+### Lower densenet using torch.compile
+```
+import torch
+import torchvision
+import torch_migraphx
+
+densenet = torchvision.models.densenet161().cuda()
+sample_input = torch.randn(2, 3, 512, 512).cuda()
+densenet_mgx = torch.compile(densenet, backend="migraphx")
+result = densenet_mgx(sample_input.cuda())
+```
+
+For more examples please refer to the examples directory.

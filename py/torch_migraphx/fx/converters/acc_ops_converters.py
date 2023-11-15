@@ -443,7 +443,7 @@ def acc_ops_elu(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.selu)
-def acc_ops_elu(mgx_module, node, args, kwargs):
+def acc_ops_selu(mgx_module, node, args, kwargs):
 
     inp = kwargs['input']
     assert not inp.is_quantized()
@@ -489,7 +489,7 @@ def acc_ops_elu(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.softsign)
-def acc_ops_elu(mgx_module, node, args, kwargs):
+def acc_ops_softsign(mgx_module, node, args, kwargs):
 
     inp = kwargs['input']
     assert not inp.is_quantized()
@@ -937,6 +937,26 @@ def acc_ops_argmax(mgx_module, node, args, kwargs):
     return MGXInstruction(out, qparams=qparams)
 
 
+@migraphx_converter(acc_ops.argmin)
+def acc_ops_argmin(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    dim = kwargs["dim"]
+    keepdim = kwargs["keepdim"]
+
+    if dim is None:
+        assert not keepdim, "keepdim cannot be true when dim is None"
+        inp = acc_ops_flatten(mgx_module, node, (), {"input": inp})
+        dim = 0
+
+    out = mgx_module.add_instruction(migraphx.op('argmin', axis=dim), [inp])
+
+    if not keepdim:
+        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=[dim]),
+                                         [out])
+
+    return out
+
+
 @migraphx_converter(acc_ops.embedding)
 def acc_ops_embedding(mgx_module, node, args, kwargs):
     inp = kwargs['input']
@@ -1149,6 +1169,54 @@ def acc_ops_maximum(mgx_module, node, args, kwargs):
     inp, other = broadcast_tensors(mgx_module, inp.instr_ref, other.instr_ref)
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('max'), [inp, other]))
+
+
+@migraphx_converter(acc_ops.max)
+def acc_ops_max(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    in_shape = inp.shape().lens()
+
+    if 'dim' not in kwargs:
+        dims = list(range(len(in_shape)))
+        max_ = mgx_module.add_instruction(
+        migraphx.op('reduce_max', axes=dims), [inp])
+        return mgx_module.add_instruction(migraphx.op('squeeze', axes=dims), [max_])
+    else:
+        dims = kwargs['dim']
+        indicies = acc_ops_argmax(mgx_module, node, args, kwargs)
+        max_ = mgx_module.add_instruction(
+        migraphx.op('reduce_max', axes=[dims]), [inp])
+
+        if 'keepdim' in kwargs and kwargs['keepdim']:
+            return [max_, indicies]
+
+        max_ = mgx_module.add_instruction(
+        migraphx.op('reduce_max', axes=[dims]), [inp])
+        return [mgx_module.add_instruction(migraphx.op('squeeze', axes=[dims]), [max_]), indicies]
+
+
+@migraphx_converter(acc_ops.min)
+def acc_ops_min(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    in_shape = inp.shape().lens()
+
+    if 'dim' not in kwargs:
+        dims = list(range(len(in_shape)))
+        min_ = mgx_module.add_instruction(
+        migraphx.op('reduce_min', axes=dims), [inp])
+        return mgx_module.add_instruction(migraphx.op('squeeze', axes=dims), [min_])
+    else:
+        dims = kwargs['dim']
+        indicies = acc_ops_argmin(mgx_module, node, args, kwargs)
+        min_ = mgx_module.add_instruction(
+        migraphx.op('reduce_min', axes=[dims]), [inp])
+
+        if 'keepdim' in kwargs and kwargs['keepdim']:
+            return [min_, indicies]
+
+        min_ = mgx_module.add_instruction(
+        migraphx.op('reduce_min', axes=[dims]), [inp])
+        return [mgx_module.add_instruction(migraphx.op('squeeze', axes=[dims]), [min_]), indicies]
 
 
 @migraphx_converter(acc_ops.mean)
