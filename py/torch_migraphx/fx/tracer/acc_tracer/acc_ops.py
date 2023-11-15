@@ -207,7 +207,7 @@ def max(*, input, dim=None, keepdim=False):
     ],
 )
 @register_acc_op
-def min(*, input, dim, keepdim=False):
+def min(*, input, dim=None, keepdim=False):
     if dim is not None:
         return torch.min(input, dim=dim, keepdim=keepdim)
     else:

@@ -45,7 +45,7 @@ def test_noparam_activation_funcs(op_alias):
     ((6, 12, 32, 6), 0.05),
     ((2, ), 0),
 ])
-def test_leaky_relu(op_alias, inp_size, alpha):
+def test_single_param_activation_funcs(op_alias, inp_size, alpha):
     inp = torch.randn(inp_size).cuda()
     mod = FuncModule(op_alias, alpha).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])

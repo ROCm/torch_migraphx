@@ -814,8 +814,6 @@ def aten_ops_stack(mgx_module, node, args, kwargs):
     inputs = args[0]
     assert isinstance(inputs, Sequence)
 
-    print(inputs)
-
     dims = args[1] if len(args) > 1 else 0
 
     unsqueeze_kwargs={
