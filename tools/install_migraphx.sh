@@ -1,6 +1,9 @@
-MIGRAPHX_BRANCH=master
+MIGRAPHX_BRANCH=${1:-"master"}
 MIGRAPHX_REPO=https://github.com/ROCmSoftwarePlatform/AMDMIGraphX.git
-GPU_ARCH=${1:-"gfx900;gfx906;gfx908;gfx90a;gfx1030;gfx1100;gfx1101;gfx1102;gfx940"}
+GPU_ARCH=${2:-"gfx900;gfx906;gfx908;gfx90a;gfx1030;gfx1100;gfx1101;gfx1102;gfx940"}
+
+# Install rbuild
+pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz
 
 # Update rocm-cmake to required version for migraphx
 git clone https://github.com/RadeonOpenCompute/rocm-cmake.git  

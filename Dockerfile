@@ -1,25 +1,19 @@
-FROM rocm/pytorch:latest
+FROM rocm/pytorch-nightly:latest
 
-ARG PREFIX=/usr/local
+ARG ROCM_PATH=/opt/rocm
 ARG GPU_ARCH
 
-# Support multiarch
-RUN dpkg --add-architecture i386
-
-RUN add-apt-repository ppa:deadsnakes/ppa
-
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
-    clang-format-10 \
-    python3.7-dev \
-    zip unzip &&\
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz
+COPY . /workspace/torch_migraphx
 
 # Install Dependencies: migraphx
-COPY ./tools/install_migraphx.sh /
-RUN /install_migraphx.sh ${GPU_ARCH} && rm /install_migraphx.sh
+RUN /workspace/torch_migraphx/tools/install_migraphx.sh master ${GPU_ARCH}
 
-ENV PYTHONPATH=/opt/rocm/lib
-ENV LD_LIBRARY_PATH=/opt/rocm/lib
+# Install torch_migraphx
+RUN pip3 install pybind11-global
+RUN cd /workspace/torch_migraphx/py && \
+    export TORCH_CMAKE_PATH=$(python -c "import torch; print(torch.utils.cmake_prefix_path)") && \
+    python -m pip install .
+
+WORKDIR /workspace
+ENV LD_LIBRARY_PATH=${ROCM_PATH}/lib
+ENV PYTHONPATH=${ROCM_PATH}/lib

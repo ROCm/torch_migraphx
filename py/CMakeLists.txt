@@ -2,12 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 project(_torch_migraphx)
 set(CMAKE_CXX_STANDARD 17)
 
-list(APPEND CMAKE_PREFIX_PATH /opt/rocm/hip /opt/rocm /opt/rocm/hipfft /opt/rocm/rocblas /opt/rocm/hiprand /opt/rocm/hipsparse)
-find_package(hip REQUIRED)
-find_package(hipfft REQUIRED)
-find_package(rocblas REQUIRED)
-find_package(hiprand REQUIRED)
-find_package(hipsparse REQUIRED)
+list(APPEND CMAKE_PREFIX_PATH /opt/rocm)
 find_package(migraphx REQUIRED)
 
 SET(SOURCE_DIR "torch_migraphx/csrc")
