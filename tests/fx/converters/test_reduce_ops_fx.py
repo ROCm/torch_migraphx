@@ -15,6 +15,50 @@ def test_mean(dim, keepdim):
         verify_outputs(mod, mgx_mod, inp)
 
 
+@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False), (3, False),
+                                          (-2, True)])
+def test_max_dim(dim, keepdim):
+    inp = torch.randn(32, 43, 11, 2, 12)
+    mod_func = FuncModule(torch.max, dim=dim, keepdim=keepdim)
+    mod_method = MethodModule('max', dim=dim, keepdim=keepdim)
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
+
+
+def test_max_no_opt_param():
+    inp = torch.randn(32, 43, 11, 2, 12)
+    mod_func = FuncModule(torch.max)
+    mod_method = MethodModule('max')
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False), (3, False),
+                                          (-2, True)])
+def test_min_dim(dim, keepdim):
+    inp = torch.randn(32, 43, 11, 2, 12)
+    mod_func = FuncModule(torch.min, dim=dim, keepdim=keepdim)
+    mod_method = MethodModule('min', dim=dim, keepdim=keepdim)
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
+
+
+def test_min_no_opt_param():
+    inp = torch.randn(32, 43, 11, 2, 12)
+    mod_func = FuncModule(torch.min)
+    mod_method = MethodModule('min')
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
+
+
 @pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False),
                                           ([2, 3], False), (None, None)])
 def test_sum(dim, keepdim):

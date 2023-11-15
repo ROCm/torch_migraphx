@@ -49,3 +49,19 @@ def test_argmax(dim, keepdim):
     for mod in [mod_func, mod_method]:
         mgx_mod = convert_to_mgx(mod, [inp])
         verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('dim, keepdim', [
+    (2, True),
+    (-1, False),
+    (None, False),
+])
+def test_argmin(dim, keepdim):
+    inp = torch.randn(10, 2, 12, 8, 14)
+
+    mod_func = FuncModule(torch.argmin, dim=dim, keepdim=keepdim)
+    mod_method = MethodModule('argmin', dim=dim, keepdim=keepdim)
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
