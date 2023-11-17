@@ -1,20 +1,20 @@
 #####################################################################################
 # Copyright (c) 2022-present, Advanced Micro Devices, Inc. All rights reserved.
-# 
+#
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 # 1. Redistributions of source code must retain the above copyright notice, this
 #    list of conditions and the following disclaimer.
-# 
+#
 # 2. Redistributions in binary form must reproduce the above copyright notice,
 #    this list of conditions and the following disclaimer in the documentation
 #    and/or other materials provided with the distribution.
-# 
+#
 # 3. Neither the name of the copyright holder nor the names of its
 #    contributors may be used to endorse or promote products derived from
 #    this software without specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -34,6 +34,32 @@ import migraphx
 
 from .converter_registry import CONVERTERS
 from .utils import *
+
+
+class MGXInstruction:
+
+    def __init__(self, instr_ref, qparams=None, torch_attr_value=None):
+        assert isinstance(instr_ref, migraphx.instruction_ref)
+        if qparams is not None:
+            assert all(i in qparams.keys()
+                       for i in ["scale", "zero_point", "axis"])
+        self.instr_ref = instr_ref
+        self.qparams = qparams
+        self.torch_attr_value = torch_attr_value
+
+    def is_quantized(self):
+        return self.qparams is not None
+
+    def mgx_type(self):
+        return self.instr_ref.shape().type_string()
+
+    def torch_type(self):
+        dtype_map = torch_qdtype_from_mgx if self.is_quantized(
+        ) else torch_dtype_from_mgx
+        return dtype_map(self.mgx_type())
+
+    def shape(self):
+        return self.instr_ref.shape()
 
 
 class MGXInterpreter(torch.fx.Interpreter):
@@ -72,7 +98,8 @@ class MGXInterpreter(torch.fx.Interpreter):
 
     def run(self):
         super().run()
-        self.mm.add_return(self._outputs)
+        output_instr_refs = [i.instr_ref for i in self._outputs]
+        self.mm.add_return(output_instr_refs)
         return self.program
 
     def run_node(self, n):
@@ -88,13 +115,13 @@ class MGXInterpreter(torch.fx.Interpreter):
 
         # handle scalar inputs
         if not shape:
-            shape = (1,)
-            stride = (0,)
+            shape = (1, )
+            stride = (0, )
 
         mgx_shape = migraphx.shape(lens=list(shape),
                                    type=torch_dtype_to_mgx(dtype),
                                    strides=list(stride))
-        return self.mm.add_parameter(node.target, mgx_shape)
+        return MGXInstruction(self.mm.add_parameter(node.target, mgx_shape))
 
     def call_module(self, node, args, kwargs):
         assert isinstance(node.target, str)
@@ -139,10 +166,19 @@ class MGXInterpreter(torch.fx.Interpreter):
         if isinstance(attr, torch.nn.ParameterList):
             mgx_attrs = []
             for a in attr:
-                mgx_attrs.append(self.mm.add_literal(a.cpu().detach().numpy()))
+                t, qparams = get_qparams(a)
+                mgx_attrs.append(
+                    MGXInstruction(
+                        self.mm.add_literal(t.cpu().detach().numpy()),
+                        torch_attr_value=a,
+                        qparams=qparams,
+                    ))
             return tuple(mgx_attrs)
-        
-        return self.mm.add_literal(attr.cpu().detach().numpy())
+
+        t, qparams = get_qparams(attr)
+        return MGXInstruction(self.mm.add_literal(t.cpu().detach().numpy()),
+                              torch_attr_value=attr,
+                              qparams=qparams)
 
     def output(self, node, args, kwargs):
         assert len(args) == 1

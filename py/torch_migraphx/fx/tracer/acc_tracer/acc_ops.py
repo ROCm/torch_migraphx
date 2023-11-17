@@ -478,8 +478,8 @@ def gelu(*, input):
     return torch.nn.functional.gelu(input=input)
 
 
-@register_acc_op_mapping(
-    op_and_target=("call_function", nn.functional.hardtanh), )
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        nn.functional.hardtanh), )
 @register_acc_op
 def hardtanh(*, input, min_val=-1.0, max_val=1.0):
     return nn.functional.hardtanh(input=input,
@@ -1663,39 +1663,6 @@ def pad(*, input, pad: List[int], mode: str, value: float):
                                    value=value)
 
 
-@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
-@register_acc_op_properties(AccOpProperty.quantized)
-@register_acc_op_mapping(
-    op_and_target=("call_function", torch.quantize_per_tensor),
-    arg_replacement_tuples=[
-        ("input", "input"),
-        ("scale", "scale"),
-        ("zero_point", "zero_point"),
-        ("dtype", "dtype"),
-    ],
-    kwargs_to_move_to_acc_out_ty=[
-        ("scale", "scale", move_to_qparams),
-        ("zero_point", "zero_point", move_to_qparams),
-        ("dtype", "dtype", dont_move_to_qparams),
-    ],
-)
-@register_acc_op
-def quantize_per_tensor(*, input, acc_out_ty=None):
-    assert acc_out_ty is not None
-    qparams = acc_out_ty.qparams
-    dtype = acc_out_ty.dtype
-    return torch.quantize_per_tensor(input, qparams["scale"],
-                                     qparams["zero_point"], dtype)
-
-
-@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
-@register_acc_op_mapping(op_and_target=("call_method", "dequantize"))
-@register_acc_op_mapping(op_and_target=("call_function", torch.dequantize))
-@register_acc_op
-def dequantize(*, input):
-    return torch.dequantize(input)
-
-
 @register_acc_op_mapping(
     op_and_target=("call_method", "new_zeros"),
     arg_replacement_tuples=[
@@ -1814,3 +1781,71 @@ def as_strided(*, input, size, stride, storage_offset=0):
                             size=size,
                             stride=stride,
                             storage_offset=storage_offset)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_properties(AccOpProperty.quantized)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.quantize_per_tensor),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("scale", "scale"),
+        ("zero_point", "zero_point"),
+        ("dtype", "dtype"),
+    ],
+)
+@register_acc_op
+def quantize_per_tensor(*, input, scale, zero_point, dtype):
+    return torch.quantize_per_tensor(input, scale, zero_point, dtype)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_method", "dequantize"))
+@register_acc_op_mapping(op_and_target=("call_function", torch.dequantize))
+@register_acc_op
+def dequantize(*, input):
+    return torch.dequantize(input)
+
+
+@register_acc_op_properties(AccOpProperty.quantized)
+@register_acc_op_mapping(op_and_target=("call_function",
+                                        torch.ops.quantized.add),
+                         arg_replacement_tuples=[
+                             ("qa", "input"),
+                             ("qb", "other"),
+                             ("scale", "scale"),
+                             ("zero_point", "zero_point"),
+                         ])
+@register_acc_op
+def quantized_add(*, input, other, scale, zero_point):
+    return torch.ops.quantized.add(input, other, scale, zero_point)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.ops.quantized.add_relu),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("other", "other"),
+        ("scale", "scale"),
+        ("zero_point", "zero_point"),
+    ],
+)
+def add_relu_unfuse_mapper(node: torch.fx.Node,
+                           mod: torch.fx.GraphModule) -> torch.fx.Node:
+    with node.graph.inserting_before(node):
+        add_kwargs = {
+            "input": node.kwargs["input"],
+            "other": node.kwargs["other"],
+            "scale": node.kwargs["scale"],
+            "zero_point": node.kwargs["zero_point"],
+        }
+        add_node = node.graph.call_function(quantized_add, kwargs=add_kwargs)
+        add_node.meta = node.meta.copy()
+
+        relu_node = node.graph.call_function(relu,
+                                             kwargs={
+                                                 "input": add_node,
+                                                 "inplace": False
+                                             })
+        relu_node.meta = node.meta
+        return relu_node
