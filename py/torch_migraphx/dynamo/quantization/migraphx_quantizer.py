@@ -118,7 +118,7 @@ def get_mgx_quantization_config(
         dtype=torch.int8,
         quant_min=-128,
         quant_max=127,
-        qscheme=torch.per_tensor_affine,
+        qscheme=torch.per_tensor_symmetric,
         is_dynamic=False,
         observer_or_fake_quant_ctr=act_observer_or_fake_quant_ctr.with_args(
             **extra_args, ),
@@ -171,6 +171,25 @@ def _get_supported_config_and_operators() -> List[OperatorConfig]:
 
 class MGXQuantizer(Quantizer):
     supported_config_and_operators = _get_supported_config_and_operators()
+
+    STATIC_QAT_ONLY_OPS = [
+        "conv_bn_relu",
+        "conv_bn",
+    ]
+
+    # static quantization ops (both PTQ and QAT)
+    STATIC_OPS = [
+        "linear",
+        "conv_relu",
+        "conv",
+        "adaptive_avg_pool2d",
+        "max_pool2d",
+        "add_relu",
+        "add",
+        "mul_relu",
+        "mul",
+        "cat",
+    ]
 
     def __init__(self):
         super().__init__()

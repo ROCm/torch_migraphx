@@ -105,7 +105,6 @@ def add_quantize_linear(mgx_module,
         zero_point = zero_point.detach().cpu().numpy() if isinstance(
             zero_point, torch.Tensor) else torch.tensor(zero_point).numpy()
         zero_point = mgx_module.add_literal(zero_point)
-    # zero_point = mgx_module.add_literal(torch.tensor(0).numpy())
 
     if scale.shape().lens() != zero_point.shape().lens():
         scale, zero_point = broadcast_tensors(mgx_module, scale, zero_point)
@@ -160,7 +159,7 @@ def add_dequantize_linear(mgx_module,
     if not isinstance(zero_point, migraphx.instruction_ref):
         zp_dtype = torch_dtype_from_mgx(inp.shape().type_string())
         zero_point = mgx_module.add_literal(
-            torch.tensor(zero_point, dtype=zp_dtype).numpy())
+            torch.tensor(zero_point, dtype=zp_dtype).cpu().numpy())
 
     if isinstance(scale, torch.Tensor):
         scale = scale.detach().cpu().to(dtype=torch.float32).numpy()
