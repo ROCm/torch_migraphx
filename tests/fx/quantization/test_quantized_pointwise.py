@@ -10,7 +10,7 @@ torch.manual_seed(0)
     operator.add,
     torch.add,
 ])
-def test_pointwise_quantized_func(oper):
+def test_pointwise_quantized_func(oper, default_torch_seed):
     inps1 = [torch.randn(4, 7, 3), torch.randn(4, 7, 3)]
     inps2 = [torch.randn(4, 7, 3), torch.randn(1, 1, 3)]
 
