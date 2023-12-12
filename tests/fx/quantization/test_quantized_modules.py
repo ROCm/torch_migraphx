@@ -3,12 +3,10 @@ import torch_migraphx
 import torch
 from quantization_utils import quantize_module, convert_to_mgx, verify_outputs
 
-torch.manual_seed(0)
-
 
 @pytest.mark.parametrize('inp_size', [(32, 64), (8, 3, 50), (2, 3, 3, 24)])
 @pytest.mark.parametrize('fuse_modules', [[], [torch.nn.ReLU()]])
-def test_quantized_linear(inp_size, fuse_modules):
+def test_quantized_linear(inp_size, fuse_modules, default_torch_seed):
     modules = [torch.nn.Linear(inp_size[-1], 100)]
     modules.extend(fuse_modules)
     mod = torch.nn.Sequential(*modules)
@@ -25,8 +23,8 @@ def test_quantized_linear(inp_size, fuse_modules):
     (3, 3, 2, (2, )),
 ])
 @pytest.mark.parametrize('fuse_modules', [[], [torch.nn.ReLU()]])
-def test_quantized_conv1d(kernel_size, stride, dilation, padding,
-                          fuse_modules):
+def test_quantized_conv1d(kernel_size, stride, dilation, padding, fuse_modules,
+                          default_torch_seed):
     inp_size = (8, 3, 50)
     inp = torch.randn(*inp_size)
 
@@ -54,8 +52,8 @@ def test_quantized_conv1d(kernel_size, stride, dilation, padding,
         # (3, 3, 2, (1, 2)), TODO: MLIR Bug (Issue #2407)
     ])
 @pytest.mark.parametrize('fuse_modules', [[], [torch.nn.ReLU()]])
-def test_quantized_conv2d(kernel_size, stride, dilation, padding,
-                          fuse_modules):
+def test_quantized_conv2d(kernel_size, stride, dilation, padding, fuse_modules,
+                          default_torch_seed):
     inp_size = (8, 3, 50, 50)
     inp = torch.randn(*inp_size)
 
@@ -81,8 +79,8 @@ def test_quantized_conv2d(kernel_size, stride, dilation, padding,
     (3, 3, 2, (3, 1, 2)),
 ])
 @pytest.mark.parametrize('fuse_modules', [[], [torch.nn.ReLU()]])
-def test_quantized_conv3d(kernel_size, stride, dilation, padding,
-                          fuse_modules):
+def test_quantized_conv3d(kernel_size, stride, dilation, padding, fuse_modules,
+                          default_torch_seed):
     inp_size = (8, 3, 50, 50, 10)
     inp = torch.randn(*inp_size)
 
