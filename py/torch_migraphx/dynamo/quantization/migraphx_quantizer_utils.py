@@ -197,6 +197,7 @@ def _addmm_config(is_per_channel=True, qat=False):
     return quantization_config
 
 
+@quantization_config(torch.ops.aten.convolution.default)
 @quantization_config(torch.ops.aten.conv1d.default)
 @quantization_config(torch.ops.aten.conv2d.default)
 @quantization_config(torch.ops.aten.conv3d.default)
@@ -312,6 +313,7 @@ def _annotate_bmm(node: Node, quantization_config: QuantizationConfig):
     return nodes_to_mark_annotated
 
 
+@quantization_annotator(torch.ops.aten.convolution.default)
 @quantization_annotator(torch.ops.aten.conv1d.default)
 @quantization_annotator(torch.ops.aten.conv2d.default)
 @quantization_annotator(torch.ops.aten.conv3d.default)
