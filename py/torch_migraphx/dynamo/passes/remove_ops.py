@@ -68,58 +68,88 @@ def remove_view_ops(gm: torch.fx.GraphModule):
     return gm
 
 
-def remove_new_const_ops(gm: torch.fx.GraphModule):
-    const_ops = {
-        torch.ops.aten.new_zeros.default: torch.zeros,
-        torch.ops.aten.new_ones.default: torch.ones,
-    }
-    for node in gm.graph.nodes:
-        if node.op == "call_function" and node.target in const_ops.keys():
-            og_node = node
-            size = node.args[1]
-            dtype = og_node.meta['tensor_meta'].dtype
-            const_tensor = const_ops[node.target](*size,
-                                                  dtype=dtype,
-                                                  device='cuda')
-            const_name = f"{node.name}_const"
-            setattr(gm, const_name, const_tensor)
-            with gm.graph.inserting_after(og_node):
-                new_node = gm.graph.create_node(
-                    "get_attr",
-                    const_name,
-                )
-                og_node.replace_all_uses_with(new_node)
-                gm.graph.erase_node(og_node)
+def remove_const_ops(gm: torch.fx.GraphModule, device: str = "cuda"):
 
-    gm.graph.eliminate_dead_code()
-    gm.recompile()
-    return gm
+    def _remove_new_const_ops(gm: torch.fx.GraphModule):
+        const_ops = {
+            torch.ops.aten.new_zeros.default: torch.zeros,
+            torch.ops.aten.new_ones.default: torch.ones,
+        }
+        for node in gm.graph.nodes:
+            if node.op == "call_function" and node.target in const_ops.keys():
+                og_node = node
+                size = node.args[1]
+                dtype = og_node.meta['tensor_meta'].dtype
+                const_tensor = const_ops[node.target](*size,
+                                                      dtype=dtype,
+                                                      device=device)
+                const_name = f"{node.name}_const"
+                gm.register_buffer(const_name, const_tensor)
+                with gm.graph.inserting_after(og_node):
+                    new_node = gm.graph.create_node(
+                        "get_attr",
+                        const_name,
+                    )
+                    og_node.replace_all_uses_with(new_node)
+                    gm.graph.erase_node(og_node)
 
+        gm.graph.eliminate_dead_code()
+        gm.recompile()
 
-def remove_const_like_ops(gm: torch.fx.GraphModule):
-    const_ops = {
-        torch.ops.aten.full_like.default: torch.full,
-    }
-    for node in gm.graph.nodes:
-        if node.op == "call_function" and node.target in const_ops.keys():
-            og_node = node
-            size = og_node.meta['tensor_meta'].shape
-            dtype = og_node.meta['tensor_meta'].dtype
-            value = node.args[1]
-            const_tensor = const_ops[node.target](size,
-                                                  value,
-                                                  dtype=dtype,
-                                                  device='cuda')
-            const_name = f"{node.name}_const"
-            setattr(gm, const_name, const_tensor)
-            with gm.graph.inserting_after(og_node):
-                new_node = gm.graph.create_node(
-                    "get_attr",
-                    const_name,
-                )
-                og_node.replace_all_uses_with(new_node)
-                gm.graph.erase_node(og_node)
+    def _remove_const_like_ops(gm: torch.fx.GraphModule):
+        const_ops = {
+            torch.ops.aten.full_like.default: torch.full,
+            torch.ops.aten.full.default: torch.full,
+        }
+        for node in gm.graph.nodes:
+            if node.op == "call_function" and node.target in const_ops.keys():
+                og_node = node
+                size = og_node.meta['tensor_meta'].shape
+                dtype = og_node.meta['tensor_meta'].dtype
+                value = node.args[1]
+                const_tensor = const_ops[node.target](size,
+                                                      value,
+                                                      dtype=dtype,
+                                                      device=device)
+                const_name = f"{node.name}_const"
+                gm.register_buffer(const_name, const_tensor)
+                with gm.graph.inserting_after(og_node):
+                    new_node = gm.graph.create_node(
+                        "get_attr",
+                        const_name,
+                    )
+                    og_node.replace_all_uses_with(new_node)
+                    gm.graph.erase_node(og_node)
 
-    gm.graph.eliminate_dead_code()
+        gm.graph.eliminate_dead_code()
+        gm.recompile()
+
+    def _remove_range_ops(gm: torch.fx.GraphModule):
+        const_ops = {
+            torch.ops.aten.arange.start: torch.arange,
+        }
+        for node in gm.graph.nodes:
+            if node.op == "call_function" and node.target in const_ops.keys():
+                og_node = node
+                dtype = og_node.meta['tensor_meta'].dtype
+                const_tensor = const_ops[node.target](*node.args,
+                                                      dtype=dtype,
+                                                      device=device)
+                const_name = f"{node.name}_const"
+                gm.register_buffer(const_name, const_tensor)
+                with gm.graph.inserting_after(og_node):
+                    new_node = gm.graph.create_node(
+                        "get_attr",
+                        const_name,
+                    )
+                    og_node.replace_all_uses_with(new_node)
+                    gm.graph.erase_node(og_node)
+
+        gm.graph.eliminate_dead_code()
+        gm.recompile()
+
+    _remove_new_const_ops(gm)
+    _remove_const_like_ops(gm)
+    _remove_range_ops(gm)
     gm.recompile()
     return gm

@@ -27,21 +27,38 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
 
-from typing import Sequence
+# Follow XNNPack quantizer provided by PyTorch
+# https://github.com/pytorch/pytorch/blob/main/torch/ao/quantization/quantizer/xnnpack_quantizer.py
 
 import torch
-from .partition import partition
-from .remove_ops import remove_const_ops, remove_view_ops
-from .const_fold import const_fold
+from torch.ao.quantization.quantizer import QuantizationSpec, Quantizer
+
+from .migraphx_quantizer_utils import OP_ANNOTATORS, OP_DEFAULT_CONFIGS
 
 
-# TODO: Use torch fx `pass manager to run the below passes
-def run_aten_passes(gm: torch.fx.GraphModule,
-                    inputs: Sequence[torch.Tensor],
-                    verbose: bool = False):
-    gm = remove_const_ops(gm)
-    gm = remove_view_ops(gm)
-    gm = const_fold(gm)
-    gm = partition(gm, verbose=verbose)
+# TODO: Add way to override default configs
+# TODO: Support QAT
+class MGXQuantizer(Quantizer):
 
-    return gm
+    def __init__(self, per_ch_weights=True, is_qat=False):
+        super().__init__()
+        self.per_ch_weights = per_ch_weights
+        self.is_qat = is_qat
+        self.default_configs = OP_DEFAULT_CONFIGS
+
+    def _annotate_static_quantization(self, model: torch.fx.GraphModule):
+        for n in model.graph.nodes:
+            op = n.target
+            if not (op in OP_ANNOTATORS and op in self.default_configs):
+                continue
+
+            op_config = self.default_configs[op](self.per_ch_weights,
+                                                 self.is_qat)
+            OP_ANNOTATORS[op](n, op_config)
+
+    def annotate(self, model: torch.fx.GraphModule) -> torch.fx.GraphModule:
+        self._annotate_static_quantization(model)
+        return model
+
+    def validate(self, model: torch.fx.GraphModule) -> None:
+        pass

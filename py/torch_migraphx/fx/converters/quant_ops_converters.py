@@ -45,6 +45,9 @@ from ..utils import (
 from ..fx2mgx import MGXInstruction
 from torch_migraphx.fx.converters import acc_ops_converters
 
+# Import required to populate torch.ops.quantized_decomposed
+import torch.ao.quantization.quantize_pt2e
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -82,6 +85,53 @@ def acc_ops_quantize_per_tensor(mgx_module, node, args, kwargs):
 @migraphx_converter(acc_ops.dequantize)
 def acc_ops_dequantize_per_tensor(mgx_module, node, args, kwargs):
     q_inp = kwargs["input"]
+    assert q_inp.qparams is not None
+
+    qparams = q_inp.qparams
+    dq_ins = add_dequantize_linear(mgx_module, q_inp.instr_ref,
+                                   qparams["scale"], qparams["zero_point"],
+                                   qparams["axis"])
+
+    return MGXInstruction(dq_ins)
+
+
+@migraphx_converter(torch.ops.quantized_decomposed.quantize_per_tensor.default)
+def aten_ops_quantize_per_tensor(mgx_module, node, args, kwargs):
+    assert len(args) == 6
+
+    inp, scale, zp, q_min, q_max, dtype = args
+    assert dtype == torch.int8, "MGXQuantizer should always use signed int8"
+
+    if zp != 0:
+        _LOGGER.warning(
+            "Encoutered non-symmetric quantization."
+            "MGXQuantizer should be used when calling the prepare_pt2e API.")
+
+    return add_quantize_linear(mgx_module, inp.instr_ref, scale, zp)
+
+
+@migraphx_converter(
+    torch.ops.quantized_decomposed.quantize_per_channel.default)
+def aten_ops_quantize_per_channel(mgx_module, node, args, kwargs):
+    assert len(args) == 7
+
+    inp, scale, zp, axis, q_min, q_max, dtype = args
+    assert dtype == torch.int8, "MGXQuantizer should always use signed int8"
+
+    return add_quantize_linear(mgx_module,
+                               inp.instr_ref,
+                               scale.instr_ref,
+                               zp.instr_ref,
+                               per_ch_axis=axis)
+
+
+@migraphx_converter(
+    torch.ops.quantized_decomposed.dequantize_per_tensor.default)
+@migraphx_converter(
+    torch.ops.quantized_decomposed.dequantize_per_channel.default)
+def aten_ops_dequantize(mgx_module, node, args, kwargs):
+    assert len(args) >= 6
+    q_inp = args[0]
     assert q_inp.qparams is not None
 
     qparams = q_inp.qparams
