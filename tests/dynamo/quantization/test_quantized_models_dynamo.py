@@ -54,8 +54,6 @@ def test_quant_vision_model(model, rtol, atol, default_torch_seed):
     ('GPT2Model', 'GPT2Tokenizer', 'distilgpt2'),
     ('GPT2Model', 'GPT2Tokenizer', 'gpt2-large'),
 ])
-# BUG: Known issue in PyTorch: https://github.com/pytorch/pytorch/issues/113744
-@pytest.mark.xfail(raises=IndexError)
 def test_quant_LLM(model_class, tokenizer_class, model_name,
                    default_torch_seed):
     model = getattr(transformers, model_class).from_pretrained(model_name)
@@ -63,21 +61,22 @@ def test_quant_LLM(model_class, tokenizer_class, model_name,
                         tokenizer_class).from_pretrained(model_name)
     text = "Just some example text to be tokenized."
     encoded_input = tokenizer(text, return_tensors='pt')
-    gold_output = model(**encoded_input)
+    inputs = [encoded_input["input_ids"]]
+    gold_output = model(*inputs)
 
-    model_export = capture_pre_autograd_graph(model, [], encoded_input)
+    model_export = capture_pre_autograd_graph(model, inputs)
     quantizer = MGXQuantizer()
     m = prepare_pt2e(model_export, quantizer)
-    m(**encoded_input)
+    m(*inputs)
     q_m = convert_pt2e(m)
 
     mgx_mod = torch.compile(q_m, backend='migraphx').cuda()
-    mgx_out = mgx_mod(**encoded_input.to("cuda"))
-    
+    mgx_out = mgx_mod(inputs[0].cuda())
+
     # Here we do not do an all close check since quantized LLMs (especially large ones)
     # can produce some very distorted outputs due to the nature of the model.
     # Until there is a good consistent way to do model level verification, being
     # able to compile and execute a quantized LLM is sufficient for this test case
-    
+
     del mgx_mod
     del model
