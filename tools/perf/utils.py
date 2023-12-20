@@ -5,10 +5,8 @@ from tabulate import tabulate
 
 def benchmark_module(model: torch.nn.Module,
                      inputs: Sequence[torch.Tensor],
-                     iterations: int,
-                     kwargs: Mapping[str, Any] = None) -> float:
-    kwargs = {} if kwargs is None else kwargs
-    model(*inputs, **kwargs)
+                     iterations: int) -> float:
+    model(*inputs)
     torch.cuda.synchronize()
 
     start_event = torch.cuda.Event(enable_timing=True)
@@ -16,7 +14,7 @@ def benchmark_module(model: torch.nn.Module,
 
     start_event.record()
     for _ in range(iterations):
-        model(*inputs, **kwargs)
+        model(*inputs)
     end_event.record()
     torch.cuda.synchronize()
 

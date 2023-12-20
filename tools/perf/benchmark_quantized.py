@@ -43,9 +43,6 @@ def benchmark_torchvision_models(model_name, bs, args):
     mgx_mod = torch.compile(q_m, backend='migraphx').cuda()
     mgx_mod(input_fp32.cuda())
 
-    if args.fp16:
-        raise RuntimeError("FP16 not supported with INT8 currently")
-
     time_int8 = benchmark_module(mgx_mod, (input_fp32.cuda(), ),
                                  iterations=args.iter)
     del mgx_mod
@@ -121,6 +118,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     model_name = args.model
     bs = args.batch_size
+    if args.fp16:
+        raise RuntimeError("FP16 not supported with INT8 currently")
 
     if model_name in ["resnet50"]:
         benchmark_torchvision_models(model_name, bs, args)
