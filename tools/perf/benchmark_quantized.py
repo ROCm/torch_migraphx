@@ -72,6 +72,51 @@ def benchmark_torchvision_models(model_name, bs, args):
     print_bm_results(names, times, bs, 0)
 
 
+def benchmark_transformer_models(model_name, model_class, tokenizer_class,
+                                 args):
+    model = getattr(transformers, model_class).from_pretrained(model_name)
+    tokenizer = getattr(transformers,
+                        tokenizer_class).from_pretrained(model_name)
+
+    text = "Just some text for benchmarking purposes"
+    encoded_input = tokenizer(text, return_tensors='pt')
+    inp = encoded_input["input_ids"]
+
+    model_export = capture_pre_autograd_graph(copy.deepcopy(model), (inp, ))
+
+    quantizer = MGXQuantizer()
+    m = prepare_pt2e(model_export, quantizer)
+    m(inp)
+    q_m = convert_pt2e(m)
+
+    mgx_mod = torch.compile(q_m, backend='migraphx').cuda()
+    mgx_mod(inp.cuda())
+
+    time_int8 = benchmark_module(mgx_mod, (inp.cuda(), ), iterations=args.iter)
+
+    del mgx_mod
+
+    mgx_mod_fp32 = torch.compile(copy.deepcopy(model),
+                                 backend='migraphx').cuda()
+    mgx_mod_fp32(**encoded_input.to("cuda"))
+    time_fp32 = benchmark_module(mgx_mod_fp32, (inp.cuda(), ),
+                                 iterations=args.iter)
+    del mgx_mod_fp32
+
+    mgx_mod_fp16 = torch.compile(model.half(), backend='migraphx').cuda()
+    mgx_mod_fp16(**encoded_input.to("cuda"))
+
+    time_fp16 = benchmark_module(mgx_mod_fp16, (inp.cuda(), ),
+                                 iterations=args.iter)
+    del mgx_mod_fp16
+
+    print(f'Running benchmarks for {model_name}, BS = 1')
+    names = ["MGX FP32", "MGX FP16", "MGX INT8"]
+    times = [time_fp32, time_fp16, time_int8]
+
+    print_bm_results(names, times, bs, 0)
+
+
 if __name__ == '__main__':
     args = parser.parse_args()
     model_name = args.model
@@ -79,3 +124,9 @@ if __name__ == '__main__':
 
     if model_name in ["resnet50"]:
         benchmark_torchvision_models(model_name, bs, args)
+    elif model_name in ["gpt2-large", "distilgpt2"]:
+        if 'transformers' not in sys.modules:
+            raise RuntimeError(
+                f"Transformers library required to benchmark {model_name}")
+        benchmark_transformer_models(model_name, "GPT2Model", "GPT2Tokenizer",
+                                     args)
