@@ -98,13 +98,13 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
 
     mgx_mod_fp32 = torch.compile(copy.deepcopy(model),
                                  backend='migraphx').cuda()
-    mgx_mod_fp32(**encoded_input.to("cuda"))
+    mgx_mod_fp32(inp.cuda())
     time_fp32 = benchmark_module(mgx_mod_fp32, (inp.cuda(), ),
                                  iterations=args.iter)
     del mgx_mod_fp32
 
     mgx_mod_fp16 = torch.compile(model.half(), backend='migraphx').cuda()
-    mgx_mod_fp16(**encoded_input.to("cuda"))
+    mgx_mod_fp16(inp.cuda())
 
     time_fp16 = benchmark_module(mgx_mod_fp16, (inp.cuda(), ),
                                  iterations=args.iter)
@@ -114,7 +114,7 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
     names = ["MGX FP32", "MGX FP16", "MGX INT8"]
     times = [time_fp32, time_fp16, time_int8]
 
-    print_bm_results(names, times, bs, 0)
+    print_bm_results(names, times, 1, 0)
 
 
 if __name__ == '__main__':
