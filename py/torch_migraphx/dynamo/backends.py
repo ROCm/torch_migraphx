@@ -38,15 +38,15 @@ from .lower_dynamo import lower_aten_to_mgx
 @dynamo.register_backend(name="migraphx")
 def migraphx_backend(gm: torch.fx.GraphModule,
                      example_inputs: Sequence[torch.Tensor], **kwargs):
+    # Any addition kwargs are captrued through the "options" key
+    kwargs = kwargs["options"] if "options" in kwargs else kwargs
     # Any logic to pick default dynamo backend should be placed here
-    return migraphx_aot_backend(gm, example_inputs, **kwargs)
+    return migraphx_aot_backend(gm.cuda().eval(), example_inputs, **kwargs)
 
 
 @dynamo.register_backend(name="migraphx_aot")
 def migraphx_aot_backend(gm: torch.fx.GraphModule,
                          example_inputs: Sequence[torch.Tensor], **kwargs):
-    # TODO: add logic to parse kwargs. torch.compile wraps original kwargs in the "options" key
-    gm = gm.cuda().eval()
 
     # TODO: cleaner way to invoke aot autograd with real inputs?
     TracingContext.get().fake_mode.allow_non_fake_inputs = True
@@ -55,8 +55,5 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
     # https://github.com/pytorch/pytorch/blob/main/torch/_functorch/aot_autograd.py
 
     aten_gm = aot_export_joint_simple(gm, example_inputs, trace_joint=False)
-
-    # TODO: Add decompositions
-    # https://github.com/pytorch/pytorch/blob/main/torch/_decomp/decompositions.py
 
     return lower_aten_to_mgx(aten_gm, example_inputs, **kwargs)
