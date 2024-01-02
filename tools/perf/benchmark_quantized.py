@@ -40,7 +40,11 @@ def benchmark_torchvision_models(model_name, bs, args):
 
     q_m = convert_pt2e(m)
 
-    mgx_mod = torch.compile(q_m, backend='migraphx').cuda()
+    mgx_mod = torch.compile(q_m,
+                            backend='migraphx',
+                            options={
+                                "fp16": args.fp16,
+                            }).cuda()
     mgx_mod(input_fp32.cuda())
 
     time_int8 = benchmark_module(mgx_mod, (input_fp32.cuda(), ),
@@ -86,7 +90,11 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
     m(inp)
     q_m = convert_pt2e(m)
 
-    mgx_mod = torch.compile(q_m, backend='migraphx').cuda()
+    mgx_mod = torch.compile(q_m,
+                            backend='migraphx',
+                            options={
+                                "fp16": args.fp16,
+                            }).cuda()
     mgx_mod(inp.cuda())
 
     time_int8 = benchmark_module(mgx_mod, (inp.cuda(), ), iterations=args.iter)
@@ -118,8 +126,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     model_name = args.model
     bs = args.batch_size
-    if args.fp16:
-        raise RuntimeError("FP16 not supported with INT8 currently")
 
     if model_name in ["resnet50"]:
         benchmark_torchvision_models(model_name, bs, args)
