@@ -7,6 +7,7 @@ import torchvision.models as models
 from utils import benchmark_module, print_bm_results
 
 from torch._export import capture_pre_autograd_graph
+import torch._dynamo
 from torch.ao.quantization.quantize_pt2e import prepare_pt2e, convert_pt2e
 from torch_migraphx.dynamo.quantization import MGXQuantizer
 
@@ -40,6 +41,7 @@ def benchmark_torchvision_models(model_name, bs, args):
 
     q_m = convert_pt2e(m)
 
+    torch._dynamo.reset()
     mgx_mod = torch.compile(q_m,
                             backend='migraphx',
                             options={
@@ -51,6 +53,7 @@ def benchmark_torchvision_models(model_name, bs, args):
                                  iterations=args.iter)
     del mgx_mod
 
+    torch._dynamo.reset()
     mgx_mod_fp32 = torch.compile(copy.deepcopy(model_fp32),
                                  backend='migraphx').cuda()
     mgx_mod_fp32(input_fp32.cuda())
@@ -59,6 +62,7 @@ def benchmark_torchvision_models(model_name, bs, args):
                                  iterations=args.iter)
     del mgx_mod_fp32
 
+    torch._dynamo.reset()
     mgx_mod_fp16 = torch.compile(model_fp32.half(), backend='migraphx').cuda()
     mgx_mod_fp16(input_fp32.half().cuda())
 
@@ -90,6 +94,7 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
     m(inp)
     q_m = convert_pt2e(m)
 
+    torch._dynamo.reset()
     mgx_mod = torch.compile(q_m,
                             backend='migraphx',
                             options={
@@ -101,6 +106,7 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
 
     del mgx_mod
 
+    torch._dynamo.reset()
     mgx_mod_fp32 = torch.compile(copy.deepcopy(model),
                                  backend='migraphx').cuda()
     mgx_mod_fp32(inp.cuda())
@@ -108,6 +114,7 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
                                  iterations=args.iter)
     del mgx_mod_fp32
 
+    torch._dynamo.reset()
     mgx_mod_fp16 = torch.compile(model.half(), backend='migraphx').cuda()
     mgx_mod_fp16(inp.cuda())
 
