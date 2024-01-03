@@ -43,7 +43,6 @@ class MGXModule(torch.nn.Module):
                  input_names: Sequence[str] = None,
                  output_names: Sequence[str] = None,
                  quantize_fp16: bool = False,
-                 quantize_int8: bool = False,
                  enable_par_conversion: bool = False):
         super(MGXModule, self).__init__()
 
@@ -53,7 +52,6 @@ class MGXModule(torch.nn.Module):
         self.output_names = output_names
         self.initialized = False
         self.quantize_fp16 = quantize_fp16
-        self.quantize_int8 = quantize_int8
         self.enable_par_conversion = enable_par_conversion
         self.torch_buffers = {}
         self.mgx_buffers = {}
@@ -69,9 +67,6 @@ class MGXModule(torch.nn.Module):
         if not self.program.is_compiled():
             if self.quantize_fp16:
                 migraphx.quantize_fp16(self.program)
-
-            if self.quantize_int8:
-                migraphx.quantize_int8(self.program)
 
             self.program.compile(migraphx.get_target('gpu'),
                                  offload_copy=False)
@@ -158,7 +153,6 @@ class MGXModule(torch.nn.Module):
         state_dict[prefix + 'input_names'] = self.input_names
         state_dict[prefix + 'output_names'] = self.output_names
         state_dict[prefix + 'quantize_fp16'] = self.quantize_fp16
-        state_dict[prefix + 'quantize_int8'] = self.quantize_int8
         state_dict[prefix +
                    'enable_par_conversion'] = self.enable_par_conversion
 
@@ -179,7 +173,6 @@ class MGXModule(torch.nn.Module):
         self.input_names = state_dict[prefix + 'input_names']
         self.output_names = state_dict[prefix + 'output_names']
         self.quantize_fp16 = state_dict[prefix + 'quantize_fp16']
-        self.quantize_int8 = state_dict[prefix + 'quantize_int8']
         self.enable_par_conversion = state_dict[prefix +
                                                 'enable_par_conversion']
 

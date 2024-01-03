@@ -94,6 +94,10 @@ def lower_subgraph(module: torch.fx.GraphModule,
     verbose = kwargs['verbose'] if 'verbose' in kwargs else False
     fp16 = kwargs['fp16'] if 'fp16' in kwargs else False
     save_mxr = kwargs['save_mxr'] if 'save_mxr' in kwargs else False
+    print_uncompiled = (kwargs['print_parsed_program']
+                        if 'print_parsed_program' in kwargs else False)
+    print_compiled = (kwargs['print_compiled_program']
+                      if 'print_compiled_program' in kwargs else False)
 
     interpreter = MGXInterpreter(module, inputs, verbose_log=verbose)
     interpreter.run()
@@ -102,8 +106,12 @@ def lower_subgraph(module: torch.fx.GraphModule,
         name = f"{kwargs['name']}.mxr" if 'name' in kwargs else "prog.mxr"
         migraphx.save(interpreter.program, name)
 
+    if print_uncompiled: interpreter.program.print()
+
     mgx_module = MGXModule(program=interpreter.program,
                            input_names=interpreter.get_input_names(),
                            quantize_fp16=fp16)
+
+    if print_compiled: mgx_module.program.print()
 
     return mgx_module

@@ -7,6 +7,7 @@ import torchvision.models as models
 from utils import benchmark_module, print_bm_results
 
 from torch._export import capture_pre_autograd_graph
+import torch._dynamo
 from torch.ao.quantization.quantize_pt2e import prepare_pt2e, convert_pt2e
 from torch_migraphx.dynamo.quantization import MGXQuantizer
 
@@ -40,13 +41,19 @@ def benchmark_torchvision_models(model_name, bs, args):
 
     q_m = convert_pt2e(m)
 
-    mgx_mod = torch.compile(q_m, backend='migraphx').cuda()
+    torch._dynamo.reset()
+    mgx_mod = torch.compile(q_m,
+                            backend='migraphx',
+                            options={
+                                "fp16": args.fp16,
+                            }).cuda()
     mgx_mod(input_fp32.cuda())
 
     time_int8 = benchmark_module(mgx_mod, (input_fp32.cuda(), ),
                                  iterations=args.iter)
     del mgx_mod
 
+    torch._dynamo.reset()
     mgx_mod_fp32 = torch.compile(copy.deepcopy(model_fp32),
                                  backend='migraphx').cuda()
     mgx_mod_fp32(input_fp32.cuda())
@@ -55,6 +62,7 @@ def benchmark_torchvision_models(model_name, bs, args):
                                  iterations=args.iter)
     del mgx_mod_fp32
 
+    torch._dynamo.reset()
     mgx_mod_fp16 = torch.compile(model_fp32.half(), backend='migraphx').cuda()
     mgx_mod_fp16(input_fp32.half().cuda())
 
@@ -86,13 +94,19 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
     m(inp)
     q_m = convert_pt2e(m)
 
-    mgx_mod = torch.compile(q_m, backend='migraphx').cuda()
+    torch._dynamo.reset()
+    mgx_mod = torch.compile(q_m,
+                            backend='migraphx',
+                            options={
+                                "fp16": args.fp16,
+                            }).cuda()
     mgx_mod(inp.cuda())
 
     time_int8 = benchmark_module(mgx_mod, (inp.cuda(), ), iterations=args.iter)
 
     del mgx_mod
 
+    torch._dynamo.reset()
     mgx_mod_fp32 = torch.compile(copy.deepcopy(model),
                                  backend='migraphx').cuda()
     mgx_mod_fp32(inp.cuda())
@@ -100,6 +114,7 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
                                  iterations=args.iter)
     del mgx_mod_fp32
 
+    torch._dynamo.reset()
     mgx_mod_fp16 = torch.compile(model.half(), backend='migraphx').cuda()
     mgx_mod_fp16(inp.cuda())
 
@@ -118,8 +133,6 @@ if __name__ == '__main__':
     args = parser.parse_args()
     model_name = args.model
     bs = args.batch_size
-    if args.fp16:
-        raise RuntimeError("FP16 not supported with INT8 currently")
 
     if model_name in ["resnet50"]:
         benchmark_torchvision_models(model_name, bs, args)
