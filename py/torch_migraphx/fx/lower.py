@@ -152,11 +152,12 @@ def default_lower_pass(
             migraphx.save(interp_res.program, f'{module_name}.mxr')
 
         fp16_mode = lower_setting.lower_precision == LowerPrecision.FP16
-        int8_mode = lower_setting.lower_precision == LowerPrecision.INT8
-        mgx_module = MGXModule(program=interp_res.program,
-                               input_names=interp_res.get_input_names(),
-                               quantize_fp16=fp16_mode,
-                               quantize_int8=int8_mode)
+
+        mgx_module = MGXModule(
+            program=interp_res.program,
+            input_names=interp_res.get_input_names(),
+            quantize_fp16=fp16_mode,
+        )
         return mgx_module
 
     return lower_pass
@@ -220,11 +221,10 @@ class Lowerer:
         atol = lower_setting.correctness_atol
         rtol = lower_setting.correctness_rtol
 
-        @validate_inference(
-            atol=atol,
-            rtol=rtol,
-            suppress_accuracy_check_failure=lower_setting.suppress_accuracy_check
-        )
+        @validate_inference(atol=atol,
+                            rtol=rtol,
+                            suppress_accuracy_check_failure=lower_setting.
+                            suppress_accuracy_check)
         def lower_mod(module: nn.Module, inputs: Input) -> nn.Module:
             module.eval()
 
