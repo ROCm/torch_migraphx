@@ -28,7 +28,6 @@ def test_linear(inp_size):
                          [((32, 64), (64, 15)), ((8, 3, 50), (1, 50, 2)),
                           ((12, 1, 24, 48), (20, 48, 4))])
 def test_matmul(in_shape, other_shape):
-    assert False
     inp = torch.randn(in_shape)
     other = torch.randn(other_shape)
     mod = MatmulModule(torch.matmul)
