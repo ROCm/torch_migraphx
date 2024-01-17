@@ -102,11 +102,6 @@ def aten_ops_quantize_per_tensor(mgx_module, node, args, kwargs):
     inp, scale, zp, q_min, q_max, dtype = args
     assert dtype == torch.int8, "MGXQuantizer should always use signed int8"
 
-    if zp != 0:
-        _LOGGER.warning(
-            "Encoutered non-symmetric quantization."
-            "MGXQuantizer should be used when calling the prepare_pt2e API.")
-
     return add_quantize_linear(mgx_module, inp.instr_ref, scale, zp)
 
 

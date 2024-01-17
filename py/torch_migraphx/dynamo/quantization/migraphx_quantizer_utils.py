@@ -93,12 +93,13 @@ def _mark_as_annotated(node: Node):
         node.meta["quantization_annotation"]._annotated = True
 
 
-def _get_default_act_spec(obs: ObserverBase, extra_args: Dict):
+def _get_default_act_spec(obs: ObserverBase, extra_args: Dict, asym_act=False):
     act_quantization_spec = QuantizationSpec(
         dtype=torch.int8,
         quant_min=-128,
         quant_max=127,
-        qscheme=torch.per_tensor_symmetric,
+        qscheme=(torch.per_tensor_affine
+                 if asym_act else torch.per_tensor_symmetric),
         is_dynamic=False,
         observer_or_fake_quant_ctr=obs.with_args(**extra_args, ),
     )
@@ -132,11 +133,11 @@ def _get_default_bias_spec():
 
 
 @quantization_config(torch.ops.aten.linear.default)
-def _linear_config(is_per_channel=True, qat=False):
+def _linear_config(is_per_channel=True, asym_act=False, qat=False):
     extra_args: Dict[str, Any] = {"eps": 2**-12}
 
     act_quantization_spec = _get_default_act_spec(HistogramObserver,
-                                                  extra_args)
+                                                  extra_args, asym_act)
 
     weight_quantization_spec = _get_default_weight_spec(
         is_per_channel, 0, extra_args)
@@ -155,11 +156,11 @@ def _linear_config(is_per_channel=True, qat=False):
 
 @quantization_config(torch.ops.aten.bmm.default)
 @quantization_config(torch.ops.aten.matmul.default)
-def _matmul_config(is_per_channel=True, qat=False):
+def _matmul_config(is_per_channel=True, asym_act=False, qat=False):
     extra_args: Dict[str, Any] = {"eps": 2**-12}
 
     act_quantization_spec = _get_default_act_spec(HistogramObserver,
-                                                  extra_args)
+                                                  extra_args, asym_act)
 
     weight_quantization_spec = None
 
@@ -176,11 +177,11 @@ def _matmul_config(is_per_channel=True, qat=False):
 
 
 @quantization_config(torch.ops.aten.addmm.default)
-def _addmm_config(is_per_channel=True, qat=False):
+def _addmm_config(is_per_channel=True, asym_act=False, qat=False):
     extra_args: Dict[str, Any] = {"eps": 2**-12}
 
     act_quantization_spec = _get_default_act_spec(HistogramObserver,
-                                                  extra_args)
+                                                  extra_args, asym_act)
 
     weight_quantization_spec = _get_default_weight_spec(
         is_per_channel, 1, extra_args)
@@ -201,11 +202,11 @@ def _addmm_config(is_per_channel=True, qat=False):
 @quantization_config(torch.ops.aten.conv1d.default)
 @quantization_config(torch.ops.aten.conv2d.default)
 @quantization_config(torch.ops.aten.conv3d.default)
-def _conv_config(is_per_channel=True, qat=False):
+def _conv_config(is_per_channel=True, asym_act=False, qat=False):
     extra_args: Dict[str, Any] = {"eps": 2**-12}
 
     act_quantization_spec = _get_default_act_spec(HistogramObserver,
-                                                  extra_args)
+                                                  extra_args, asym_act)
 
     weight_quantization_spec = _get_default_weight_spec(
         is_per_channel, 0, extra_args)
@@ -304,7 +305,7 @@ def _annotate_bmm(node: Node, quantization_config: QuantizationConfig):
         _annotate_input_qspec_map(
             node,
             a2,
-            quantization_config.input_activation,
+            quantization_config.weight,
         )
         nodes_to_mark_annotated = [a1, a2]
         for n in nodes_to_mark_annotated:
