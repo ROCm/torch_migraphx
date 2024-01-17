@@ -8,6 +8,7 @@ This library currently supports two paths for lowering:
 
 
 ## Getting Started
+### Docker
 The simplest and recommended way to get started is using the provided Dockerfile.
 Build using:
 ```
@@ -20,6 +21,18 @@ sudo docker run -it --network=host --device=/dev/kfd --device=/dev/dri --group-a
 
 The default Dockerfile builds on the nightly pytorch container and installs the latest source version of MIGraphX and torch_migraphx. For more builds refer to the docker directory.
 
+### Install From Source
+Install Pre-reqs:
+- [PyTorch (ROCM version)](https://rocm.docs.amd.com/projects/install-on-linux/en/develop/how-to/3rd-party/pytorch-install.html#using-a-wheels-package)
+- [MIGraphX](https://github.com/ROCm/AMDMIGraphX?tab=readme-ov-file#installing-from-binaries)
+
+Build and install from source
+```
+git clone https://github.com/ROCmSoftwarePlatform/torch_migraphx.git
+cd ./torch_migraphx/py
+export TORCH_CMAKE_PATH=$(python -c "import torch; print(torch.utils.cmake_prefix_path)")
+pip install .
+```
 
 ## Example Usage
 ```
