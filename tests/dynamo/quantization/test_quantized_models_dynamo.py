@@ -6,6 +6,7 @@ from torchvision import models
 from torch._export import capture_pre_autograd_graph
 from torch.ao.quantization.quantize_pt2e import prepare_pt2e, convert_pt2e
 from torch_migraphx.dynamo.quantization import MGXQuantizer
+from quantization_utils_dynamo import move_q_gm_to_device
 
 try:
     import transformers
@@ -69,7 +70,9 @@ def test_quant_LLM(model_class, tokenizer_class, model_name,
     m = prepare_pt2e(model_export, quantizer)
     m(*inputs)
     q_m = convert_pt2e(m)
-
+    
+    q_m = move_q_gm_to_device(q_m)
+    
     mgx_mod = torch.compile(q_m, backend='migraphx').cuda()
     mgx_out = mgx_mod(inputs[0].cuda())
 
