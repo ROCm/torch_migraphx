@@ -38,6 +38,20 @@ def quantize_module(mod, inp_shapes, calibration_n=10):
     return convert_pt2e(model_prepared)
 
 
+def move_q_gm_to_device(gm, device="cuda"):
+    gm = gm.to(device)
+    for node in gm.graph.nodes:
+        if "device" in node.kwargs:
+            new_kwargs = {k:v for k,v in node.kwargs.items()}
+            new_kwargs["device"] = torch.device(device)
+            node.kwargs = new_kwargs
+        if any(isinstance(a, torch.device) for a in node.args):
+            new_args = [torch.device(device) if isinstance(a, torch.device) else a for a in node.args]
+            node.args = new_args
+    gm.recompile()
+    return gm
+
+
 def convert_to_mgx(mod, inp, tracer=aten_tracer):
     traced = tracer.trace(mod, inp)
     traced.graph.eliminate_dead_code()

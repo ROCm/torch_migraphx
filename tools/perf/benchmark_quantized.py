@@ -27,6 +27,20 @@ parser.add_argument('--fp16', action='store_true', default=False)
 parser.add_argument('-i', '--iter', type=int, default=100)
 
 
+def move_q_gm_to_device(gm, device="cuda"):
+    gm = gm.to(device)
+    for node in gm.graph.nodes:
+        if "device" in node.kwargs:
+            new_kwargs = {k:v for k,v in node.kwargs.items()}
+            new_kwargs["device"] = torch.device(device)
+            node.kwargs = new_kwargs
+        if any(isinstance(a, torch.device) for a in node.args):
+            new_args = [torch.device(device) if isinstance(a, torch.device) else a for a in node.args]
+            node.args = new_args
+    gm.recompile()
+    return gm
+
+
 def benchmark_torchvision_models(model_name, bs, args):
     model_fp32 = getattr(models, model_name)().eval()
     input_fp32 = torch.randn(bs, 3, 224, 224)
@@ -94,12 +108,18 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
     m(inp)
     q_m = convert_pt2e(m)
 
+    # BUG: There is bug in PyTorch <= 2.2 where torch.compile cannot properly handle
+    # functions that create new tensors on a pre-defined device (eg. cpu) that is
+    # different from the device that model parameters have moved to.
+    # Here we explicitly force all new tensors to be created on the gpu
+    q_m = move_q_gm_to_device(q_m)
+    
     torch._dynamo.reset()
     mgx_mod = torch.compile(q_m,
                             backend='migraphx',
                             options={
                                 "fp16": args.fp16,
-                            }).cuda()
+                            })
     mgx_mod(inp.cuda())
 
     time_int8 = benchmark_module(mgx_mod, (inp.cuda(), ), iterations=args.iter)
