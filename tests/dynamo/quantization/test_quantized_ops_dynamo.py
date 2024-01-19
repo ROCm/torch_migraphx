@@ -12,13 +12,15 @@ if not hasattr(torch_migraphx, "dynamo"):
     (torch.ops.aten.matmul.default, (32, 64), (64, 15)),
     (torch.ops.aten.bmm.default, (8, 3, 50), (8, 50, 2)),
 ])
-def test_quant_mm(op_alias, in_shape, other_shape, default_torch_seed):
+@pytest.mark.parametrize("asymm", [False, True])
+def test_quant_mm(op_alias, in_shape, other_shape, asymm, default_torch_seed):
     inp = torch.randn(in_shape)
     other = torch.randn(other_shape)
     mod = FuncModule(op_alias, other).eval()
-    q_mod = quantize_module(mod, [in_shape])
+    q_mod = quantize_module(mod, [in_shape], asymm=asymm)
     mgx_mod = convert_to_mgx(q_mod, [inp])
     verify_outputs(mod, q_mod, mgx_mod, inp)
+    del mod, q_mod, mgx_mod
 
 
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.addmm.default])
@@ -26,14 +28,17 @@ def test_quant_mm(op_alias, in_shape, other_shape, default_torch_seed):
     ((32, 24), (32, 15), (15, 24)),
     ((3, 1), (3, 50), (50, 2)),
 ])
-def test_quant_addmm(op_alias, in_shape, m1_shape, m2_shape, default_torch_seed):
+@pytest.mark.parametrize("asymm", [False, True])
+def test_quant_addmm(op_alias, in_shape, m1_shape, m2_shape, asymm,
+                     default_torch_seed):
     inp = torch.randn(in_shape)
     m1 = torch.randn(m1_shape)
     m2 = torch.randn(m2_shape)
     mod = FuncModule(op_alias, m1, m2).eval()
-    q_mod = quantize_module(mod, [in_shape])
+    q_mod = quantize_module(mod, [in_shape], asymm=asymm)
     mgx_mod = convert_to_mgx(q_mod, [inp])
     verify_outputs(mod, q_mod, mgx_mod, inp)
+    del mod, q_mod, mgx_mod
 
 
 @pytest.mark.parametrize('op_alias', [
@@ -44,13 +49,15 @@ def test_quant_addmm(op_alias, in_shape, m1_shape, m2_shape, default_torch_seed)
     (torch.nn.Conv2d(3, 16, 3, 3, (1, 2), 2), (50, 50)),
     (torch.nn.Conv3d(3, 16, 3, 3, (3, 1, 2), 2), (50, 50, 100)),
 ])
-def test_quant_convnd(op_alias, conv_mod, in_shape, default_torch_seed):
+@pytest.mark.parametrize("asymm", [False, True])
+def test_quant_convnd(op_alias, conv_mod, in_shape, asymm, default_torch_seed):
     weight, bias = conv_mod.weight, conv_mod.bias
     stride, padding, dilation = conv_mod.stride, conv_mod.padding, conv_mod.dilation
     inp = torch.randn(8, 3, *in_shape)
 
     mod = FuncModule(op_alias, weight, bias, stride, padding, dilation, False,
                      (0, ), 1).eval()
-    q_mod = quantize_module(mod, [inp.size()])
+    q_mod = quantize_module(mod, [inp.size()], asymm=asymm)
     mgx_mod = convert_to_mgx(q_mod, [inp])
     verify_outputs(mod, q_mod, mgx_mod, inp)
+    del mod, q_mod, mgx_mod

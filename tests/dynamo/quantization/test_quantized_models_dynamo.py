@@ -1,12 +1,15 @@
 import sys
 import pytest
+import copy
 import torch_migraphx
 import torch
 from torchvision import models
 from torch._export import capture_pre_autograd_graph
 from torch.ao.quantization.quantize_pt2e import prepare_pt2e, convert_pt2e
 from torch_migraphx.dynamo.quantization import MGXQuantizer
-from quantization_utils_dynamo import move_q_gm_to_device
+from quantization_utils_dynamo import (move_q_gm_to_device, verify_outputs,
+                                       compute_quantized_outputs,
+                                       verify_quantized_outputs)
 
 try:
     import transformers
@@ -19,18 +22,20 @@ transformers_skip_mark = pytest.mark.skipif(
     reason="requires the transformers library")
 
 
-@pytest.mark.parametrize("model, rtol, atol", [
-    (models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1), 5e-1,
-     5e-1),
+@pytest.mark.parametrize("model_name, model_weights, rtol, atol", [
+    ("resnet50", models.ResNet50_Weights.IMAGENET1K_V1, 1e-1, 1e-1),
 ])
-def test_quant_vision_model(model, rtol, atol, default_torch_seed):
-    model = model.eval()
+@pytest.mark.parametrize("asymm", [False, True])
+def test_quant_vision_model(model_name, model_weights, rtol, atol, asymm,
+                            default_torch_seed):
+    model = getattr(models, model_name)(weights=model_weights).eval()
+    torch_fp32_mod = copy.deepcopy(model)
+
     sample_inputs = [torch.randn(4, 3, 244, 244)]
-    torch_out = model(*sample_inputs)
 
     model_export = capture_pre_autograd_graph(model, sample_inputs)
 
-    quantizer = MGXQuantizer()
+    quantizer = MGXQuantizer(asymmetric_activations=asymm)
     m = prepare_pt2e(model_export, quantizer)
 
     # psudo calibrate
@@ -38,26 +43,29 @@ def test_quant_vision_model(model, rtol, atol, default_torch_seed):
         m(*sample_inputs)
 
     q_m = convert_pt2e(m)
-    # torch_qout = q_m(sample_inputs)
+    torch_q_mod = copy.deepcopy(q_m)
 
-    mgx_mod = torch.compile(q_m, backend='migraphx').cuda()
-    mgx_out = mgx_mod(sample_inputs[0].cuda())
+    mgx_mod = torch.compile(q_m.cuda(), backend='migraphx')
 
-    assert torch.allclose(mgx_out.cpu(), torch_out, rtol=rtol, atol=atol)
+    verify_outputs(torch_fp32_mod, torch_q_mod, mgx_mod, sample_inputs, rtol,
+                   atol)
 
-    del mgx_mod
-    del model
+    del mgx_mod, model, torch_fp32_mod, torch_q_mod, model_export
 
 
 @pytest.mark.skipif('transformers' not in sys.modules,
                     reason="requires the transformers library")
-@pytest.mark.parametrize("model_class, tokenizer_class, model_name", [
-    ('GPT2Model', 'GPT2Tokenizer', 'distilgpt2'),
-    ('GPT2Model', 'GPT2Tokenizer', 'gpt2-large'),
-])
-def test_quant_LLM(model_class, tokenizer_class, model_name,
+@pytest.mark.parametrize(
+    "model_class, tokenizer_class, model_name, rtol, atol",
+    [
+        ('GPT2Model', 'GPT2Tokenizer', 'distilgpt2', 1e-1, 1e-1),
+        # ('GPT2Model', 'GPT2Tokenizer', 'gpt2-large'),
+    ])
+@pytest.mark.parametrize("asymm", [False, True])
+def test_quant_LLM(model_class, tokenizer_class, model_name, rtol, atol, asymm,
                    default_torch_seed):
     model = getattr(transformers, model_class).from_pretrained(model_name)
+    torch_fp32_mod = copy.deepcopy(model)
     tokenizer = getattr(transformers,
                         tokenizer_class).from_pretrained(model_name)
     text = "Just some example text to be tokenized."
@@ -66,20 +74,24 @@ def test_quant_LLM(model_class, tokenizer_class, model_name,
     gold_output = model(*inputs)
 
     model_export = capture_pre_autograd_graph(model, inputs)
-    quantizer = MGXQuantizer()
+
+    quantizer = MGXQuantizer(asymmetric_activations=asymm)
     m = prepare_pt2e(model_export, quantizer)
     m(*inputs)
     q_m = convert_pt2e(m)
-    
+    torch_q_mod = copy.deepcopy(q_m)
+
     q_m = move_q_gm_to_device(q_m)
-    
+
     mgx_mod = torch.compile(q_m, backend='migraphx').cuda()
-    mgx_out = mgx_mod(inputs[0].cuda())
+    # mgx_out = mgx_mod(inputs[0].cuda())
 
-    # Here we do not do an all close check since quantized LLMs (especially large ones)
-    # can produce some very distorted outputs due to the nature of the model.
-    # Until there is a good consistent way to do model level verification, being
-    # able to compile and execute a quantized LLM is sufficient for this test case
+    torch_fp32_out, torch_q_out, mgx_out = compute_quantized_outputs(
+        torch_fp32_mod, torch_q_mod, mgx_mod, inputs)
+    verify_quantized_outputs(torch_fp32_out.last_hidden_state,
+                             torch_q_out.last_hidden_state,
+                             mgx_out["last_hidden_state"],
+                             rtol=rtol,
+                             atol=atol)
 
-    del mgx_mod
-    del model
+    del mgx_mod, model, model_export, q_m
