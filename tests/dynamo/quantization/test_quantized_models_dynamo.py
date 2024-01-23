@@ -59,7 +59,6 @@ def test_quant_vision_model(model_name, model_weights, rtol, atol, asymm,
     "model_class, tokenizer_class, model_name, rtol, atol",
     [
         ('GPT2Model', 'GPT2Tokenizer', 'distilgpt2', 1e-1, 1e-1),
-        # ('GPT2Model', 'GPT2Tokenizer', 'gpt2-large'),
     ])
 @pytest.mark.parametrize("asymm", [False, True])
 def test_quant_LLM(model_class, tokenizer_class, model_name, rtol, atol, asymm,
@@ -84,7 +83,6 @@ def test_quant_LLM(model_class, tokenizer_class, model_name, rtol, atol, asymm,
     q_m = move_q_gm_to_device(q_m)
 
     mgx_mod = torch.compile(q_m, backend='migraphx').cuda()
-    # mgx_out = mgx_mod(inputs[0].cuda())
 
     torch_fp32_out, torch_q_out, mgx_out = compute_quantized_outputs(
         torch_fp32_mod, torch_q_mod, mgx_mod, inputs)
