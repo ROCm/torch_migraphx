@@ -33,7 +33,7 @@
 import torch
 from torch.ao.quantization.quantizer import QuantizationSpec, Quantizer
 
-from .migraphx_quantizer_utils import OP_ANNOTATORS, OP_DEFAULT_CONFIGS
+from .migraphx_quantizer_utils import OP_ANNOTATORS, OP_DEFAULT_CONFIGS, annotate_const_nodes
 
 
 # TODO: Add way to override default configs
@@ -62,6 +62,7 @@ class MGXQuantizer(Quantizer):
             OP_ANNOTATORS[op](n, op_config)
 
     def annotate(self, model: torch.fx.GraphModule) -> torch.fx.GraphModule:
+        annotate_const_nodes(model)
         self._annotate_static_quantization(model)
         return model
 

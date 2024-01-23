@@ -24,6 +24,7 @@ parser.add_argument('-m',
                     choices=["resnet50", "gpt2-large", "distilgpt2"])
 parser.add_argument('-b', '--batch-size', type=int, default=1)
 parser.add_argument('--fp16', action='store_true', default=False)
+parser.add_argument('--asymmetric', action='store_true', default=False)
 parser.add_argument('-i', '--iter', type=int, default=100)
 
 
@@ -31,23 +32,27 @@ def move_q_gm_to_device(gm, device="cuda"):
     gm = gm.to(device)
     for node in gm.graph.nodes:
         if "device" in node.kwargs:
-            new_kwargs = {k:v for k,v in node.kwargs.items()}
+            new_kwargs = {k: v for k, v in node.kwargs.items()}
             new_kwargs["device"] = torch.device(device)
             node.kwargs = new_kwargs
         if any(isinstance(a, torch.device) for a in node.args):
-            new_args = [torch.device(device) if isinstance(a, torch.device) else a for a in node.args]
+            new_args = [
+                torch.device(device) if isinstance(a, torch.device) else a
+                for a in node.args
+            ]
             node.args = new_args
     gm.recompile()
     return gm
 
 
 def benchmark_torchvision_models(model_name, bs, args):
+    torch._dynamo.reset()
     model_fp32 = getattr(models, model_name)().eval()
     input_fp32 = torch.randn(bs, 3, 224, 224)
 
     model_export = capture_pre_autograd_graph(copy.deepcopy(model_fp32),
                                               (input_fp32, ))
-    quantizer = MGXQuantizer()
+    quantizer = MGXQuantizer(asymmetric_activations=args.asymmetric)
     m = prepare_pt2e(model_export, quantizer)
 
     with torch.no_grad():
@@ -55,7 +60,6 @@ def benchmark_torchvision_models(model_name, bs, args):
 
     q_m = convert_pt2e(m)
 
-    torch._dynamo.reset()
     mgx_mod = torch.compile(q_m,
                             backend='migraphx',
                             options={
@@ -84,7 +88,9 @@ def benchmark_torchvision_models(model_name, bs, args):
                                  iterations=args.iter)
     del mgx_mod_fp16
 
-    print(f'Running benchmarks for {model_fp32._get_name()}, BS = {bs}')
+    print(
+        f'Running benchmarks for {model_fp32._get_name()}, BS = {bs}, Asymmetric = {args.asymmetric}'
+    )
     names = ["MGX FP32", "MGX FP16", "MGX INT8"]
     times = [time_fp32, time_fp16, time_int8]
 
@@ -93,6 +99,7 @@ def benchmark_torchvision_models(model_name, bs, args):
 
 def benchmark_transformer_models(model_name, model_class, tokenizer_class,
                                  args):
+    torch._dynamo.reset()
     model = getattr(transformers, model_class).from_pretrained(model_name)
     tokenizer = getattr(transformers,
                         tokenizer_class).from_pretrained(model_name)
@@ -103,7 +110,7 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
 
     model_export = capture_pre_autograd_graph(copy.deepcopy(model), (inp, ))
 
-    quantizer = MGXQuantizer()
+    quantizer = MGXQuantizer(asymmetric_activations=args.asymmetric)
     m = prepare_pt2e(model_export, quantizer)
     m(inp)
     q_m = convert_pt2e(m)
@@ -114,7 +121,6 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
     # Here we explicitly force all new tensors to be created on the gpu
     q_m = move_q_gm_to_device(q_m)
     
-    torch._dynamo.reset()
     mgx_mod = torch.compile(q_m,
                             backend='migraphx',
                             options={
@@ -142,7 +148,9 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
                                  iterations=args.iter)
     del mgx_mod_fp16
 
-    print(f'Running benchmarks for {model_name}, BS = 1')
+    print(
+        f'Running benchmarks for {model_name}, BS = 1, Asymmetric = {args.asymmetric}'
+    )
     names = ["MGX FP32", "MGX FP16", "MGX INT8"]
     times = [time_fp32, time_fp16, time_int8]
 

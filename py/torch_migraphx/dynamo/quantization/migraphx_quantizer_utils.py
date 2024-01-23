@@ -57,6 +57,7 @@ class QuantizationConfig:
     output_activation: Optional[QuantizationSpec]
     weight: Optional[QuantizationSpec]
     bias: Optional[QuantizationSpec]
+    is_per_channel: bool
 
 
 OP_DEFAULT_CONFIGS = {}
@@ -91,6 +92,22 @@ def _mark_as_annotated(node: Node):
         if "quantization_annotation" not in node.meta:
             node.meta["quantization_annotation"] = QuantizationAnnotation()
         node.meta["quantization_annotation"]._annotated = True
+
+
+def _is_const_node(node: Node):
+    return ("is_constant" in node.meta and node.meta["is_constant"])
+
+
+def _mark_as_const(node: Node):
+    if node is not None:
+        node.meta["is_constant"] = True
+
+
+def annotate_const_nodes(model: torch.fx.GraphModule):
+    for n in model.graph.nodes:
+        if n.op == "get_attr" or all(
+                _is_const_node(i) for i in n.all_input_nodes):
+            _mark_as_const(n)
 
 
 def _get_default_act_spec(obs: ObserverBase, extra_args: Dict, asym_act=False):
@@ -132,6 +149,14 @@ def _get_default_bias_spec():
     return bias_quantization_spec
 
 
+def _get_gemm_node_default_spec(node, quantization_config, qaxis=1):
+    if _is_const_node(node):
+        return _get_default_weight_spec(quantization_config.is_per_channel,
+                                        qaxis, {"eps": 2**-12})
+    else:
+        return quantization_config.input_activation
+
+
 @quantization_config(torch.ops.aten.linear.default)
 def _linear_config(is_per_channel=True, asym_act=False, qat=False):
     extra_args: Dict[str, Any] = {"eps": 2**-12}
@@ -149,6 +174,7 @@ def _linear_config(is_per_channel=True, asym_act=False, qat=False):
         act_quantization_spec,
         weight_quantization_spec,
         bias_quantization_spec,
+        is_per_channel,
     )
 
     return quantization_config
@@ -171,6 +197,7 @@ def _matmul_config(is_per_channel=True, asym_act=False, qat=False):
         act_quantization_spec,
         weight_quantization_spec,
         bias_quantization_spec,
+        is_per_channel,
     )
 
     return quantization_config
@@ -183,8 +210,7 @@ def _addmm_config(is_per_channel=True, asym_act=False, qat=False):
     act_quantization_spec = _get_default_act_spec(HistogramObserver,
                                                   extra_args, asym_act)
 
-    weight_quantization_spec = _get_default_weight_spec(
-        is_per_channel, 1, extra_args)
+    weight_quantization_spec = None
 
     bias_quantization_spec = _get_default_bias_spec()
 
@@ -193,6 +219,7 @@ def _addmm_config(is_per_channel=True, asym_act=False, qat=False):
         act_quantization_spec,
         weight_quantization_spec,
         bias_quantization_spec,
+        is_per_channel,
     )
 
     return quantization_config
@@ -218,6 +245,7 @@ def _conv_config(is_per_channel=True, asym_act=False, qat=False):
         act_quantization_spec,
         weight_quantization_spec,
         bias_quantization_spec,
+        is_per_channel,
     )
 
     return quantization_config
@@ -261,26 +289,27 @@ def _annotate_addmm(node: Node, quantization_config: QuantizationConfig):
     if not quantization_config:
         return None
 
-    bias_node, act_node, weight_node = (node.args[0], node.args[1],
-                                        node.args[2])
+    bias_node, mm1_node, mm2_node = (node.args[0], node.args[1], node.args[2])
+    if not (_is_const_node(mm1_node) or _is_const_node(mm2_node)):
+        return None
 
     if not _is_annotated(node):
         _annotate_input_qspec_map(
             node,
-            act_node,
-            quantization_config.input_activation,
+            mm1_node,
+            _get_gemm_node_default_spec(mm1_node, quantization_config, 0),
         )
         _annotate_input_qspec_map(
             node,
-            weight_node,
-            quantization_config.weight,
+            mm2_node,
+            _get_gemm_node_default_spec(mm2_node, quantization_config, 1),
         )
         _annotate_input_qspec_map(
             node,
             bias_node,
             quantization_config.bias,
         )
-        nodes_to_mark_annotated = [act_node, weight_node, bias_node]
+        nodes_to_mark_annotated = [mm1_node, mm2_node, bias_node]
         for n in nodes_to_mark_annotated:
             _mark_as_annotated(n)
 
@@ -295,17 +324,19 @@ def _annotate_bmm(node: Node, quantization_config: QuantizationConfig):
 
     assert len(node.args) == 2, "Unexpected # of inputs for aten.bmm node"
     a1, a2 = node.args
+    if not (_is_const_node(a1) or _is_const_node(a2)):
+        return None
 
     if not _is_annotated(node):
         _annotate_input_qspec_map(
             node,
             a1,
-            quantization_config.input_activation,
+            _get_gemm_node_default_spec(a1, quantization_config, 0),
         )
         _annotate_input_qspec_map(
             node,
             a2,
-            quantization_config.weight,
+            _get_gemm_node_default_spec(a2, quantization_config, 1),
         )
         nodes_to_mark_annotated = [a1, a2]
         for n in nodes_to_mark_annotated:
