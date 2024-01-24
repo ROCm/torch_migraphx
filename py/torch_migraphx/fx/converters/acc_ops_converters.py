@@ -417,10 +417,26 @@ def acc_ops_sign(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.relu)
 def acc_ops_relu(mgx_module, node, args, kwargs):
-    inp = kwargs["input"]
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('relu'),
-                                                     [inp.instr_ref]),
-                          qparams=inp.qparams)
+    node_inp = kwargs['input']
+    if node_inp.is_quantized():
+        inp = add_dequantize_linear(mgx_module, node_inp.instr_ref,
+                                    node_inp.qparams["scale"],
+                                    node_inp.qparams["zero_point"],
+                                    node_inp.qparams["axis"])
+    else:
+        inp = node_inp.instr_ref
+
+    out = mgx_module.add_instruction(migraphx.op('relu'), [inp])
+
+    if node_inp.is_quantized():
+        return add_quantize_linear(mgx_module,
+                                   out,
+                                   node_inp.qparams["scale"],
+                                   node_inp.qparams["zero_point"],
+                                   per_ch_axis=node_inp.qparams["axis"],
+                                   target_type=torch.qint8)
+
+    return MGXInstruction(out, qparams=node_inp.qparams)
 
 
 @migraphx_converter(acc_ops.leaky_relu)
@@ -850,7 +866,7 @@ def acc_ops_avg_pool2d(mgx_module, node, args, kwargs):
 def acc_ops_flatten(mgx_module, node, args, kwargs):
 
     inp = kwargs['input']
-    assert not inp.is_quantized()
+    qparams = inp.qparams
     inp = inp.instr_ref
 
     in_shape = inp.shape().lens()
@@ -864,9 +880,9 @@ def acc_ops_flatten(mgx_module, node, args, kwargs):
 
     std_input = mgx_module.add_instruction(migraphx.op('contiguous'), [inp])
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('reshape', dims=out_shape),
-                                   [std_input]))
+    return MGXInstruction(mgx_module.add_instruction(
+        migraphx.op('reshape', dims=out_shape), [std_input]),
+                          qparams=qparams)
 
 
 @migraphx_converter(acc_ops.squeeze)
