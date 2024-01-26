@@ -24,8 +24,8 @@ class FuncModule(torch.nn.Module):
         return self.func(x, *self.args, **self.kwargs)
 
 
-def quantize_module(mod, inp_shapes, calibration_n=10):
-    quantizer = MGXQuantizer()
+def quantize_module(mod, inp_shapes, asymm=False, calibration_n=10):
+    quantizer = MGXQuantizer(asymmetric_activations=asymm)
 
     ex_inputs = [torch.randn(*s) for s in inp_shapes]
     model_export = capture_pre_autograd_graph(mod, ex_inputs)
@@ -42,11 +42,14 @@ def move_q_gm_to_device(gm, device="cuda"):
     gm = gm.to(device)
     for node in gm.graph.nodes:
         if "device" in node.kwargs:
-            new_kwargs = {k:v for k,v in node.kwargs.items()}
+            new_kwargs = {k: v for k, v in node.kwargs.items()}
             new_kwargs["device"] = torch.device(device)
             node.kwargs = new_kwargs
         if any(isinstance(a, torch.device) for a in node.args):
-            new_args = [torch.device(device) if isinstance(a, torch.device) else a for a in node.args]
+            new_args = [
+                torch.device(device) if isinstance(a, torch.device) else a
+                for a in node.args
+            ]
             node.args = new_args
     gm.recompile()
     return gm
@@ -63,13 +66,7 @@ def convert_to_mgx(mod, inp, tracer=aten_tracer):
     return mgx_mod
 
 
-def verify_outputs(torch_mod,
-                   torch_q_mod,
-                   mgx_mod,
-                   inp,
-                   rtol=5e-1,
-                   atol=1e-1,
-                   equal_nan=False):
+def compute_quantized_outputs(torch_mod, torch_q_mod, mgx_mod, inp):
     if not isinstance(inp, (list, tuple)):
         inp = (inp, )
     torch_fp32_out = torch_mod(*inp)
@@ -77,26 +74,57 @@ def verify_outputs(torch_mod,
     inp_mgx = [i.cuda() for i in inp]
     mgx_out = mgx_mod(*inp_mgx)
 
+    return torch_fp32_out, torch_q_out, mgx_out
+
+
+def verify_quantized_outputs(torch_fp32_out,
+                             torch_q_out,
+                             mgx_out,
+                             rtol=1e-1,
+                             atol=1e-1,
+                             close_percent=0.8,
+                             equal_nan=False):
+
     if isinstance(torch_fp32_out, (list, tuple)):
         assert len(torch_fp32_out) == len(mgx_out) == len(torch_q_out)
-        assert all(
-            torch.allclose(
-                o1.cpu(), o2.cpu(), rtol=rtol, atol=atol, equal_nan=equal_nan)
-            or torch.allclose(
-                o1.cpu(), o3.cpu(), rtol=rtol, atol=atol, equal_nan=equal_nan)
-            for o1, o2, o3 in zip(mgx_out, torch_fp32_out, torch_q_out))
+
+        for mo, to, tqo in (mgx_out, torch_fp32_out, torch_q_out):
+            # Compute valid mask based on fake quantized outputs from torch
+            valid_mask = torch.isclose(to, tqo, rtol=rtol, atol=atol)
+
+            close = torch.isclose(mo.cpu()[valid_mask],
+                                  to.cpu()[valid_mask],
+                                  rtol=rtol,
+                                  atol=atol,
+                                  equal_nan=equal_nan)
+
+            assert sum(close) / torch.numel(close) >= close_percent
 
     else:
-        close_to_torch_fp32 = torch.allclose(mgx_out.cpu(),
-                                             torch_fp32_out.cpu(),
-                                             rtol=rtol,
-                                             atol=atol,
-                                             equal_nan=equal_nan)
-        close_to_torch_int8 = torch.allclose(mgx_out.cpu(),
-                                             torch_q_out.cpu(),
-                                             rtol=rtol,
-                                             atol=atol,
-                                             equal_nan=equal_nan)
-        # Also check if output is close to torch int8 output incase there is
-        # inherent quantization error in the model
-        assert close_to_torch_fp32 or close_to_torch_int8
+        valid_mask = torch.isclose(torch_fp32_out,
+                                   torch_q_out,
+                                   rtol=rtol,
+                                   atol=atol)
+        close = torch.isclose(mgx_out.cpu()[valid_mask],
+                              torch_fp32_out.cpu()[valid_mask],
+                              rtol=rtol,
+                              atol=atol,
+                              equal_nan=equal_nan)
+
+        assert sum(close) / torch.numel(close) >= close_percent
+
+
+def verify_outputs(torch_mod,
+                   torch_q_mod,
+                   mgx_mod,
+                   inp,
+                   rtol=1e-1,
+                   atol=1e-1,
+                   close_percent=0.8,
+                   equal_nan=False):
+
+    torch_fp32_out, torch_q_out, mgx_out = compute_quantized_outputs(
+        torch_mod, torch_q_mod, mgx_mod, inp)
+
+    verify_quantized_outputs(torch_fp32_out, torch_q_out, mgx_out, rtol, atol,
+                             close_percent, equal_nan)

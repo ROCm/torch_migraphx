@@ -33,17 +33,21 @@
 import torch
 from torch.ao.quantization.quantizer import QuantizationSpec, Quantizer
 
-from .migraphx_quantizer_utils import OP_ANNOTATORS, OP_DEFAULT_CONFIGS
+from .migraphx_quantizer_utils import OP_ANNOTATORS, OP_DEFAULT_CONFIGS, annotate_const_nodes
 
 
 # TODO: Add way to override default configs
 # TODO: Support QAT
 class MGXQuantizer(Quantizer):
 
-    def __init__(self, per_ch_weights=True, is_qat=False):
+    def __init__(self,
+                 per_ch_weights=True,
+                 asymmetric_activations=False,
+                 is_qat=False):
         super().__init__()
         self.per_ch_weights = per_ch_weights
         self.is_qat = is_qat
+        self.asymmetric_activations = asymmetric_activations
         self.default_configs = OP_DEFAULT_CONFIGS
 
     def _annotate_static_quantization(self, model: torch.fx.GraphModule):
@@ -53,10 +57,12 @@ class MGXQuantizer(Quantizer):
                 continue
 
             op_config = self.default_configs[op](self.per_ch_weights,
+                                                 self.asymmetric_activations,
                                                  self.is_qat)
             OP_ANNOTATORS[op](n, op_config)
 
     def annotate(self, model: torch.fx.GraphModule) -> torch.fx.GraphModule:
+        annotate_const_nodes(model)
         self._annotate_static_quantization(model)
         return model
 
