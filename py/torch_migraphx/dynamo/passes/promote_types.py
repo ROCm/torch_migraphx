@@ -27,23 +27,53 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
 
-from typing import Sequence
+# Some ops use type promotions in the dynamo pipeline, see:
+# https://github.com/pytorch/pytorch/blob/main/torch/_inductor/lowering.py
+# Use this pass to ensure ops that expect type promotion have explicit conversions
 
 import torch
-from .partition import partition
-from .remove_ops import remove_const_ops, remove_view_ops
-from .const_fold import const_fold
-from .promote_types import promote_inputs
+from torch.fx.node import Target
+from torch.fx.passes.shape_prop import TensorMetadata
+
+OP_PROMOTE_FUNCS = {}
 
 
-# TODO: Use torch fx `pass manager to run the below passes
-def run_aten_passes(gm: torch.fx.GraphModule,
-                    inputs: Sequence[torch.Tensor],
-                    verbose: bool = False):
-    gm = remove_const_ops(gm)
-    gm = remove_view_ops(gm)
-    gm = promote_inputs(gm)
-    gm = const_fold(gm)
-    gm = partition(gm, verbose=verbose)
+def input_promoter(target: Target):
 
+    def register_promoter(promoter):
+        OP_PROMOTE_FUNCS[target] = promoter
+        return promoter
+
+    return register_promoter
+
+
+def promote_inputs(gm: torch.fx.GraphModule):
+    for node in gm.graph.nodes:
+        if node.target in OP_PROMOTE_FUNCS:
+            OP_PROMOTE_FUNCS[node.target](gm, node)
+
+    gm.graph.eliminate_dead_code()
+    gm.recompile()
     return gm
+
+
+@input_promoter(torch.ops.aten.cat.default)
+def promote_using_node_meta(gm, node):
+    out_type = node.meta['tensor_meta'].dtype
+
+    for i in node.all_input_nodes:
+        if i.meta['tensor_meta'].dtype != out_type:
+            with gm.graph.inserting_after(i):
+                promoted_inp = gm.graph.create_node(
+                    "call_function",
+                    torch.ops.aten._to_copy.default,
+                    args=(i, ),
+                    kwargs={"dtype": out_type},
+                )
+                new_meta = {k: v for k, v in i.meta.items()}
+                tensor_meta = new_meta["tensor_meta"]._asdict()
+                tensor_meta["dtype"] = out_type
+                new_meta["tensor_meta"] = TensorMetadata(**tensor_meta)
+                promoted_inp.meta = new_meta
+
+            node.replace_input_with(i, promoted_inp)
