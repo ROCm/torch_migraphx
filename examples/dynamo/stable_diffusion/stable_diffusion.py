@@ -44,7 +44,7 @@ def run(args):
                                                    torch_dtype=dtype)
     pipe = pipe.to("cuda")
 
-    # pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx')
+    pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx')
     pipe.unet = torch.compile(pipe.unet, backend='migraphx')
     pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend='migraphx')
 
