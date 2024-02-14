@@ -38,7 +38,7 @@ from .lower_dynamo import lower_aten_to_mgx
 @dynamo.register_backend(name="migraphx")
 def migraphx_backend(gm: torch.fx.GraphModule,
                      example_inputs: Sequence[torch.Tensor], **kwargs):
-    
+
     # Any logic to pick default dynamo backend should be placed here
     return migraphx_aot_backend(gm, example_inputs, **kwargs)
 
@@ -49,13 +49,16 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
 
     # Any addition kwargs are captrued through the "options" key
     kwargs = kwargs["options"] if "options" in kwargs else kwargs
-    
-    # TODO: cleaner way to invoke aot autograd with real inputs?
+
+    if "load_compiled" in kwargs:
+        return torch.load(kwargs["load_compiled"])
+
     TracingContext.get().fake_mode.allow_non_fake_inputs = True
 
-    # TODO: Investigate other variants for invoking aot_autograd:
-    # https://github.com/pytorch/pytorch/blob/main/torch/_functorch/aot_autograd.py
-    
     aten_gm = aot_export_joint_simple(gm, example_inputs, trace_joint=False)
 
-    return lower_aten_to_mgx(aten_gm, example_inputs, **kwargs)
+    compiled_gm = lower_aten_to_mgx(aten_gm, example_inputs, **kwargs)
+    if "save_compiled" in kwargs:
+        torch.save(compiled_gm, kwargs["save_compiled"], pickle_protocol=4)
+
+    return compiled_gm
