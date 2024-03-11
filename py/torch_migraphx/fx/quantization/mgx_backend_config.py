@@ -19,8 +19,6 @@ def get_migraphx_backend_config() -> BackendConfig:
     we convert the uint8 activations during lowering.
     """
 
-    # TODO: If torch introduces support for int8 activations, input and output types should
-    # be qint8 for migraphx
     weighted_int8_dtype_config = DTypeConfig(
         input_dtype=torch.quint8,
         output_dtype=torch.quint8,
