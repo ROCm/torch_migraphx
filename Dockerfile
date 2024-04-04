@@ -1,4 +1,4 @@
-FROM rocm/pytorch-nightly:latest
+FROM rocm/pytorch:rocm6.0.2_ubuntu22.04_py3.10_pytorch_2.1.2
 
 ARG ROCM_PATH=/opt/rocm
 ARG MIGRAPHX_BRANCH=master 

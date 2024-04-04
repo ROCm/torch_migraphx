@@ -50,7 +50,8 @@ def move_q_gm_to_device(gm, device="cuda"):
     return gm
 
 
-def benchmark_torchvision_models(model_name, bs, args):
+def benchmark_torchvision_models(model_name, args):
+    bs = args.batch_size
     torch._dynamo.reset()
     model_fp32 = getattr(models, model_name)().eval()
     input_fp32 = torch.randn(bs, 3, 224, 224)
@@ -110,12 +111,14 @@ def benchmark_torchvision_models(model_name, bs, args):
 
 def benchmark_transformer_models(model_name, model_class, tokenizer_class,
                                  args):
+    bs = args.batch_size
     torch._dynamo.reset()
     model = getattr(transformers, model_class).from_pretrained(model_name)
     tokenizer = getattr(transformers,
                         tokenizer_class).from_pretrained(model_name)
 
-    text = "Just some text for benchmarking purposes"
+    sample_text = "Just some text for benchmarking purposes"
+    text = [sample_text for _ in range(bs)]
     encoded_input = tokenizer(text, return_tensors='pt')
     inp = encoded_input["input_ids"]
 
@@ -166,12 +169,12 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
     del mgx_mod_fp16
 
     print(
-        f"Running benchmarks for {model_name}, BS = 1, Asymmetric = {args.asymmetric}, INT8 + FP16 = {args.fp16}"
+        f"Running benchmarks for {model_name}, BS = {bs}, Asymmetric = {args.asymmetric}, INT8 + FP16 = {args.fp16}"
     )
     names = ["MGX FP32", "MGX FP16", "MGX INT8"]
     times = [time_fp32, time_fp16, time_int8]
 
-    print_bm_results(names, times, 1, 0)
+    print_bm_results(names, times, bs, 0)
 
 
 def is_torchvision_model(model_name):
@@ -184,10 +187,9 @@ def is_torchvision_model(model_name):
 if __name__ == '__main__':
     args = parser.parse_args()
     model_name = args.model
-    bs = args.batch_size
 
     if is_torchvision_model(model_name):
-        benchmark_torchvision_models(model_name, bs, args)
+        benchmark_torchvision_models(model_name, args)
     elif model_name in GPT2_PRETRAIN_NAMES:
         if 'transformers' not in sys.modules:
             raise RuntimeError(
