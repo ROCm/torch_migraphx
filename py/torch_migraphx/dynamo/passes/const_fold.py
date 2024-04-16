@@ -43,7 +43,14 @@ def const_fold(traced_mod: torch.fx.GraphModule):
         }
         return node.target in skip_ops
 
+    # BUG in split_const_subgraphs where it errors out when the whole graph is constatnt
+    if not has_inputs(traced_mod):
+        return traced_mod
+    
     const_split_mod = split_const_subgraphs(traced_mod,
                                             skip_folding_node_fn=skip_folding)
     const_split_mod.run_folding()
     return const_split_mod
+
+def has_inputs(gm: torch.fx.GraphModule):
+    return any(n.op == "placeholder" for n in gm.graph.nodes)
