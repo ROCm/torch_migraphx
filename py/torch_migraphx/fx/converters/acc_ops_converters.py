@@ -1107,6 +1107,17 @@ def acc_ops_where(mgx_module, node, args, kwargs):
     assert all(not i.is_quantized() for i in (cond, inp, other))
     cond, inp, other = broadcast_tensors(mgx_module, cond.instr_ref,
                                          inp.instr_ref, other.instr_ref)
+
+    if inp.shape().type_string() != other.shape().type_string():
+        if "tensor_meta" in node.meta:
+            dtype = node.meta['tensor_meta'].dtype
+            inp = convert_arg(mgx_module, inp, dtype)
+            other = convert_arg(mgx_module, other, dtype)
+        else:
+            raise RuntimeError(
+                f"Error in parsing acc_ops.where, dtype mismatch: {inp.shape()}, {other.shape()}"
+            )
+
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('where'), [cond, inp, other]))
 
@@ -1167,6 +1178,16 @@ def acc_ops_maximum(mgx_module, node, args, kwargs):
     assert all(not i.is_quantized() for i in (inp, other))
 
     inp, other = broadcast_tensors(mgx_module, inp.instr_ref, other.instr_ref)
+    if inp.shape().type_string() != other.shape().type_string():
+        if "tensor_meta" in node.meta:
+            dtype = node.meta['tensor_meta'].dtype
+            inp = convert_arg(mgx_module, inp, dtype)
+            other = convert_arg(mgx_module, other, dtype)
+        else:
+            raise RuntimeError(
+                f"Error in parsing acc_ops.maximum, dtype mismatch: {inp.shape()}, {other.shape()}"
+            )
+
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('max'), [inp, other]))
 
@@ -1531,12 +1552,23 @@ def acc_ops_batch_norm(mgx_module, node, args, kwargs):
                for i in [inp, r_mean, r_var, weight, bias])
     inp, weight, bias = inp.instr_ref, weight.instr_ref, bias.instr_ref
     r_mean, r_var = r_mean.instr_ref, r_var.instr_ref
-    dtype = get_arg_dtype(inp)
+
+    assert all(weight.shape().type_string() == r.shape().type_string()
+               for r in [bias, r_mean, r_var])
+    
+    # Some aten batchnorm implementations seem to do this implicit conversion
+    if inp.shape().type_string() != weight.shape().type_string():
+        dtype = get_arg_dtype(inp)
+        weight = convert_arg(mgx_module, weight, dtype)
+        bias = convert_arg(mgx_module, bias, dtype)
+        r_mean = convert_arg(mgx_module, r_mean, dtype)
+        r_var = convert_arg(mgx_module, r_var, dtype)
+
     out_shape = inp.shape().lens()
     unsq_dims = [i for i in range(len(out_shape)) if i != 1]
 
     eps_mgx = mgx_module.add_literal(
-        torch.tensor(kwargs['eps'], dtype=dtype).numpy())
+        torch.tensor(kwargs['eps'], dtype=get_arg_dtype(r_var)).numpy())
     eps_mgx = mgx_module.add_instruction(
         migraphx.op('multibroadcast', out_lens=out_shape), [eps_mgx])
 
