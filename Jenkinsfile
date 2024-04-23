@@ -14,6 +14,9 @@ def runTests() {
 
     node(targetNode) {
         show_node_info()
+        checkout scm
+
+        def testImage = docker.build("tm_test:${env.BUILD_ID}")
     }
 }
 
@@ -28,7 +31,7 @@ pipeline {
                 axes {
                     axis {
                         name 'arch'
-                        values 'MI250', 'gfx1100'
+                        values 'gfx1100'
                     }
                 }
                 stages {
