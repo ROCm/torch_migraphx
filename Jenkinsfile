@@ -33,8 +33,10 @@ pipeline {
                 }
                 stages {
                     stage('unit-tests'){
-                        script {
-                            runTests()
+                        steps {
+                            script {
+                                runTests()
+                            }
                         }
                     }
                 }
