@@ -18,7 +18,7 @@ def runTests() {
         checkout scm
 
         sh """
-        docker build -t tm_ci:${env.BUILD_ID} .
+        docker build -t tm_ci:${env.BUILD_ID} --build-arg MIGRAPHX_BRANCH=${} .
         docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=/home/jenkins:/home/jenkins tm_ci:${env.BUILD_ID} bash -c "pip install transformers ; cd /workspace/torch_migraphx/tests/ ; pytest"
         """
     }
@@ -27,7 +27,7 @@ def runTests() {
 pipeline {
     agent { label 'build-only' }
     environment {
-        MAIN_BRANCH = 'master'
+        MIGRAPHX_BRANCH = 'rocm-6.1.0'
     }
     stages {
         stage('matrix') {
