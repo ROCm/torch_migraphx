@@ -18,9 +18,7 @@ def runTests() {
         checkout scm
 
         sh """
-        export GPU_ARCH="$(/opt/rocm/bin/rocminfo | grep -o -m 1 'gfx.*')"
-        docker build -t tm_ci:${env.BUILD_ID} --build-arg GPU_ARCH="\$GPU_ARCH" .
-
+        docker build -t tm_ci:${env.BUILD_ID} .
         docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=/home/jenkins:/home/jenkins torch_migraphx_ci bash -c "pip install transformers ; cd /workspace/torch_migraphx/tests/ ; pytest"
         """
     }
