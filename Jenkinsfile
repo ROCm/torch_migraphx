@@ -16,12 +16,9 @@ def runTests() {
         show_node_info()
         checkout scm
 
-        def GPU_ARCH = sh(script: "echo \$(/opt/rocm/bin/rocminfo | grep -o -m 1 'gfx.*')", returnStdout: true).trim()
-        echo ${GPU_ARCH}
-
-        def testImage = docker.build("tm_test:${env.BUILD_ID}", "--build-arg GPU_ARCH=${GPU_ARCH}")
+        def testImage = docker.build("tm_test:${env.BUILD_ID}")
         testImage.withRun('--network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=/home/jenkins:/home/jenkins'){
-            sh 'python -c "import torch; import torch_migraphx; import migraphx"'
+            sh '''python -c "import torch; import torch_migraphx; import migraphx; echo $(ls)"'''
         }
     }
 }
