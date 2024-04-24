@@ -16,7 +16,7 @@ def runTests() {
         show_node_info()
         checkout scm
 
-        GPU_ARCH = sh(script: "$(/opt/rocm/bin/rocminfo | grep -o -m 1 \'gfx.*\')", returnStdout: true)
+        def GPU_ARCH = sh(script: "/opt/rocm/bin/rocminfo | grep -o -m 1 'gfx.*'", returnStdout: true)
         echo ${GPU_ARCH}
 
         def testImage = docker.build("tm_test:${env.BUILD_ID}", "--build-arg GPU_ARCH=${GPU_ARCH}")
