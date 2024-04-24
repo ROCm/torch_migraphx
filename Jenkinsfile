@@ -10,9 +10,9 @@ def show_node_info() {
 
 def run_pytest() {
     sh """
-    pip install transformers
+    pip install transformers pytest
     cd ./tests/
-    python3 -m pytest
+    pytest
     """
 }
 
