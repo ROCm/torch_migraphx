@@ -12,7 +12,7 @@ def run_pytest() {
     sh """
     pip install transformers
     cd ./tests/
-    python -m pytest
+    python3 -m pytest
     """
 }
 
