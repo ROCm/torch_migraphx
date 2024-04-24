@@ -11,7 +11,7 @@ def show_node_info() {
 def run_pytest() {
     sh """
     pip install transformers
-    cd /workspace/torch_migraphx/tests/
+    cd ./tests/
     pytest
     """
 }
