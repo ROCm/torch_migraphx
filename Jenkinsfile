@@ -9,8 +9,7 @@ def show_node_info() {
 }
 
 def runTests() {
-    // def targetNode = "${arch}"
-    def targetNode = "aus-navi3x-08.amd.com"
+    def targetNode = "${arch}"
     echo "The value of targetNode is: ${targetNode}"
 
     node(targetNode) {
