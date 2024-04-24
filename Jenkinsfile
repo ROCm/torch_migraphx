@@ -10,9 +10,9 @@ def show_node_info() {
 
 def run_pytest() {
     sh """
-    pip install transformers pytest
+    /opt/conda/envs/py_3.9/bin/python -m pip install transformers pytest
     cd ./tests/
-    pytest
+    /opt/conda/envs/py_3.9/bin/python -m pytest
     """
 }
 
