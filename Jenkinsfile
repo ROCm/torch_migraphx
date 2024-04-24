@@ -17,7 +17,8 @@ def run_pytest() {
 }
 
 def runTests() {
-    def targetNode = "${arch}"
+    // def targetNode = "${arch}"
+    def targetNode = "aus-navi3x-08.amd.com"
     echo "The value of targetNode is: ${targetNode}"
 
     node(targetNode) {
