@@ -10,11 +10,14 @@ def show_node_info() {
 
 def runTests() {
     def targetNode = "${arch}"
-    echo "The value of targetNode is: ${targetNode}, gpu arch is: ${GPU_ARCH}"
+    echo "The value of targetNode is: ${targetNode}"
 
     node(targetNode) {
         show_node_info()
         checkout scm
+
+        GPU_ARCH = sh(script: "$(/opt/rocm/bin/rocminfo | grep -o -m 1 \'gfx.*\')", returnStdout: true)
+        echo ${GPU_ARCH}
 
         def testImage = docker.build("tm_test:${env.BUILD_ID}", "--build-arg GPU_ARCH=${GPU_ARCH}")
         testImage.withRun('--network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=/home/jenkins:/home/jenkins'){
@@ -27,7 +30,6 @@ pipeline {
     agent { label 'build-only' }
     environment {
         MAIN_BRANCH = 'master'
-        GPU_ARCH = sh(script: 'GPU_ARCH="$(/opt/rocm/bin/rocminfo | grep -o -m 1 \'gfx.*\')"', returnStdout: true)
     }
     stages {
         stage('matrix') {
