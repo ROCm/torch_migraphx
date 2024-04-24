@@ -8,6 +8,14 @@ def show_node_info() {
     """
 }
 
+def run_pytest() {
+    sh """
+    pip install transformers
+    cd /workspace/torch_migraphx/tests/
+    pytest
+    """
+}
+
 def runTests() {
     def targetNode = "${arch}"
     echo "The value of targetNode is: ${targetNode}"
@@ -18,7 +26,7 @@ def runTests() {
 
         def testImage = docker.build("tm_test:${env.BUILD_ID}")
         testImage.withRun('--network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=/home/jenkins:/home/jenkins'){
-            sh '''python -c "import torch; import torch_migraphx; import migraphx; echo $(ls)"'''
+            run_pytest()
         }
     }
 }
