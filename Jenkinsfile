@@ -26,7 +26,9 @@ def runTests() {
 
         def testImage = docker.build("tm_test:${env.BUILD_ID}")
         testImage.withRun('--network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=/home/jenkins:/home/jenkins'){
-            run_pytest()
+            withPythonEnv('python3') {
+                run_pytest()
+            }
         }
     }
 }
