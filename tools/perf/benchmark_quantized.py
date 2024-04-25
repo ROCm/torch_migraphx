@@ -16,15 +16,20 @@ try:
 except ImportError:
     pass
 
+GPT2_PRETRAIN_NAMES = {
+    "gpt2", "gpt2-large", "gpt2-medium", "distilgpt2", "openai-gpt"
+}
+BERT_PRETRAIN_NAMES = {
+    "bert-base-uncased", "bert-large-uncased", "bert-base-cased",
+    "bert-large-cased"
+}
+
 parser = ArgumentParser(description='Model to benchmark')
-parser.add_argument('-m',
-                    '--model',
-                    type=str,
-                    default='resnet50',
-                    choices=["resnet50", "gpt2-large", "distilgpt2"])
+parser.add_argument('-m', '--model', type=str, default='resnet50')
 parser.add_argument('-b', '--batch-size', type=int, default=1)
 parser.add_argument('--fp16', action='store_true', default=False)
 parser.add_argument('--asymmetric', action='store_true', default=False)
+parser.add_argument('--no-compare', action='store_true', default=False)
 parser.add_argument('-i', '--iter', type=int, default=100)
 
 
@@ -45,7 +50,8 @@ def move_q_gm_to_device(gm, device="cuda"):
     return gm
 
 
-def benchmark_torchvision_models(model_name, bs, args):
+def benchmark_torchvision_models(model_name, args):
+    bs = args.batch_size
     torch._dynamo.reset()
     model_fp32 = getattr(models, model_name)().eval()
     input_fp32 = torch.randn(bs, 3, 224, 224)
@@ -71,6 +77,12 @@ def benchmark_torchvision_models(model_name, bs, args):
                                  iterations=args.iter)
     del mgx_mod
 
+    if args.no_compare:
+        print(
+            f"{model_fp32._get_name()}: Avg execution time: {time_int8:0.4f} ms, Rate: {1e3 * bs / time_int8:0.4f} /sec"
+        )
+        return
+
     torch._dynamo.reset()
     mgx_mod_fp32 = torch.compile(copy.deepcopy(model_fp32),
                                  backend='migraphx').cuda()
@@ -89,7 +101,7 @@ def benchmark_torchvision_models(model_name, bs, args):
     del mgx_mod_fp16
 
     print(
-        f'Running benchmarks for {model_fp32._get_name()}, BS = {bs}, Asymmetric = {args.asymmetric}'
+        f"Running benchmarks for {model_fp32._get_name()}, BS = {bs}, Asymmetric = {args.asymmetric}, INT8 + FP16 = {args.fp16}"
     )
     names = ["MGX FP32", "MGX FP16", "MGX INT8"]
     times = [time_fp32, time_fp16, time_int8]
@@ -99,12 +111,14 @@ def benchmark_torchvision_models(model_name, bs, args):
 
 def benchmark_transformer_models(model_name, model_class, tokenizer_class,
                                  args):
+    bs = args.batch_size
     torch._dynamo.reset()
     model = getattr(transformers, model_class).from_pretrained(model_name)
     tokenizer = getattr(transformers,
                         tokenizer_class).from_pretrained(model_name)
 
-    text = "Just some text for benchmarking purposes"
+    sample_text = "Just some text for benchmarking purposes"
+    text = [sample_text for _ in range(bs)]
     encoded_input = tokenizer(text, return_tensors='pt')
     inp = encoded_input["input_ids"]
 
@@ -120,7 +134,7 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
     # different from the device that model parameters have moved to.
     # Here we explicitly force all new tensors to be created on the gpu
     q_m = move_q_gm_to_device(q_m)
-    
+
     mgx_mod = torch.compile(q_m,
                             backend='migraphx',
                             options={
@@ -131,6 +145,12 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
     time_int8 = benchmark_module(mgx_mod, (inp.cuda(), ), iterations=args.iter)
 
     del mgx_mod
+
+    if args.no_compare:
+        print(
+            f"{model_name}: Avg execution time: {time_int8:0.4f} ms, Rate: {1e3 * bs / time_int8:0.4f} /sec"
+        )
+        return
 
     torch._dynamo.reset()
     mgx_mod_fp32 = torch.compile(copy.deepcopy(model),
@@ -149,24 +169,41 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
     del mgx_mod_fp16
 
     print(
-        f'Running benchmarks for {model_name}, BS = 1, Asymmetric = {args.asymmetric}'
+        f"Running benchmarks for {model_name}, BS = {bs}, Asymmetric = {args.asymmetric}, INT8 + FP16 = {args.fp16}"
     )
     names = ["MGX FP32", "MGX FP16", "MGX INT8"]
     times = [time_fp32, time_fp16, time_int8]
 
-    print_bm_results(names, times, 1, 0)
+    print_bm_results(names, times, bs, 0)
+
+
+def is_torchvision_model(model_name):
+    if not hasattr(models, model_name):
+        return
+    m = getattr(models, model_name)
+    return callable(m) and isinstance(m(), torch.nn.Module)
 
 
 if __name__ == '__main__':
     args = parser.parse_args()
     model_name = args.model
-    bs = args.batch_size
 
-    if model_name in ["resnet50"]:
-        benchmark_torchvision_models(model_name, bs, args)
-    elif model_name in ["gpt2-large", "distilgpt2"]:
+    if is_torchvision_model(model_name):
+        benchmark_torchvision_models(model_name, args)
+    elif model_name in GPT2_PRETRAIN_NAMES:
         if 'transformers' not in sys.modules:
             raise RuntimeError(
                 f"Transformers library required to benchmark {model_name}")
         benchmark_transformer_models(model_name, "GPT2Model", "GPT2Tokenizer",
                                      args)
+    elif model_name in BERT_PRETRAIN_NAMES:
+        if 'transformers' not in sys.modules:
+            raise RuntimeError(
+                f"Transformers library required to benchmark {model_name}")
+        benchmark_transformer_models(model_name, "BertModel", "BertTokenizer",
+                                     args)
+    else:
+        raise NotImplementedError(
+            f"""{model_name} not supported. Supported models are any
+                                  models from torchvision.models, GPT2: {GPT2_PRETRAIN_NAMES}, 
+                                  BERT: {BERT_PRETRAIN_NAMES}""")

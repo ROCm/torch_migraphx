@@ -43,6 +43,7 @@ class MGXModule(torch.nn.Module):
                  input_names: Sequence[str] = None,
                  output_names: Sequence[str] = None,
                  quantize_fp16: bool = False,
+                 exhaustive_tune: bool = False,
                  enable_par_conversion: bool = False):
         super(MGXModule, self).__init__()
 
@@ -52,6 +53,7 @@ class MGXModule(torch.nn.Module):
         self.output_names = output_names
         self.initialized = False
         self.quantize_fp16 = quantize_fp16
+        self.exhaustive_tune = exhaustive_tune
         self.enable_par_conversion = enable_par_conversion
         self.torch_buffers = {}
         self.mgx_buffers = {}
@@ -69,7 +71,8 @@ class MGXModule(torch.nn.Module):
                 migraphx.quantize_fp16(self.program)
 
             self.program.compile(migraphx.get_target('gpu'),
-                                 offload_copy=False)
+                                 offload_copy=False,
+                                 exhaustive_tune=self.exhaustive_tune)
 
         self.output_names = self._infer_output_names()
         self._allocate_param_buffers(self.output_names)

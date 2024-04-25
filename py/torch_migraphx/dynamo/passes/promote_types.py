@@ -26,39 +26,54 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
-from typing import Sequence
+
+# Some ops use type promotions in the dynamo pipeline, see:
+# https://github.com/pytorch/pytorch/blob/main/torch/_inductor/lowering.py
+# Use this pass to ensure ops that expect type promotion have explicit conversions
 
 import torch
-import torch._dynamo as dynamo
-from torch._guards import TracingContext
-from torch._functorch.aot_autograd import aot_export_joint_simple
-from .lower_dynamo import lower_aten_to_mgx
+from torch.fx.node import Target
+from torch.fx.passes.shape_prop import TensorMetadata
+
+OP_PROMOTE_FUNCS = {}
 
 
-@dynamo.register_backend(name="migraphx")
-def migraphx_backend(gm: torch.fx.GraphModule,
-                     example_inputs: Sequence[torch.Tensor], **kwargs):
+def input_promoter(target: Target):
 
-    # Any logic to pick default dynamo backend should be placed here
-    return migraphx_aot_backend(gm, example_inputs, **kwargs)
+    def register_promoter(promoter):
+        OP_PROMOTE_FUNCS[target] = promoter
+        return promoter
+
+    return register_promoter
 
 
-@dynamo.register_backend(name="migraphx_aot")
-def migraphx_aot_backend(gm: torch.fx.GraphModule,
-                         example_inputs: Sequence[torch.Tensor], **kwargs):
+def promote_inputs(gm: torch.fx.GraphModule):
+    for node in gm.graph.nodes:
+        if node.target in OP_PROMOTE_FUNCS:
+            OP_PROMOTE_FUNCS[node.target](gm, node)
 
-    # Any addition kwargs are captrued through the "options" key
-    kwargs = kwargs["options"] if "options" in kwargs else kwargs
+    gm.graph.eliminate_dead_code()
+    gm.recompile()
+    return gm
 
-    if "load_compiled" in kwargs:
-        return torch.load(kwargs["load_compiled"])
 
-    TracingContext.get().fake_mode.allow_non_fake_inputs = True
+@input_promoter(torch.ops.aten.cat.default)
+def promote_using_node_meta(gm, node):
+    out_type = node.meta['tensor_meta'].dtype
 
-    aten_gm = aot_export_joint_simple(gm, example_inputs, trace_joint=False)
+    for i in node.all_input_nodes:
+        if i.meta['tensor_meta'].dtype != out_type:
+            with gm.graph.inserting_after(i):
+                promoted_inp = gm.graph.create_node(
+                    "call_function",
+                    torch.ops.aten._to_copy.default,
+                    args=(i, ),
+                    kwargs={"dtype": out_type},
+                )
+                new_meta = {k: v for k, v in i.meta.items()}
+                tensor_meta = new_meta["tensor_meta"]._asdict()
+                tensor_meta["dtype"] = out_type
+                new_meta["tensor_meta"] = TensorMetadata(**tensor_meta)
+                promoted_inp.meta = new_meta
 
-    compiled_gm = lower_aten_to_mgx(aten_gm, example_inputs, **kwargs)
-    if "save_compiled" in kwargs:
-        torch.save(compiled_gm, kwargs["save_compiled"], pickle_protocol=4)
-
-    return compiled_gm
+            node.replace_input_with(i, promoted_inp)

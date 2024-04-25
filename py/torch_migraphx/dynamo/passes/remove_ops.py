@@ -61,6 +61,7 @@ def remove_view_ops(gm: torch.fx.GraphModule):
                     args=og_node.args,
                     kwargs=og_node.kwargs,
                 )
+                new_node.meta = og_node.meta
                 og_node.replace_all_uses_with(new_node)
                 gm.graph.erase_node(og_node)
     gm.graph.eliminate_dead_code()
@@ -90,6 +91,7 @@ def remove_const_ops(gm: torch.fx.GraphModule, device: str = "cuda"):
                         "get_attr",
                         const_name,
                     )
+                    new_node.meta = og_node.meta
                     og_node.replace_all_uses_with(new_node)
                     gm.graph.erase_node(og_node)
 
@@ -118,6 +120,7 @@ def remove_const_ops(gm: torch.fx.GraphModule, device: str = "cuda"):
                         "get_attr",
                         const_name,
                     )
+                    new_node.meta = og_node.meta
                     og_node.replace_all_uses_with(new_node)
                     gm.graph.erase_node(og_node)
 
@@ -142,6 +145,7 @@ def remove_const_ops(gm: torch.fx.GraphModule, device: str = "cuda"):
                         "get_attr",
                         const_name,
                     )
+                    new_node.meta = og_node.meta
                     og_node.replace_all_uses_with(new_node)
                     gm.graph.erase_node(og_node)
 

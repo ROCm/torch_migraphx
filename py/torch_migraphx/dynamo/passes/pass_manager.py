@@ -33,6 +33,7 @@ import torch
 from .partition import partition
 from .remove_ops import remove_const_ops, remove_view_ops
 from .const_fold import const_fold
+from .promote_types import promote_inputs
 
 
 # TODO: Use torch fx `pass manager to run the below passes
@@ -41,6 +42,7 @@ def run_aten_passes(gm: torch.fx.GraphModule,
                     verbose: bool = False):
     gm = remove_const_ops(gm)
     gm = remove_view_ops(gm)
+    gm = promote_inputs(gm)
     gm = const_fold(gm)
     gm = partition(gm, verbose=verbose)
 
