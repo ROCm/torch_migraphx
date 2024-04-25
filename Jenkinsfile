@@ -16,7 +16,7 @@ def runTests() {
         show_node_info()
         checkout scm
 
-        gitStatusWrapper(credentialsId: 'cd9678d2-1c7f-44e3-9fe5-8bdab3514013', gitHubContext: "Jenkins - pytest-${arch}", account: 'ROCmSoftwarePlatform', repo: 'DeepLearningModels') {
+        gitStatusWrapper(credentialsId: 'cd9678d2-1c7f-44e3-9fe5-8bdab3514013', gitHubContext: "Jenkins - pytest-${arch}", account: 'ROCmSoftwarePlatform', repo: 'torch_migraphx') {
             sh """
             docker build -t tm_ci:${env.BUILD_ID} --build-arg MIGRAPHX_BRANCH=${MIGRAPHX_BRANCH} .
             docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=/home/jenkins:/home/jenkins tm_ci:${env.BUILD_ID} bash -c "pip install transformers ; cd /workspace/torch_migraphx/tests/ ; pytest"
