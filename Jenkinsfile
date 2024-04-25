@@ -34,7 +34,7 @@ pipeline {
                 axes {
                     axis {
                         name 'arch'
-                        values 'gfx1100'
+                        values 'gfx1100', 'MI250'
                     }
                 }
                 stages {
