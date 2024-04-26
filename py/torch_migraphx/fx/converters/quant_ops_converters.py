@@ -56,20 +56,6 @@ def acc_ops_quantize_per_tensor(mgx_module, node, args, kwargs):
     inp, scale = kwargs["input"], kwargs["scale"]
     zero_point, dtype = kwargs["zero_point"], kwargs["dtype"]
 
-    # Try to warn user if quantization may be incompatible with MIGraphX
-    try:
-        qparams = node.meta["tensor_meta"].qparams
-        is_symmetric = qparams["qscheme"] == torch.per_tensor_symmetric
-        zp = qparams["zero_point"]
-        zp = zp - 128 if dtype == torch.quint8 else zp
-        if not (is_symmetric or zp == 0):
-            _LOGGER.warning(
-                "FX graph is performing a non-symmetric quantization."
-                "This is not supported in MIGraphX and will be compiled as a non quantized op"
-            )
-    except:
-        pass
-
     # MIGraphX does not support quantized ops in uint8, convert uint8 to int8
     zp_offset = -128 if dtype == torch.quint8 else 0
     q_ins = add_quantize_linear(mgx_module,
@@ -292,11 +278,12 @@ def add_dequantize_conv(mgx_module, inp, weight, bias, conv_params):
                                       weight_qparams["scale"])
         rq_bais = add_requantize_tensor(mgx_module, bias, bias_scale, 0,
                                         torch.qint32)
+        rq_bais = MGXInstruction(rq_bais)
 
     conv_kwargs = {
         "input": MGXInstruction(dq_inp),
         "weight": MGXInstruction(weight_mgx),
-        "bias": MGXInstruction(rq_bais),
+        "bias": rq_bais,
         **conv_params
     }
 
