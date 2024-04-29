@@ -27,11 +27,13 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
 from typing import Sequence
+import unittest
 
 import torch
 import torch._dynamo as dynamo
 from torch._guards import TracingContext
 from torch._functorch.aot_autograd import aot_export_joint_simple
+from torch._dynamo.utils import detect_fake_mode
 from .lower_dynamo import lower_aten_to_mgx
 
 
@@ -53,9 +55,10 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
     if "load_compiled" in kwargs:
         return torch.load(kwargs["load_compiled"])
 
-    TracingContext.get().fake_mode.allow_non_fake_inputs = True
-
-    aten_gm = aot_export_joint_simple(gm, example_inputs, trace_joint=False)
+    # Refer to discussion https://github.com/pytorch/pytorch/issues/105485
+    fake_mode = detect_fake_mode(example_inputs)
+    with unittest.mock.patch.object(fake_mode, "allow_non_fake_inputs", True), fake_mode:
+        aten_gm = aot_export_joint_simple(gm, example_inputs, trace_joint=False)
 
     compiled_gm = lower_aten_to_mgx(aten_gm, example_inputs, **kwargs)
     if "save_compiled" in kwargs:
