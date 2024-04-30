@@ -65,6 +65,10 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
     del gm
 
     for name, mod in optim_gm.named_children():
+        # Const folded params can show up as "child objects"
+        if not isinstance(mod, torch.fx.GraphModule):
+            continue
+        
         partition_inputs = get_partition_inputs(optim_gm, mod, example_inputs)
         if verbose:
             print_graph_info(name, mod, partition_inputs)
