@@ -26,47 +26,44 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
+# Refer to https://github.com/pytorch/pytorch/issues/108079
 from typing import Sequence
-import unittest
 
 import torch
-import torch._dynamo as dynamo
-from torch._guards import TracingContext
-from torch._functorch.aot_autograd import aot_export_joint_simple
-from .lower_dynamo import lower_aten_to_mgx
-from .passes.export.input_aliasing import insert_clone_input
 
 
-@dynamo.register_backend(name="migraphx")
-def migraphx_backend(gm: torch.fx.GraphModule,
-                     example_inputs: Sequence[torch.Tensor], **kwargs):
+def insert_clone_input(gm: torch.fx.GraphModule):
+    placeholder_nodes = [
+        node for node in gm.graph.nodes if node.op == "placeholder"
+    ]
 
-    # Any logic to pick default dynamo backend should be placed here
-    return migraphx_aot_backend(gm, example_inputs, **kwargs)
+    for node in placeholder_nodes:
+        with gm.graph.inserting_after(placeholder_nodes[-1]):
+            clone_input = gm.graph.create_node("call_function",
+                                               torch.ops.aten.clone.default,
+                                               args=(node, ))
+
+        node.replace_all_uses_with(
+            clone_input, delete_user_cb=lambda inp: inp != clone_input)
+
+    gm.graph.lint()
+    gm.recompile()
+    return gm
 
 
-@dynamo.register_backend(name="migraphx_aot")
-def migraphx_aot_backend(gm: torch.fx.GraphModule,
-                         example_inputs: Sequence[torch.Tensor], **kwargs):
-
-    # Any addition kwargs are captrued through the "options" key
-    kwargs = kwargs["options"] if "options" in kwargs else kwargs
-
-    if "load_compiled" in kwargs:
-        return torch.load(kwargs["load_compiled"])
-
-    # Refer to discussion https://github.com/pytorch/pytorch/issues/105485
-    TracingContext.get().fake_mode.allow_non_fake_inputs = True
-
-    # TODO: remove alias input fix once issue is fixed upstream
-    # https://github.com/pytorch/pytorch/issues/108079
-    clone_inp_gm = insert_clone_input(gm)
-    aten_gm = aot_export_joint_simple(clone_inp_gm,
-                                        example_inputs,
-                                        trace_joint=False)
-    
-    compiled_gm = lower_aten_to_mgx(aten_gm, example_inputs, **kwargs)
-    if "save_compiled" in kwargs:
-        torch.save(compiled_gm, kwargs["save_compiled"], pickle_protocol=4)
-
-    return compiled_gm
+def remove_clone_input(gm: torch.fx.GraphModule):
+    """ 
+    Remove nodes inserted by insert_clone_input after calling into the torch.export API
+    """
+    for node in gm.graph.nodes:
+        if (node.op == "placeholder" and len(node.users) == 1 and list(
+                node.users)[0].target == torch.ops.aten.clone.default):
+            clone_node = list(node.users)[0]
+            clone_node.replace_all_uses_with(node)
+            gm.graph.erase_node(clone_node)
+            
+            
+    gm.graph.eliminate_dead_code()
+    gm.graph.lint()
+    gm.recompile()
+    return gm
