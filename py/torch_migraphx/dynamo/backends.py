@@ -27,7 +27,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
 from typing import Sequence
-import unittest
 
 import torch
 import torch._dynamo as dynamo
