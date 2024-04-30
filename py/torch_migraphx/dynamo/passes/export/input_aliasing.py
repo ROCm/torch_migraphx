@@ -35,6 +35,7 @@ import torch
 def insert_clone_input(gm: torch.fx.GraphModule):
     placeholder_nodes = [
         node for node in gm.graph.nodes if node.op == "placeholder"
+        and isinstance(node.type, type) and issubclass(node.type, torch.Tensor)
     ]
 
     for node in placeholder_nodes:
@@ -61,8 +62,7 @@ def remove_clone_input(gm: torch.fx.GraphModule):
             clone_node = list(node.users)[0]
             clone_node.replace_all_uses_with(node)
             gm.graph.erase_node(clone_node)
-            
-            
+
     gm.graph.eliminate_dead_code()
     gm.graph.lint()
     gm.recompile()
