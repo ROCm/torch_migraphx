@@ -698,7 +698,7 @@ def aten_ops_avg_pool2d(mgx_module, node, args, kwargs):
     acc_kwargs = {
         "input": args[0],
         "kernel_size": args[1],
-        "stride": args[2] if len(args) >= 3 and args[2] else 1,
+        "stride": args[2] if len(args) >= 3 and args[2] else args[1],
         "padding": args[3] if len(args) >= 4 else 0,
         "ceil_mode": args[4] if len(args) >= 5 else False,
         "count_include_pad": args[5] if len(args) == 6 else True
@@ -715,7 +715,7 @@ def aten_ops_max_pool2d(mgx_module, node, args, kwargs):
     acc_kwargs = {
         "input": args[0],
         "kernel_size": args[1],
-        "stride": args[2] if len(args) >= 3 and args[2] else 1,
+        "stride": args[2] if len(args) >= 3 and args[2] else args[1],
         "padding": args[3] if len(args) >= 4 else 0,
         "dilation": args[4] if len(args) >= 5 else 1,
         "ceil_mode": args[5] if len(args) == 6 else False

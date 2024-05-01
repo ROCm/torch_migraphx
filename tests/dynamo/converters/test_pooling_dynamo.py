@@ -14,12 +14,16 @@ if not hasattr(torch_migraphx, "dynamo"):
         ((2, 4), 1, 0, False, True),
         (5, 5, (1, 2), True, True),
         (2, 1, 0, False, False),
+        (2, None, None, None, None),
     ])
 def test_avgpool2d(op_alias, kernel_size, stride, padding, ceil_mode,
                    count_include_pad):
     inp = torch.randn(8, 3, 50, 50).cuda()
-    mod = FuncModule(op_alias, kernel_size, stride, padding, ceil_mode,
-                     count_include_pad)
+    if stride:
+        mod = FuncModule(op_alias, kernel_size, stride, padding, ceil_mode,
+                        count_include_pad)
+    else:
+        mod = FuncModule(op_alias, kernel_size)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
@@ -40,11 +44,15 @@ def test_adaptive_avgpool2d(op_alias, out_shape):
     (2, 1, 0, 1, True),
     ((2, 4), 1, 0, 1, False),
     (5, 5, (1, 2), 1, True),
+    (2, None, None, None, None)
 ])
 def test_maxpool2d(op_alias, kernel_size, stride, padding, dilation,
                    ceil_mode):
     inp = torch.randn(8, 3, 50, 50).cuda()
-    mod = FuncModuleFirstOut(op_alias, kernel_size, stride, padding, dilation,
-                             ceil_mode)
+    if stride:
+        mod = FuncModuleFirstOut(op_alias, kernel_size, stride, padding, dilation,
+                                ceil_mode)
+    else:
+        mod = FuncModuleFirstOut(op_alias, kernel_size)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
