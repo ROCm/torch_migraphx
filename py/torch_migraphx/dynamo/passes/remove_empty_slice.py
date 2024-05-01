@@ -27,25 +27,34 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
 
-from typing import Sequence
-
 import torch
-from .partition import partition
-from .remove_ops import remove_const_ops, remove_view_ops
-from .const_fold import const_fold
-from .promote_types import promote_inputs
-from .remove_empty_slice import remove_empty_slices
 
 
-# TODO: Use torch fx `pass manager to run the below passes
-def run_aten_passes(gm: torch.fx.GraphModule,
-                    inputs: Sequence[torch.Tensor],
-                    verbose: bool = False):
-    gm = remove_const_ops(gm)
-    gm = remove_view_ops(gm)
-    gm = promote_inputs(gm)
-    gm = remove_empty_slices(gm)
-    gm = const_fold(gm)
-    gm = partition(gm, verbose=verbose)
+def remove_empty_slices(gm: torch.fx.GraphModule):
+    slice_user_ops = {torch.ops.aten.cat.default}
+    for node in gm.graph.nodes:
+        if node.op == "call_function" and node.target in slice_user_ops:
+            if not all("tensor_meta" in i.meta for i in node.args[0]):
+                continue
 
+            non_empty_inputs = [
+                inp for inp in node.args[0]
+                if all(d != 0 for d in inp.meta['tensor_meta'].shape)
+            ]
+
+            new_args = [arg for arg in node.args]
+            new_args[0] = non_empty_inputs
+            with gm.graph.inserting_after(node):
+                new_node = gm.graph.create_node(
+                    "call_function",
+                    node.target,
+                    args=tuple(new_args),
+                    kwargs=node.kwargs,
+                )
+                new_node.meta = node.meta
+                node.replace_all_uses_with(new_node)
+                gm.graph.erase_node(node)
+
+    gm.graph.eliminate_dead_code()
+    gm.recompile()
     return gm
