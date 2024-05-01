@@ -62,6 +62,8 @@ def promote_using_node_meta(gm, node):
     out_type = node.meta['tensor_meta'].dtype
 
     for i in node.all_input_nodes:
+        if not "tensor_meta" in i.meta:
+            continue
         if i.meta['tensor_meta'].dtype != out_type:
             with gm.graph.inserting_after(i):
                 promoted_inp = gm.graph.create_node(
