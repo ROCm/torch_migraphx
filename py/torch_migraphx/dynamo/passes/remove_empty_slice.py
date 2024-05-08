@@ -28,6 +28,7 @@
 #####################################################################################
 
 import torch
+import torch.fx
 
 
 def remove_empty_slices(gm: torch.fx.GraphModule):
@@ -41,6 +42,9 @@ def remove_empty_slices(gm: torch.fx.GraphModule):
                 inp for inp in node.args[0]
                 if all(d != 0 for d in inp.meta['tensor_meta'].shape)
             ]
+
+            if len(non_empty_inputs) == len(node.args[0]):
+                continue
 
             new_args = [arg for arg in node.args]
             new_args[0] = non_empty_inputs
