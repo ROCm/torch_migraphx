@@ -33,7 +33,7 @@ import migraphx
 from ..utils import (torch_qdtype_from_mgx, torch_qdtype_to_mgx,
                      torch_qdtype_to_mgx_enum, torch_dtype_from_mgx,
                      torch_dtype_to_mgx, torch_dtype_to_mgx_enum)
-from ..fx2mgx import MGXInstruction
+from ..mgx_module import MGXInstruction
 
 
 def broadcast_tensors(mgx_module, *tensors):

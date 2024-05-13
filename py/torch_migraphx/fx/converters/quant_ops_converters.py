@@ -42,7 +42,7 @@ from ..utils import (
     torch_qdtype_to_mgx_enum,
     torch_dtype_from_mgx,
 )
-from ..fx2mgx import MGXInstruction
+from ..mgx_module import MGXInstruction
 from torch_migraphx.fx.converters import acc_ops_converters
 
 # Import required to populate torch.ops.quantized_decomposed

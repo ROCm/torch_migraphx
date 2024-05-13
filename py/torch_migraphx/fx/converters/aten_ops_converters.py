@@ -36,7 +36,7 @@ from ..converter_registry import migraphx_converter
 from torch_migraphx.fx.converters import acc_ops_converters
 from .utils import *
 from ..utils import torch_dtype_to_mgx_enum
-from ..fx2mgx import MGXInstruction
+from ..mgx_module import MGXInstruction
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -853,3 +853,63 @@ def aten_ops_as_strided(mgx_module, node, args, kwargs):
 
     return acc_ops_converters.acc_ops_as_strided(mgx_module, node, (),
                                                  acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.eq.Scalar)
+@migraphx_converter(torch.ops.aten.eq.Tensor)
+def aten_ops_eq(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_eq(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.ne.Scalar)
+@migraphx_converter(torch.ops.aten.ne.Tensor)
+def aten_ops_ne(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_ne(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.gt.Scalar)
+@migraphx_converter(torch.ops.aten.gt.Tensor)
+def aten_ops_gt(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_gt(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.lt.Scalar)
+@migraphx_converter(torch.ops.aten.lt.Tensor)
+def aten_ops_lt(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_lt(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.ge.Scalar)
+@migraphx_converter(torch.ops.aten.ge.Tensor)
+def aten_ops_ge(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_ge(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.le.Scalar)
+@migraphx_converter(torch.ops.aten.le.Tensor)
+def aten_ops_le(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_le(mgx_module, node, (), acc_kwargs)

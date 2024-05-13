@@ -29,7 +29,18 @@ def test_masked_fill():
     mask = torch.randn(1, 43, 11, 1, 1) > 0
     value = 2
 
-    mod = MethodModule('masked_fill', mask=mask, value=value)
+    mod = MethodModule("masked_fill", mask=mask, value=value)
 
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize("method", ["eq", "ne", "gt", "lt", "ge", "le"])
+def test_bool_method(method):
+    inp = torch.randn(32, 43, 11, 2, 1)
+    other = torch.randn(32, 43, 11, 2, 1)
+    other[3, 2:6, :, 0, :] = inp[3, 2:6, :, 0, :]
+
+    mod = MethodModule(method, other=other)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
