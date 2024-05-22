@@ -272,8 +272,8 @@ def aten_ops_clamp(mgx_module, node, args, _kwargs):
         "max": None
     }
     if node.target == torch.ops.aten.hardtanh.default:
-        acc_kwargs["min"] = -1
-        acc_kwargs["max"] = 1
+        acc_kwargs["min"] = args[1] if len(args) >= 2 else -1
+        acc_kwargs["max"] = args[2] if len(args) == 3 else 1
     elif node.target in {torch.ops.aten.clamp_min.default, torch.ops.aten.clamp_min.Tensor}:
         acc_kwargs["min"] = args[1]
         acc_kwargs["max"] = None
