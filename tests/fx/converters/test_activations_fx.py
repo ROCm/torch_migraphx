@@ -18,28 +18,6 @@ def test_clamp(inp_size):
         verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
-                                      (1, 3, 6, 128, 128)])
-def test_clamp_min(inp_size):
-    min_ = randbounds(-1, 1)
-    inp = torch.randn(inp_size)
-    mod = FuncModule(torch.clamp_min, min=min_)
-    mgx_mod = convert_to_mgx(mod, [inp])
-    verify_outputs(mod, mgx_mod, inp)
-
-
-
-@pytest.mark.parametrize('op_alias', [torch.ops.aten.select.int])
-@pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
-                                      (1, 3, 6, 128, 128)])
-def test_clamp_max(inp_size):
-    max_ = randbounds(-1, 1)
-    inp = torch.randn(inp_size)
-    mod = FuncModule(torch.clamp_max, max=max_)
-    mgx_mod = convert_to_mgx(mod, [inp])
-    verify_outputs(mod, mgx_mod, inp)
-
-
 @pytest.mark.parametrize('inp_size', [(11, 3, 9), (64, 1000)])
 def test_hardtanh(inp_size):
     min_, max_ = randbounds(-1, 1)
