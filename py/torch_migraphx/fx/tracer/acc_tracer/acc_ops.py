@@ -1903,3 +1903,11 @@ def ge(*, input, other):
 @register_acc_op
 def le(*, input, other):
     return operator.le(input, other)
+  
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.isinf))
+@register_acc_op
+def isinf(*, input):
+    return torch.isinf(input=input)
+

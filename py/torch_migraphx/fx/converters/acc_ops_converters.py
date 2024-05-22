@@ -1575,7 +1575,7 @@ def acc_ops_batch_norm(mgx_module, node, args, kwargs):
 
     assert all(weight.shape().type_string() == r.shape().type_string()
                for r in [bias, r_mean, r_var])
-    
+
     # Some aten batchnorm implementations seem to do this implicit conversion
     if inp.shape().type_string() != weight.shape().type_string():
         dtype = get_arg_dtype(inp)
@@ -1871,3 +1871,12 @@ def acc_ops_le(mgx_module, node, args, kwargs):
     return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'),
                                                      [gt.instr_ref]),
                           bool_output=True)
+
+  
+@migraphx_converter(acc_ops.isinf)
+def acc_ops_isinf(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('isinf'), [inp.instr_ref]))
+

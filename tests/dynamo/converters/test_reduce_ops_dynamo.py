@@ -27,8 +27,8 @@ def test_reduce_ops(op_alias, dim, keepdim):
 @pytest.mark.parametrize('dim, keepdim', [
     (0, True),
     (1, False),
-    (3, False), 
-    (2, True)
+    (3, False),
+    (2, True),
 ])
 def test_reduce_maxmin_ops_dim(op_alias, dim, keepdim):
     inp = torch.randn(32, 43, 11, 2, 12).cuda()
@@ -44,5 +44,15 @@ def test_reduce_maxmin_ops_dim(op_alias, dim, keepdim):
 def test_reduce_maxmin_ops_no_param(op_alias):
     inp = torch.randn(32, 43, 11, 2, 12).cuda()
     mod = FuncModule(op_alias).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.cumsum.default])
+@pytest.mark.parametrize('dim', [0, -1, 3])
+def test_cumsum(op_alias, dim):
+    inp = torch.randn(32, 43, 11, 2, 12).cuda()
+    mod = FuncModule(op_alias, dim)
+
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
