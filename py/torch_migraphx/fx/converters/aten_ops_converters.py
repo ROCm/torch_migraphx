@@ -861,3 +861,11 @@ def aten_ops_neg(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": args[0]}
 
     return acc_ops_converters.acc_ops_neg(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.isinf.default)
+def aten_ops_isinf(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+
+    return acc_ops_converters.acc_ops_isinf(mgx_module, node, (), acc_kwargs)
