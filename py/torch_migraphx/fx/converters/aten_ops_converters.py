@@ -664,6 +664,14 @@ def aten_ops_sum(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_sum(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.cumsum.default)
+def aten_ops_cumsum(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    acc_kwargs = {"input": args[0], "dim": args[1]}
+
+    return acc_ops_converters.acc_ops_cumsum(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.mean.dim)
 def aten_ops_mean(mgx_module, node, args, kwargs):
     assert len(args) >= 2
