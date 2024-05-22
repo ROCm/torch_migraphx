@@ -122,13 +122,13 @@ def acc_ops_clamp(mgx_module, node, args, kwargs):
         max_val = kwargs[
             'max'] if 'max' in kwargs and kwargs['max'] is not None else 1e16
 
-    if isinstance(min_val, MGXInstruction):
+    if hasattr(min_val, 'instr_ref'):
         min_mgx = min_val.instr_ref
     else:
         min_mgx = mgx_module.add_literal(
             torch.tensor([min_val], dtype=dtype).numpy())
 
-    if isinstance(max_val, MGXInstruction):
+    if hasattr(max_val, 'instr_ref'):
         max_mgx = max_val.instr_ref
     else:
         max_mgx = mgx_module.add_literal(
