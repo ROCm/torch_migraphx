@@ -1849,3 +1849,10 @@ def add_relu_unfuse_mapper(node: torch.fx.Node,
                                              })
         relu_node.meta = node.meta
         return relu_node
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.isinf))
+@register_acc_op
+def isinf(*, input):
+    return torch.isinf(input=input)
