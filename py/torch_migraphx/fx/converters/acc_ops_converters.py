@@ -113,7 +113,7 @@ def acc_ops_clamp(mgx_module, node, args, kwargs):
     inp_instr_ref = inp.instr_ref
     dtype = get_arg_dtype(inp_instr_ref)
     out_lens = inp_instr_ref.shape().lens()
-    # TODO: fix upper and lower bounds to 'inf' once migrahpx supports it
+    # TODO: fix upper and lower bounds to 'inf' once migraphx supports it
     if node.target == acc_ops.hardtanh:
         min_val, max_val = kwargs['min_val'], kwargs['max_val']
     else:

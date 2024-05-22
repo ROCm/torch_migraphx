@@ -259,17 +259,30 @@ def aten_ops_split(mgx_module, node, args, kwargs):
 
 @migraphx_converter(torch.ops.aten.hardtanh.default)
 @migraphx_converter(torch.ops.aten.clamp.default)
-def aten_ops_clamp(mgx_module, node, args, kwargs):
+@migraphx_converter(torch.ops.aten.clamp.Tensor)
+@migraphx_converter(torch.ops.aten.clamp_min.default)
+@migraphx_converter(torch.ops.aten.clamp_min.Tensor)
+@migraphx_converter(torch.ops.aten.clamp_max.default)
+@migraphx_converter(torch.ops.aten.clamp_max.Tensor)
+def aten_ops_clamp(mgx_module, node, args, _kwargs):
     assert len(args) >= 1
-    min_, max_ = None, None
-    if node.target == torch.ops.aten.hardtanh.default:
-        min_, max_ = -1, 1
-
     acc_kwargs = {
         "input": args[0],
-        "min": args[1] if len(args) >= 2 else min_,
-        "max": args[2] if len(args) == 3 else max_
+        "min": None,
+        "max": None
     }
+    if node.target == torch.ops.aten.hardtanh.default:
+        acc_kwargs["min"] = -1
+        acc_kwargs["max"] = 1
+    elif node.target in {torch.ops.aten.clamp_min.default, torch.ops.aten.clamp_min.Tensor}:
+        acc_kwargs["min"] = args[1]
+        acc_kwargs["max"] = None
+    elif node.target in {torch.ops.aten.clamp_max.default, torch.ops.aten.clamp_max.Tensor}:
+        acc_kwargs["min"] = None
+        acc_kwargs["max"] = args[1]
+    else:
+        acc_kwargs["min"] = args[1] if len(args) >= 2 else None
+        acc_kwargs["max"] = args[2] if len(args) == 3 else None
     return acc_ops_converters.acc_ops_clamp(mgx_module, node, (), acc_kwargs)
 
 
