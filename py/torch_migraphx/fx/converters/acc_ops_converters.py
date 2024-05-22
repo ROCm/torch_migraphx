@@ -122,10 +122,17 @@ def acc_ops_clamp(mgx_module, node, args, kwargs):
         max_val = kwargs[
             'max'] if 'max' in kwargs and kwargs['max'] is not None else 1e16
 
-    min_mgx = mgx_module.add_literal(
-        torch.tensor([min_val], dtype=dtype).numpy())
-    max_mgx = mgx_module.add_literal(
-        torch.tensor([max_val], dtype=dtype).numpy())
+    if isinstance(min_val, MGXInstruction):
+        min_mgx = min_val.instr_ref
+    else:
+        min_mgx = mgx_module.add_literal(
+            torch.tensor([min_val], dtype=dtype).numpy())
+
+    if isinstance(max_val, MGXInstruction):
+        max_mgx = max_val.instr_ref
+    else:
+        max_mgx = mgx_module.add_literal(
+            torch.tensor([max_val], dtype=dtype).numpy())
 
     min_mgx = mgx_module.add_instruction(
         migraphx.op('multibroadcast', out_lens=out_lens), [min_mgx])
