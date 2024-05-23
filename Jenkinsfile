@@ -8,8 +8,16 @@ def show_node_info() {
     """
 }
 
+def get_nodes(arch){
+    if(arch == 'MI'){
+        return "migraphx && gfx90a"
+    } else if(arch == 'Navi') {
+        return "migraphx && gfx1101"
+    }
+}
+
 def runTests() {
-    def targetNode = "${arch}"
+    def targetNode = get_nodes("${arch}")
     echo "The value of targetNode is: ${targetNode}"
 
     node(targetNode) {
@@ -36,7 +44,7 @@ pipeline {
                 axes {
                     axis {
                         name 'arch'
-                        values 'gfx1100', 'gfx90a'
+                        values 'MI', 'Navi'
                     }
                 }
                 stages {
