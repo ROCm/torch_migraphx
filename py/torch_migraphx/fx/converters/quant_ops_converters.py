@@ -113,7 +113,13 @@ def aten_ops_quantize_per_channel(mgx_module, node, args, kwargs):
 def aten_ops_dequantize(mgx_module, node, args, kwargs):
     assert len(args) >= 6
     q_inp = args[0]
-    assert q_inp.qparams is not None
+
+    if q_inp.qparams is None:
+        raise RuntimeError("""
+            Graph contains a dequantize operation without a preceding quantize operation.
+            If using torch.ao.quantization.quantize_pt2e.convert_pt2e with PyTorch >= 2.2,
+            call using fold_quantize=False.
+            """)
 
     qparams = q_inp.qparams
     dq_ins = add_dequantize_linear(mgx_module, q_inp.instr_ref,
