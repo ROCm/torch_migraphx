@@ -36,6 +36,37 @@ from .tracer.acc_tracer import acc_shape_prop
 from .utils import *
 
 
+class MGXInstruction:
+
+    def __init__(self,
+                 instr_ref,
+                 qparams=None,
+                 torch_attr_value=None,
+                 bool_output=False):
+        assert isinstance(instr_ref, migraphx.instruction_ref)
+        if qparams is not None:
+            assert all(i in qparams.keys()
+                       for i in ["scale", "zero_point", "axis"])
+        self.instr_ref = instr_ref
+        self.qparams = qparams
+        self.torch_attr_value = torch_attr_value
+        self.bool_output = bool_output
+
+    def is_quantized(self):
+        return self.qparams is not None
+
+    def mgx_type(self):
+        return self.instr_ref.shape().type_string()
+
+    def torch_type(self):
+        dtype_map = torch_qdtype_from_mgx if self.is_quantized(
+        ) else torch_dtype_from_mgx
+        return dtype_map(self.mgx_type())
+
+    def shape(self):
+        return self.instr_ref.shape()
+
+
 class MGXModule(torch.nn.Module):
 
     def __init__(self,

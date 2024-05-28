@@ -39,17 +39,21 @@ from ..tracer.acc_tracer import acc_ops
 from torch.fx.node import Argument, Target
 from .utils import *
 from ..utils import torch_dtype_from_mgx, torch_dtype_to_mgx_enum
-from ..fx2mgx import MGXInstruction
+from ..mgx_module import MGXInstruction
 
 
-def broadcast_for_elemwise_op(mgx_module, node, inp, other):
+def broadcast_for_elemwise_op(mgx_module,
+                              node,
+                              inp,
+                              other,
+                              use_node_dtype=True):
     inp = inp.instr_ref if isinstance(inp, MGXInstruction) else inp
     other = other.instr_ref if isinstance(other, MGXInstruction) else other
 
     if (inp == other):
         return inp, other
 
-    if node is not None and "tensor_meta" in node.meta:
+    if node is not None and "tensor_meta" in node.meta and use_node_dtype:
         dtype = node.meta['tensor_meta'].dtype
     else:
         dtype = get_arg_dtype(inp) or get_arg_dtype(other)
@@ -1785,9 +1789,94 @@ def acc_ops_as_strided(mgx_module, node, args, kwargs):
     })
 
 
+@migraphx_converter(acc_ops.eq)
+def acc_ops_eq(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    other = kwargs["other"]
+
+    assert not any(
+        isinstance(a, MGXInstruction) and a.is_quantized()
+        for a in (inp, other))
+
+    inp, other = broadcast_for_elemwise_op(mgx_module,
+                                           node,
+                                           inp,
+                                           other,
+                                           use_node_dtype=False)
+
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('equal'),
+                                                     [inp, other]),
+                          bool_output=True)
+
+
+@migraphx_converter(acc_ops.ne)
+def acc_ops_ne(mgx_module, node, args, kwargs):
+    eq = acc_ops_eq(mgx_module, node, args, kwargs)
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'),
+                                                     [eq.instr_ref]),
+                          bool_output=True)
+
+
+@migraphx_converter(acc_ops.gt)
+def acc_ops_gt(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    other = kwargs["other"]
+
+    assert not any(
+        isinstance(a, MGXInstruction) and a.is_quantized()
+        for a in (inp, other))
+
+    inp, other = broadcast_for_elemwise_op(mgx_module,
+                                           node,
+                                           inp,
+                                           other,
+                                           use_node_dtype=False)
+
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('greater'),
+                                                     [inp, other]),
+                          bool_output=True)
+
+
+@migraphx_converter(acc_ops.lt)
+def acc_ops_lt(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    other = kwargs["other"]
+
+    assert not any(
+        isinstance(a, MGXInstruction) and a.is_quantized()
+        for a in (inp, other))
+
+    inp, other = broadcast_for_elemwise_op(mgx_module,
+                                           node,
+                                           inp,
+                                           other,
+                                           use_node_dtype=False)
+
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('less'),
+                                                     [inp, other]),
+                          bool_output=True)
+
+
+@migraphx_converter(acc_ops.ge)
+def acc_ops_ge(mgx_module, node, args, kwargs):
+    lt = acc_ops_lt(mgx_module, node, args, kwargs)
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'),
+                                                     [lt.instr_ref]),
+                          bool_output=True)
+
+
+@migraphx_converter(acc_ops.le)
+def acc_ops_le(mgx_module, node, args, kwargs):
+    gt = acc_ops_gt(mgx_module, node, args, kwargs)
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'),
+                                                     [gt.instr_ref]),
+                          bool_output=True)
+
+  
 @migraphx_converter(acc_ops.isinf)
 def acc_ops_isinf(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
 
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('isinf'), [inp.instr_ref]))
+
