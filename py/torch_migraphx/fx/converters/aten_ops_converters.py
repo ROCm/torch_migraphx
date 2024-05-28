@@ -358,12 +358,22 @@ def aten_ops_silu(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_mul(mgx_module, node, (), mul_kwargs)
 
 
+# Ignores half_to_float input
 @migraphx_converter(torch.ops.aten._softmax.default)
 def aten_ops_softmax(mgx_module, node, args, kwargs):
     assert len(args) == 3
     acc_kwargs = {"input": args[0], "dim": args[1]}
 
     return acc_ops_converters.acc_ops_softmax(mgx_module, node, (), acc_kwargs)
+
+
+# Ignores half_to_float input
+@migraphx_converter(torch.ops.aten._log_softmax.default)
+def aten_ops_log_softmax(mgx_module, node, args, _kwargs):
+    assert len(args) == 3
+    acc_kwargs = {"input": args[0], "dim": args[1]}
+
+    return acc_ops_converters.acc_ops_log_softmax(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.sin.default)

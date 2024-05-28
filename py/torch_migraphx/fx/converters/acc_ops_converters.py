@@ -707,6 +707,15 @@ def acc_ops_softmax(mgx_module, node, args, kwargs):
                                    [inp.instr_ref]))
 
 
+@migraphx_converter(acc_ops.log_softmax)
+def acc_ops_log_softmax(mgx_module, node, _args, kwargs):
+    inp = kwargs['input']
+    assert not inp.is_quantized()
+    softmax_ins = mgx_module.add_instruction(migraphx.op('softmax', axis=kwargs['dim']), [inp.instr_ref])
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('log'), [softmax_ins]))
+
+
 @migraphx_converter(acc_ops.tile)
 def acc_ops_tile(mgx_module, node, args, kwargs):
 
