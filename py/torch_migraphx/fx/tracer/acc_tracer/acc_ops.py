@@ -518,6 +518,30 @@ def softmax(*, input, dim, dtype=None):
     return torch.nn.functional.softmax(input=input, dim=dim, dtype=dtype)
 
 
+@register_acc_op_mapping(
+    op_and_target=("call_method", "log_softmax"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim"),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.nn.functional.log_softmax),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim"),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def log_softmax(*, input, dim, dtype=None):
+    """
+    _stacklevel input is ignored here.
+    """
+    return torch.nn.functional.log_softmax(input=input, dim=dim, dtype=dtype)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", torch.linalg.norm))
 @register_acc_op
 def linalg_norm(*, input, ord, dim, keepdim):

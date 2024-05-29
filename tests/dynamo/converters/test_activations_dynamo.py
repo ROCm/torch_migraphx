@@ -87,7 +87,10 @@ def test_single_param_activation_funcs(op_alias, inp_size, alpha):
     verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('op_alias', [torch.ops.aten._softmax.default])
+@pytest.mark.parametrize('op_alias', [
+    torch.ops.aten._softmax.default,
+    torch.ops.aten._log_softmax.default,
+])
 @pytest.mark.parametrize('inp_size, dim', [((11, 3, 9), 1),
                                            ((32, 12, 100), -1)])
 def test_softmax(op_alias, inp_size, dim):
