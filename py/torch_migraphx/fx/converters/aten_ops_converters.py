@@ -36,7 +36,7 @@ from ..converter_registry import migraphx_converter
 from torch_migraphx.fx.converters import acc_ops_converters
 from .utils import *
 from ..utils import torch_dtype_to_mgx_enum
-from ..fx2mgx import MGXInstruction
+from ..mgx_module import MGXInstruction
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -259,17 +259,30 @@ def aten_ops_split(mgx_module, node, args, kwargs):
 
 @migraphx_converter(torch.ops.aten.hardtanh.default)
 @migraphx_converter(torch.ops.aten.clamp.default)
-def aten_ops_clamp(mgx_module, node, args, kwargs):
+@migraphx_converter(torch.ops.aten.clamp.Tensor)
+@migraphx_converter(torch.ops.aten.clamp_min.default)
+@migraphx_converter(torch.ops.aten.clamp_min.Tensor)
+@migraphx_converter(torch.ops.aten.clamp_max.default)
+@migraphx_converter(torch.ops.aten.clamp_max.Tensor)
+def aten_ops_clamp(mgx_module, node, args, _kwargs):
     assert len(args) >= 1
-    min_, max_ = None, None
-    if node.target == torch.ops.aten.hardtanh.default:
-        min_, max_ = -1, 1
-
     acc_kwargs = {
         "input": args[0],
-        "min": args[1] if len(args) >= 2 else min_,
-        "max": args[2] if len(args) == 3 else max_
+        "min": None,
+        "max": None
     }
+    if node.target == torch.ops.aten.hardtanh.default:
+        acc_kwargs["min"] = args[1] if len(args) >= 2 else -1
+        acc_kwargs["max"] = args[2] if len(args) == 3 else 1
+    elif node.target in {torch.ops.aten.clamp_min.default, torch.ops.aten.clamp_min.Tensor}:
+        acc_kwargs["min"] = args[1]
+        acc_kwargs["max"] = None
+    elif node.target in {torch.ops.aten.clamp_max.default, torch.ops.aten.clamp_max.Tensor}:
+        acc_kwargs["min"] = None
+        acc_kwargs["max"] = args[1]
+    else:
+        acc_kwargs["min"] = args[1] if len(args) >= 2 else None
+        acc_kwargs["max"] = args[2] if len(args) == 3 else None
     return acc_ops_converters.acc_ops_clamp(mgx_module, node, (), acc_kwargs)
 
 
@@ -358,12 +371,22 @@ def aten_ops_silu(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_mul(mgx_module, node, (), mul_kwargs)
 
 
+# Ignores half_to_float input
 @migraphx_converter(torch.ops.aten._softmax.default)
 def aten_ops_softmax(mgx_module, node, args, kwargs):
     assert len(args) == 3
     acc_kwargs = {"input": args[0], "dim": args[1]}
 
     return acc_ops_converters.acc_ops_softmax(mgx_module, node, (), acc_kwargs)
+
+
+# Ignores half_to_float input
+@migraphx_converter(torch.ops.aten._log_softmax.default)
+def aten_ops_log_softmax(mgx_module, node, args, _kwargs):
+    assert len(args) == 3
+    acc_kwargs = {"input": args[0], "dim": args[1]}
+
+    return acc_ops_converters.acc_ops_log_softmax(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.sin.default)
@@ -863,6 +886,66 @@ def aten_ops_as_strided(mgx_module, node, args, kwargs):
                                                  acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.eq.Scalar)
+@migraphx_converter(torch.ops.aten.eq.Tensor)
+def aten_ops_eq(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_eq(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.ne.Scalar)
+@migraphx_converter(torch.ops.aten.ne.Tensor)
+def aten_ops_ne(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_ne(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.gt.Scalar)
+@migraphx_converter(torch.ops.aten.gt.Tensor)
+def aten_ops_gt(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_gt(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.lt.Scalar)
+@migraphx_converter(torch.ops.aten.lt.Tensor)
+def aten_ops_lt(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_lt(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.ge.Scalar)
+@migraphx_converter(torch.ops.aten.ge.Tensor)
+def aten_ops_ge(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_ge(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.le.Scalar)
+@migraphx_converter(torch.ops.aten.le.Tensor)
+def aten_ops_le(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    inp, other = args[0], args[1]
+
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_le(mgx_module, node, (), acc_kwargs)
+
+  
 @migraphx_converter(torch.ops.aten.neg.default)
 def aten_ops_neg(mgx_module, node, args, kwargs):
     assert len(args) == 1

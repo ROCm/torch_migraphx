@@ -1161,6 +1161,10 @@ def test_softmax():
     _make_acc_op_function_test(acc_ops.softmax, torch.nn.functional.softmax)
 
 
+def test_log_softmax():
+    _make_acc_op_function_test(acc_ops.log_softmax, torch.nn.functional.log_softmax)
+
+
 def test_tensor_squeeze():
     _make_acc_op_function_test(acc_ops.squeeze, lambda x: x.squeeze())
 

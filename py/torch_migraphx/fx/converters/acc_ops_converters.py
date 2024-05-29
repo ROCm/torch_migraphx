@@ -39,17 +39,21 @@ from ..tracer.acc_tracer import acc_ops
 from torch.fx.node import Argument, Target
 from .utils import *
 from ..utils import torch_dtype_from_mgx, torch_dtype_to_mgx_enum
-from ..fx2mgx import MGXInstruction
+from ..mgx_module import MGXInstruction
 
 
-def broadcast_for_elemwise_op(mgx_module, node, inp, other):
+def broadcast_for_elemwise_op(mgx_module,
+                              node,
+                              inp,
+                              other,
+                              use_node_dtype=True):
     inp = inp.instr_ref if isinstance(inp, MGXInstruction) else inp
     other = other.instr_ref if isinstance(other, MGXInstruction) else other
 
     if (inp == other):
         return inp, other
 
-    if node is not None and "tensor_meta" in node.meta:
+    if node is not None and "tensor_meta" in node.meta and use_node_dtype:
         dtype = node.meta['tensor_meta'].dtype
     else:
         dtype = get_arg_dtype(inp) or get_arg_dtype(other)
@@ -113,7 +117,7 @@ def acc_ops_clamp(mgx_module, node, args, kwargs):
     inp_instr_ref = inp.instr_ref
     dtype = get_arg_dtype(inp_instr_ref)
     out_lens = inp_instr_ref.shape().lens()
-    # TODO: fix upper and lower bounds to 'inf' once migrahpx supports it
+    # TODO: fix upper and lower bounds to 'inf' once migraphx supports it
     if node.target == acc_ops.hardtanh:
         min_val, max_val = kwargs['min_val'], kwargs['max_val']
     else:
@@ -122,10 +126,17 @@ def acc_ops_clamp(mgx_module, node, args, kwargs):
         max_val = kwargs[
             'max'] if 'max' in kwargs and kwargs['max'] is not None else 1e16
 
-    min_mgx = mgx_module.add_literal(
-        torch.tensor([min_val], dtype=dtype).numpy())
-    max_mgx = mgx_module.add_literal(
-        torch.tensor([max_val], dtype=dtype).numpy())
+    if isinstance(min_val, MGXInstruction):
+        min_mgx = min_val.instr_ref
+    else:
+        min_mgx = mgx_module.add_literal(
+            torch.tensor([min_val], dtype=dtype).numpy())
+
+    if isinstance(max_val, MGXInstruction):
+        max_mgx = max_val.instr_ref
+    else:
+        max_mgx = mgx_module.add_literal(
+            torch.tensor([max_val], dtype=dtype).numpy())
 
     min_mgx = mgx_module.add_instruction(
         migraphx.op('multibroadcast', out_lens=out_lens), [min_mgx])
@@ -705,6 +716,15 @@ def acc_ops_softmax(mgx_module, node, args, kwargs):
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('softmax', axis=kwargs['dim']),
                                    [inp.instr_ref]))
+
+
+@migraphx_converter(acc_ops.log_softmax)
+def acc_ops_log_softmax(mgx_module, node, _args, kwargs):
+    inp = kwargs['input']
+    assert not inp.is_quantized()
+    softmax_ins = mgx_module.add_instruction(migraphx.op('softmax', axis=kwargs['dim']), [inp.instr_ref])
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('log'), [softmax_ins]))
 
 
 @migraphx_converter(acc_ops.tile)
@@ -1785,9 +1805,94 @@ def acc_ops_as_strided(mgx_module, node, args, kwargs):
     })
 
 
+@migraphx_converter(acc_ops.eq)
+def acc_ops_eq(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    other = kwargs["other"]
+
+    assert not any(
+        isinstance(a, MGXInstruction) and a.is_quantized()
+        for a in (inp, other))
+
+    inp, other = broadcast_for_elemwise_op(mgx_module,
+                                           node,
+                                           inp,
+                                           other,
+                                           use_node_dtype=False)
+
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('equal'),
+                                                     [inp, other]),
+                          bool_output=True)
+
+
+@migraphx_converter(acc_ops.ne)
+def acc_ops_ne(mgx_module, node, args, kwargs):
+    eq = acc_ops_eq(mgx_module, node, args, kwargs)
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'),
+                                                     [eq.instr_ref]),
+                          bool_output=True)
+
+
+@migraphx_converter(acc_ops.gt)
+def acc_ops_gt(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    other = kwargs["other"]
+
+    assert not any(
+        isinstance(a, MGXInstruction) and a.is_quantized()
+        for a in (inp, other))
+
+    inp, other = broadcast_for_elemwise_op(mgx_module,
+                                           node,
+                                           inp,
+                                           other,
+                                           use_node_dtype=False)
+
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('greater'),
+                                                     [inp, other]),
+                          bool_output=True)
+
+
+@migraphx_converter(acc_ops.lt)
+def acc_ops_lt(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    other = kwargs["other"]
+
+    assert not any(
+        isinstance(a, MGXInstruction) and a.is_quantized()
+        for a in (inp, other))
+
+    inp, other = broadcast_for_elemwise_op(mgx_module,
+                                           node,
+                                           inp,
+                                           other,
+                                           use_node_dtype=False)
+
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('less'),
+                                                     [inp, other]),
+                          bool_output=True)
+
+
+@migraphx_converter(acc_ops.ge)
+def acc_ops_ge(mgx_module, node, args, kwargs):
+    lt = acc_ops_lt(mgx_module, node, args, kwargs)
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'),
+                                                     [lt.instr_ref]),
+                          bool_output=True)
+
+
+@migraphx_converter(acc_ops.le)
+def acc_ops_le(mgx_module, node, args, kwargs):
+    gt = acc_ops_gt(mgx_module, node, args, kwargs)
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'),
+                                                     [gt.instr_ref]),
+                          bool_output=True)
+
+  
 @migraphx_converter(acc_ops.isinf)
 def acc_ops_isinf(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
 
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('isinf'), [inp.instr_ref]))
+

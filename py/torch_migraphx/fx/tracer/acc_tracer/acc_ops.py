@@ -518,6 +518,30 @@ def softmax(*, input, dim, dtype=None):
     return torch.nn.functional.softmax(input=input, dim=dim, dtype=dtype)
 
 
+@register_acc_op_mapping(
+    op_and_target=("call_method", "log_softmax"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim"),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.nn.functional.log_softmax),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim"),
+        ("dtype", "dtype", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def log_softmax(*, input, dim, dtype=None):
+    """
+    _stacklevel input is ignored here.
+    """
+    return torch.nn.functional.log_softmax(input=input, dim=dim, dtype=dtype)
+
+
 @register_acc_op_mapping(op_and_target=("call_function", torch.linalg.norm))
 @register_acc_op
 def linalg_norm(*, input, ord, dim, keepdim):
@@ -1851,8 +1875,63 @@ def add_relu_unfuse_mapper(node: torch.fx.Node,
         return relu_node
 
 
+@register_acc_op_properties(AccOpProperty.pointwise)
+@register_acc_op_mapping(op_and_target=("call_function", torch.ne))
+@register_acc_op_mapping(op_and_target=("call_function", operator.ne))
+@register_acc_op_mapping(op_and_target=("call_method", "ne"))
+@register_acc_op
+def ne(*, input, other):
+    return operator.ne(input, other)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise)
+@register_acc_op_mapping(op_and_target=("call_function", torch.eq))
+@register_acc_op_mapping(op_and_target=("call_function", operator.eq))
+@register_acc_op_mapping(op_and_target=("call_method", "eq"))
+@register_acc_op
+def eq(*, input, other):
+    return operator.eq(input, other)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise)
+@register_acc_op_mapping(op_and_target=("call_function", torch.gt))
+@register_acc_op_mapping(op_and_target=("call_function", operator.gt))
+@register_acc_op_mapping(op_and_target=("call_method", "gt"))
+@register_acc_op
+def gt(*, input, other):
+    return operator.gt(input, other)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise)
+@register_acc_op_mapping(op_and_target=("call_function", torch.lt))
+@register_acc_op_mapping(op_and_target=("call_function", operator.lt))
+@register_acc_op_mapping(op_and_target=("call_method", "lt"))
+@register_acc_op
+def lt(*, input, other):
+    return operator.lt(input, other)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise)
+@register_acc_op_mapping(op_and_target=("call_function", torch.ge))
+@register_acc_op_mapping(op_and_target=("call_function", operator.ge))
+@register_acc_op_mapping(op_and_target=("call_method", "ge"))
+@register_acc_op
+def ge(*, input, other):
+    return operator.ge(input, other)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise)
+@register_acc_op_mapping(op_and_target=("call_function", torch.le))
+@register_acc_op_mapping(op_and_target=("call_function", operator.le))
+@register_acc_op_mapping(op_and_target=("call_method", "le"))
+@register_acc_op
+def le(*, input, other):
+    return operator.le(input, other)
+  
+
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
 @register_acc_op_mapping(op_and_target=("call_function", torch.isinf))
 @register_acc_op
 def isinf(*, input):
     return torch.isinf(input=input)
+
