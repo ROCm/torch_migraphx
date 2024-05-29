@@ -12,6 +12,7 @@ if not hasattr(torch_migraphx, "dynamo"):
     torch.ops.aten.cos.default,
     torch.ops.aten.exp.default,
     torch.ops.aten.neg.default,
+    torch.ops.aten.sqrt.default,
 ])
 def test_unary_func(op_alias):
     inp = torch.randn(2, 9, 11, 1).cuda()
