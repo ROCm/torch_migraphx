@@ -1,3 +1,4 @@
+from packaging import version
 import torch_migraphx
 import torch
 
@@ -24,6 +25,16 @@ class FuncModule(torch.nn.Module):
         return self.func(x, *self.args, **self.kwargs)
 
 
+def stable_convert_pt2e(model, use_reference_representation=False):
+    print(torch.__version__)
+    if version.parse(torch.__version__) < version.parse("2.2"):
+        return convert_pt2e(model, use_reference_representation)
+    else:
+        return convert_pt2e(model,
+                            use_reference_representation,
+                            fold_quantize=False)
+
+
 def quantize_module(mod, inp_shapes, asymm=False, calibration_n=10):
     quantizer = MGXQuantizer(asymmetric_activations=asymm)
 
@@ -35,7 +46,7 @@ def quantize_module(mod, inp_shapes, asymm=False, calibration_n=10):
         inps = [torch.randn(*s) for s in inp_shapes]
         model_prepared(*inps)
 
-    return convert_pt2e(model_prepared)
+    return stable_convert_pt2e(model_prepared)
 
 
 def move_q_gm_to_device(gm, device="cuda"):
