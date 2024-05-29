@@ -945,13 +945,21 @@ def aten_ops_le(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": inp, "other": other}
     return acc_ops_converters.acc_ops_le(mgx_module, node, (), acc_kwargs)
 
-  
+
 @migraphx_converter(torch.ops.aten.neg.default)
 def aten_ops_neg(mgx_module, node, args, kwargs):
     assert len(args) == 1
     acc_kwargs = {"input": args[0]}
 
     return acc_ops_converters.acc_ops_neg(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.abs.default)
+def aten_ops_abs(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+
+    return acc_ops_converters.acc_ops_abs(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.isinf.default)
