@@ -54,14 +54,14 @@ def test_pointwise_method(method):
 
 @pytest.mark.parametrize('oper', [
     torch.abs,
+    torch.ceil,
+    torch.exp,
+    torch.floor,
     torch.neg,
+    torch.reciprocal,
     torch.square,
     torch.sign,
-    torch.exp,
     torch.sqrt,
-    torch.reciprocal,
-    torch.floor,
-    torch.ceil,
 ])
 def test_unary_func(oper):
     inp = torch.randn(2, 9, 11, 1)
