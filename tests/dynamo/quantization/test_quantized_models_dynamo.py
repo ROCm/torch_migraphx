@@ -5,9 +5,10 @@ import torch_migraphx
 import torch
 from torchvision import models
 from torch._export import capture_pre_autograd_graph
-from torch.ao.quantization.quantize_pt2e import prepare_pt2e, convert_pt2e
+from torch.ao.quantization.quantize_pt2e import prepare_pt2e
 from torch_migraphx.dynamo.quantization import MGXQuantizer
-from quantization_utils_dynamo import (move_q_gm_to_device, verify_outputs,
+from quantization_utils_dynamo import (stable_convert_pt2e,
+                                       move_q_gm_to_device, verify_outputs,
                                        compute_quantized_outputs,
                                        verify_quantized_outputs)
 
@@ -42,7 +43,7 @@ def test_quant_vision_model(model_name, model_weights, rtol, atol, asymm,
     with torch.no_grad():
         m(*sample_inputs)
 
-    q_m = convert_pt2e(m)
+    q_m = stable_convert_pt2e(m)
     torch_q_mod = copy.deepcopy(q_m)
 
     mgx_mod = torch.compile(q_m.cuda(), backend='migraphx')
@@ -56,8 +57,7 @@ def test_quant_vision_model(model_name, model_weights, rtol, atol, asymm,
 @pytest.mark.skipif('transformers' not in sys.modules,
                     reason="requires the transformers library")
 @pytest.mark.parametrize(
-    "model_class, tokenizer_class, model_name, rtol, atol",
-    [
+    "model_class, tokenizer_class, model_name, rtol, atol", [
         ('GPT2Model', 'GPT2Tokenizer', 'distilgpt2', 1e-1, 1e-1),
     ])
 @pytest.mark.parametrize("asymm", [False, True])
@@ -77,7 +77,7 @@ def test_quant_LLM(model_class, tokenizer_class, model_name, rtol, atol, asymm,
     quantizer = MGXQuantizer(asymmetric_activations=asymm)
     m = prepare_pt2e(model_export, quantizer)
     m(*inputs)
-    q_m = convert_pt2e(m)
+    q_m = stable_convert_pt2e(m)
     torch_q_mod = copy.deepcopy(q_m)
 
     q_m = move_q_gm_to_device(q_m)
