@@ -214,6 +214,13 @@ def min(*, input, dim=None, keepdim=False):
         return torch.min(input)
 
 
+@register_acc_op_mapping(op_and_target=("call_method", "minimum"))
+@register_acc_op_mapping(op_and_target=("call_function", torch.minimum))
+@register_acc_op
+def minimum(*, input, other):
+    return torch.minimum(input=input, other=other)
+    
+
 @register_acc_op_mapping(op_and_target=("call_function", operator.getitem))
 @register_acc_op
 def getitem(*, input, idx):
