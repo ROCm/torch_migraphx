@@ -1896,3 +1896,22 @@ def acc_ops_isinf(mgx_module, node, args, kwargs):
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('isinf'), [inp.instr_ref]))
 
+  
+@migraphx_converter(acc_ops.isnan)
+def acc_ops_isnan(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('isnan'), [inp.instr_ref]))
+
+
+@migraphx_converter(acc_ops.nan_to_num)
+def acc_ops_nan_to_num(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    nan = kwargs['nan']
+    posinf = kwargs['posinf']
+    neginf = kwargs['neginf']
+    inp_instr_ref = inp.instr_ref
+    dtype = get_arg_dtype(inp_instr_ref)
+    # mul(add(mul(isnan(x), `nan` - 1), 1), x)
+    if posinf
