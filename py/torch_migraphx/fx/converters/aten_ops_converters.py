@@ -975,3 +975,24 @@ def aten_ops_isinf(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": args[0]}
 
     return acc_ops_converters.acc_ops_isinf(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.isnan.default)
+def aten_ops_isnan(mgx_module, node, args, _kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+
+    return acc_ops_converters.acc_ops_isnan(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.nan_to_num.default)
+def aten_ops_nan_to_num(mgx_module, node, args, _kwargs):
+    assert len(args) >= 1
+    acc_kwargs = {"input": args[0]}
+    if len(args) >= 2:
+        acc_kwargs["nan"] = args[1]
+    if len(args) >= 3:
+        acc_kwargs["posinf"] = args[2]
+    if len(args) >= 4:
+        acc_kwargs["neginf"] = args[3]
+    return acc_ops_converters.acc_ops_nan_to_num(mgx_module, node, (), acc_kwargs)
