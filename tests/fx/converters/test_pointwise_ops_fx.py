@@ -96,3 +96,17 @@ def test_trig_func(oper):
     mod = FuncModule(oper)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+@pytest.mark.parametrize('oper', [
+    torch.maximum,
+    torch.minimum,
+])
+def test_binary_compare_func(oper):
+    inp = torch.randn(32, 43, 11, 2, 1)
+    other = torch.randn(32, 1, 11, 2, 12)
+
+    mod = FuncModule(oper, other=other)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)

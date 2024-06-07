@@ -72,3 +72,19 @@ def test_binary_tensor(op_alias, in_shape, other_shape):
     mod = FuncModule(op_alias, other).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+@pytest.mark.parametrize('op_alias',
+    [
+        torch.ops.aten.maximum.default,
+        torch.ops.aten.minimum.default,
+    ]
+)
+def test_binary_compare(op_alias):
+    inp = torch.randn(32, 43, 11, 2, 1).cuda()
+    other = torch.randn(32, 1, 11, 2, 12).cuda()
+
+    mod = FuncModule(op_alias, other).cuda()
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
