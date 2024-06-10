@@ -155,6 +155,13 @@ def aten_ops_maximum(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_maximum(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.minimum.default)
+def aten_ops_minimum(mgx_module, node, args, _kwargs):
+    assert len(args) == 2
+    acc_kwargs = {"input": args[0], "other": args[1]}
+    return acc_ops_converters.acc_ops_minimum(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.permute.default)
 def aten_ops_permute(mgx_module, node, args, kwargs):
     assert len(args) == 2

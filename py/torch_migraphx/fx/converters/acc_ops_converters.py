@@ -1286,6 +1286,26 @@ def acc_ops_min(mgx_module, node, args, kwargs):
         return [MGXInstruction(out, qparams=qparams), indicies]
 
 
+@migraphx_converter(acc_ops.minimum)
+def acc_ops_minimum(mgx_module, node, args, kwargs):
+    inp, other = kwargs["input"], kwargs["other"]
+    assert all(not i.is_quantized() for i in (inp, other))
+
+    inp, other = broadcast_tensors(mgx_module, inp.instr_ref, other.instr_ref)
+    if inp.shape().type_string() != other.shape().type_string():
+        if "tensor_meta" in node.meta:
+            dtype = node.meta['tensor_meta'].dtype
+            inp = convert_arg(mgx_module, inp, dtype)
+            other = convert_arg(mgx_module, other, dtype)
+        else:
+            raise RuntimeError(
+                f"Error in parsing acc_ops.minimum, dtype mismatch: {inp.shape()}, {other.shape()}"
+            )
+
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('min'), [inp, other]))
+
+
 @migraphx_converter(acc_ops.mean)
 def acc_ops_mean(mgx_module, node, args, kwargs):
     inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams

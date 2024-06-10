@@ -115,3 +115,18 @@ def test_nan_to_num1():
     mod = FuncModule(torch.nan_to_num, nan=0, posinf=1000, neginf=-1000)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+@pytest.mark.parametrize('oper', [
+    torch.maximum,
+    torch.minimum,
+])
+def test_binary_compare_func(oper):
+    inp = torch.randn(32, 43, 11, 2, 1)
+    other = torch.randn(32, 1, 11, 2, 12)
+
+    mod = FuncModule(oper, other=other)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+>>>>>>> 3c2606c43b9f1f76e021616ca03afd25cf351310

@@ -31,17 +31,6 @@ def test_masked_fill(op_alias):
     verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('op_alias', [torch.ops.aten.maximum.default])
-def test_maximum(op_alias):
-    inp = torch.randn(32, 43, 11, 2, 1).cuda()
-    other = torch.randn(32, 1, 11, 2, 12).cuda()
-
-    mod = FuncModule(op_alias, other).cuda()
-
-    mgx_mod = convert_to_mgx(mod, [inp])
-    verify_outputs(mod, mgx_mod, inp)
-
-
 @pytest.mark.parametrize('op_alias', [
     torch.ops.aten.eq.Tensor,
     torch.ops.aten.ne.Tensor,
