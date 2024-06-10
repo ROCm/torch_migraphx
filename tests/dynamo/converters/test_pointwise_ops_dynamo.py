@@ -72,3 +72,24 @@ def test_binary_tensor(op_alias, in_shape, other_shape):
     mod = FuncModule(op_alias, other).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+def test_nan_to_num0():
+    inp = torch.randn(32, 43, 11, 2, 1)
+    inp[9:10, 5:11, :, 0:1, :] = float('inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[6:7, 21:27, :, 0:1, :] = float('-inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[1:2, 2:8, :, 0:1, :] = float('nan') * torch.ones(1, 6, 11, 1, 1)
+    inp = inp.cuda()
+    mod = FuncModule(torch.ops.aten.nan_to_num.default, nan=-1)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+def test_nan_to_num1():
+    inp = torch.randn(32, 43, 11, 2, 1)
+    inp[9:10, 5:11, :, 0:1, :] = float('inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[6:7, 21:27, :, 0:1, :] = float('-inf') * torch.ones(1, 6, 11, 1, 1)
+    inp = inp.cuda()
+    mod = FuncModule(torch.ops.aten.nan_to_num.default, nan=0, posinf=1000, neginf=-1000)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)

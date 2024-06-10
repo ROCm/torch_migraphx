@@ -97,8 +97,3 @@ def test_isnan(op_alias):
     mod = FuncModule(op_alias)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
-
-
-@pytest.mark.parametrize('op_alias', [torch.ops.aten.nan_to_num.default])
-def test_nan_to_num(op_alias):
-    #TODO
