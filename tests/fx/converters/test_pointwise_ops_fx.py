@@ -129,4 +129,3 @@ def test_binary_compare_func(oper):
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
->>>>>>> 3c2606c43b9f1f76e021616ca03afd25cf351310
