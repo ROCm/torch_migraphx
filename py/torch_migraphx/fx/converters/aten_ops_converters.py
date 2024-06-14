@@ -982,3 +982,22 @@ def aten_ops_isinf(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": args[0]}
 
     return acc_ops_converters.acc_ops_isinf(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.any.default)
+def aten_ops_any(mgx_module, node, args, _kwargs):
+    assert len(args) >= 1
+
+    acc_kwargs = {
+        "input": args[0],
+        "dim": None,
+        "keepdim": False,
+    }
+
+    if len(args) >= 2:
+        acc_kwargs["dim"] = args[1]
+
+    if len(args) >= 3:
+        acc_kwargs["keepdim"] = args[2]
+
+    return acc_ops_converters.acc_ops_any(mgx_module, node, (), acc_kwargs)

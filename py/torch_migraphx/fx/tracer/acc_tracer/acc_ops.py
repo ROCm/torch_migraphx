@@ -1943,6 +1943,13 @@ def isinf(*, input):
     return torch.isinf(input=input)
 
 
+@register_acc_op
+def any(*, input, dim=None, keepdim=False):
+    if dim is not None:
+        return torch.any(input, dim=dim, keepdim=keepdim)
+    return input.any(dtype=dtype)
+
+
 @register_custom_acc_mapper_fn(
     op_and_target=("call_method", "any"),
     arg_replacement_tuples=[
@@ -1962,4 +1969,3 @@ def isinf(*, input):
 def any_mapper(node: torch.fx.Node,
                mod: torch.fx.GraphModule) -> torch.fx.Node:
     return reduce_op_mapper(node, mod, max)
-

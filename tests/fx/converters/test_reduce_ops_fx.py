@@ -100,3 +100,19 @@ def test_cumsum(dim):
     for mod in [mod_func, mod_method]:
         mgx_mod = convert_to_mgx(mod, [inp])
         verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False),
+                                          ([2, 3], False), (None, None)])
+def test_any(dim, keepdim):
+    inp = torch.randn(32, 43, 11, 2, 12) < 0
+    if dim is not None:
+        mod_func = FuncModule(torch.any, dim=dim, keepdim=keepdim)
+        mod_method = MethodModule('any', dim=dim, keepdim=keepdim)
+    else:
+        mod_func = FuncModule(torch.any)
+        mod_method = MethodModule('any')
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
