@@ -121,7 +121,11 @@ class MGXInterpreter(torch.fx.Interpreter):
             raise RuntimeError(
                 f"Conversion of function {torch.typename(node.target)} not supported."
             )
-
+        print( f"Conversion of function {torch.typename(node.target)}.")
+        for i in args:
+            print(' arg ', i)
+        for i in kwargs:
+            print(' kwarg ', i)
         return converter(self.mm, node, args, kwargs)
 
     def call_method(self, node, args, kwargs):

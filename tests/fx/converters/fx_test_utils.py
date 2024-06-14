@@ -26,7 +26,7 @@ class LambdaModule(torch.nn.Module):
     def forward(self, x):
         return self.lambd(x)
 
-
+# Brian: what does MethodModule do?
 class MethodModule(torch.nn.Module):
 
     def __init__(self, method, *args, **kwargs):

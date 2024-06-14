@@ -3,6 +3,25 @@ import torch
 from fx_test_utils import randbounds, FuncModule, MethodModule, convert_to_mgx, verify_outputs
 
 
+# placeholder from Brian, see test_clamp just below
+# @pytest.mark.parametrize('inp_size', [(4, 2)])
+# @pytest.mark.parametrize('inp_size, target_size', [((3, 5), 3)])
+
+# def test_nll_loss_forward(inp_size, target_size):
+#     print('%%%%%%%%%%%%%%%%%%%%%%\n\n%%%%%%%%%%%%%%%%%%%%%%\n')
+#     inp = torch.randn(inp_size)
+#     target = torch.tensor([1, 0, 4])
+#     weight=None
+
+#     # todo: add NLL-relevant content
+#     mod1 = FuncModule(torch.nn.functional.nll_loss, target, weight,
+#                        reduction = 'mean', ignore_index = -100)
+
+#     for mod in [mod1]:
+#         mgx_mod = convert_to_mgx(mod, [inp])
+#         verify_outputs(mod, mgx_mod, inp)
+
+
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
                                       (1, 3, 6, 128, 128)])
 def test_clamp(inp_size):

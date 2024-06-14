@@ -6,6 +6,46 @@ import torch_migraphx
 if not hasattr(torch_migraphx, "dynamo"):
     pytest.skip(allow_module_level=True)
 
+# Placeholder from Brian; see clamp__ tests just below
+# todo:  what tests are really needed?
+# size of target is vector (inp_size[0]) if reduction is 'None',
+#  or scalar if there is a reduction
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.nll_loss_forward.default,
+                                      ])
+@pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 3)])
+def test_nll_loss_forward(op_alias, inp_size, weight_size):
+
+    # weight_size should be index-1 dimension of inp_size, aka C or number of classes
+    # if weight_size = 0 , then pass weight=None, module should default weights to 1
+
+    # target_size = 1 if there's avg. or mean reduction
+    #             = C if reduction is None
+
+
+    # add all the arguments here
+    n =  inp_size[0]
+    C = inp_size[1]
+    target = torch.randint(C, [n]).cuda()
+
+    # no. of weights/classes equals 0'th dimension of input
+    weight = torch.tensor(torch.randn(C)).cuda()
+    if weight_size == 0:
+        weight = None 
+
+    # target = torch.tensor([1]).cuda()
+
+    # weights are important.  Need a weight None, and one that's specified'
+    inp = torch.randn(inp_size).cuda()
+
+    # op alias followed by any number of arguments.  They all go into *args for FuncModule().  kwargs is not used unless given as 'kwargs=...'  The arguments in https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/LossNLL.cpp are: 
+    #   self, target, weight_opt, reduction, ignore_index
+    mod = FuncModule(op_alias, target, weight, 0, -100).cuda()
+    # mod = torch.nn.LogSoftmax(1)
+    print('+++++++++++++++++++\n', mod.args, '+++++++++++++++++++++++\n\n')
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
 
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.clamp.default,
                                       torch.ops.aten.hardtanh.default])

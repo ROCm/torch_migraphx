@@ -286,6 +286,35 @@ def aten_ops_clamp(mgx_module, node, args, _kwargs):
     return acc_ops_converters.acc_ops_clamp(mgx_module, node, (), acc_kwargs)
 
 
+# Brian
+#    there are about 6 or so nll_loss... functions in torch aten
+@migraphx_converter(torch.ops.aten.nll_loss_forward.default)
+def aten_ops_nllloss(mgx_module, node, args, _kwargs):
+    assert len(args) >= 1
+    assert len(args) == 5
+    # this is a wrapper to make sure that all the args are populated.
+    print('ready to run the module &&&&& \n')
+
+    # this didn't work
+    # acc_kwargs = {
+    #     "input": args[0],
+    #     "target": torch.Tensor(2, 3),
+    #     "weight": None,
+    #     "size_average": 1,
+    #     "ignore_index": -100
+    # }
+    acc_kwargs = {
+        "input": args[0],
+        "target": args[1],
+        "weight": args[2],
+        "size_average": args[3],
+        "ignore_index": args[4]
+    }
+    zzz = acc_ops_converters.acc_ops_nll_loss_forward(mgx_module, node, (), acc_kwargs)
+    print('the module ((((((((((( is \n', mgx_module)
+    return zzz
+
+
 @migraphx_converter(torch.ops.aten.relu.default)
 def aten_ops_relu(mgx_module, node, args, kwargs):
     assert len(args) == 1
