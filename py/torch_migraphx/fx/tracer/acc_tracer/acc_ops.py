@@ -1942,3 +1942,24 @@ def le(*, input, other):
 def isinf(*, input):
     return torch.isinf(input=input)
 
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "any"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.any),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+def any_mapper(node: torch.fx.Node,
+               mod: torch.fx.GraphModule) -> torch.fx.Node:
+    return reduce_op_mapper(node, mod, max)
+
