@@ -1928,13 +1928,15 @@ def acc_ops_isnan(mgx_module, node, args, kwargs):
 @migraphx_converter(acc_ops.nan_to_num)
 def acc_ops_nan_to_num(mgx_module, node, args, kwargs):
     inp = kwargs['input']
-    nan_val = kwargs.get('nan', 0.0)
+    nan_val = kwargs.get('nan', None)
     posinf_val = kwargs.get('posinf', None)
     neginf_val = kwargs.get('neginf', None)
     input_instr_ref = inp.instr_ref
     output_dtype = get_arg_dtype(input_instr_ref)
     output_lens = inp.shape().lens()
     # where(isnan(x), nan_val, x)
+    if nan_val is None:
+        nan_val = 0.0
     if posinf_val is None:
         try:
             posinf_val = torch.iinfo(output_dtype).max
