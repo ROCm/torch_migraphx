@@ -41,61 +41,60 @@ from torch.fx.node import Argument, Target
 from .utils import *
 from ..utils import torch_dtype_from_mgx, torch_dtype_to_mgx_enum
 from ..mgx_module import MGXInstruction
+import numbers
 
+   
+###################  shape util operations not in any class
+#  TODO:  expose the same functions in the MigraphX Python API; then we won't need these
 
-class Shape:
-    def __init__(self, lens, strides=None):
-        self.lens = np.array(lens)
-        if strides is None:
-            self.strides = np.cumprod(np.concatenate(([1], self.lens[:-1])), dtype=np.int64)
-        else:
-            self.strides = np.array(strides, dtype=np.int64)
-        self.impl = None
+# see shape_impl::get_index(size_t i) const
+def get_index(_shape, i):
+    assert isinstance(_shape, migraphx.shape)
+    result = 0
+    s      = 1
+    for k in np.flip(range(_shape.ndim())):
+        stride = _shape.strides()[k]
+        len    = _shape.lens()[k]
+        idx    = (i % (s * len)) / s
+        result += stride * idx
+        s *= len
+    return result
 
-    def dynamic(self):
-        return self.impl is not None
+# takes either an integer or vector of integers as input
+def index(_shape, i):
+    assert isinstance(_shape, migraphx.shape)
+    if _shape.dynamic():
+        raise ValueError("SHAPE: index() called on dynamic shape")
+    assert len(_shape.lens()) == len(_shape.strides())
 
-    def standard(self):
-        return np.array_equal(self.strides, np.cumprod(np.concatenate(([1], self.lens[:-1])), dtype=np.int64))
+    if not isinstance(i, numbers.Integral):
+        return np.array(i).dot(_shape.strides())
+    if  _shape.standard():
+        return i;
+    return get_index(_shape, i)
 
-    # def index(self, i):
-    #     if self.dynamic():
-    #         raise ValueError("SHAPE: index() called on dynamic shape")
-    #     assert len(self.lens) == len(self.strides)
-    #     if self.standard():
-    #         return i
-    #     return self.impl.get_index(i)
+# given a set of dimensions (lens), convert a raw pointer offset into a series of coordinates
+# input:  pointer offset in 1-D   
+# output: set of coordinates
+def multi(_shape, idx):
+    assert isinstance(_shape, migraphx.shape)
+    assert idx < _shape.elements()
+    indices = np.empty(len(_shape.lens()), dtype=np.int64)
+    multi_copy(_shape, idx, indices)
+    return indices
 
-    # takes either an integer or vector of integers as input
-    def index(self, i):
-        if self.dynamic():
-            raise ValueError("SHAPE: index() called on dynamic shape")
-        assert len(self.lens) == len(self.strides)
+# utility for multi.  start is pointer into an np array of size ndim, populate it with indices
+def multi_copy(_shape, idx, start):
+    assert isinstance(_shape, migraphx.shape)
+    tidx = idx
+    assert idx < _shape.elements()
+    assert len(_shape.lens()) <= len(start)
+    for ii in range(len(_shape.lens()) - 1, 0, -1):
+        start[ii] = tidx % _shape.lens()[ii]
+        tidx //= _shape.lens()[ii]
+    start[0] = tidx
 
-        # TODO:  I think this works whether or not self is standard.  Remove the check?
-        if self.standard():
-            return np.array(i).dot(self.strides)
-
-        return self.impl.get_index(i)
-
-    def multi(self, idx):
-        assert idx < self.elements()
-        indices = np.empty(len(self.lens), dtype=np.int64)
-        self.multi_copy(idx, indices)
-        return indices
-
-    def multi_copy(self, idx, start):
-        tidx = idx
-        assert idx < self.elements()
-        assert len(self.lens) <= len(start)
-        for ii in range(len(self.lens) - 1, 0, -1):
-            start[ii] = tidx % self.lens[ii]
-            tidx //= self.lens[ii]
-        start[0] = tidx
-
-    def elements(self):
-        return np.prod(self.lens)
-
+# Normalize negative axis values (a Numpy convention)
 def tune_axis(n_dim, axis, op_name="OPERATOR"):
     if axis < 0:
         axis += n_dim
@@ -105,172 +104,68 @@ def tune_axis(n_dim, axis, op_name="OPERATOR"):
     
     return axis
 
+# input: an Migraphx instruction
+def rank(s):
+    assert(isinstance(s, migraphx.instruction_ref))
+    return len(s.shape().lens())
 
-def parse_brian(info, args):
-    axis = 0
+def gather_elements(info, axis, args):
+
     # standardize input data and index
     arg_data = args[0]
     arg_ind = args[1]
-    data_s = arg_data.shape()
-    ind_s = arg_ind.shape()
-    n_rank = len(data_s.lens())
-    tuned_axis = tune_axis(n_rank, axis)   # op_name
 
-    axis_stride = data_s.strides()[tuned_axis]
-    data_elem_num = data_s.elements()
-    # reshape the input data as one dimension for use as input data
-    # to the gather operator
+    # todo: how to deal with nonstandard shapes?  The C++ version inserts two make_contiguous()
+    # calls but I think this code doesn't need them.
+
+    # if not arg_data.shape().standard():
+    #     arg_data = info.add_instruction(migraphx.op("contiguous"), [arg_data])
     
-    arg_data = info.add_instruction(migraphx.op("reshape", dims = [data_elem_num]), [arg_data])
-
-    elem_num = ind_s.elements()
-
-    ind_index = np.arange(elem_num)
-    # convert index in input indices to that in input data
-    ds = Shape(data_s.lens())
-    ids = Shape(ind_s.lens())
-
-    # 0..elements() converted to multi index   What are dimension and rank of this?
-    data_indices = [ds.index(ids.multi(i)) for i in ind_index] # for 1-d index, this is almost trivial
-    # 0..elements() converted to multi index for selected axis
-    vec_axis_ind = [ids.multi(i)[tuned_axis] for i in ind_index]
-    expand = [ids.multi(i) for i in np.arange(elem_num)]
-
-    l_shape_idx = info.add_literal(torch.tensor(data_indices).numpy()) #  0 0 1 0 2 0
-
-    # the stride of the axis we're selecting in, a scalar
-    stride = np.full(l_shape_idx.shape().lens(), axis_stride, dtype=np.int64)
-    l_stride = info.add_literal(torch.tensor(stride).numpy() )
-
-    l_dim_idx = info.add_literal(torch.tensor( vec_axis_ind).numpy())
-
-    # dim_diff = info.add_instruction(migraphx.op("sub"), [arg_ind, l_dim_idx])
-    #  multiply the unrolled indexes by the stride
-    delta = info.add_instruction(migraphx.op("mul"), [l_shape_idx, l_stride])
-    print(' werqwer ', delta.shape().lens(), '\n')
-
-
-    # delta is size data_indices (different shape from index input)
-    # expand input list to number of dimensions delta from data_indices (not either of the inputs)
-    delta_dims = len(delta.shape().lens())
-    index_dims = len(ind_s.lens())
-    # if arg_ind has less dims than delta, then unsqueeze it
-    print(' gfhjkgfhjk ',index_dims, delta_dims, list(range(index_dims, delta_dims)), '\n\n')
-    if index_dims < delta_dims:
-        unsq =  info.add_instruction(migraphx.op("unsqueeze",axes=list(range(index_dims, delta_dims)) ), [arg_ind])
-        print('hello')
-    else:
-        unsq = arg_ind
-
-    print(' tyuoityuio ', n_rank, delta.shape().lens(), unsq.shape().lens(), '\n\n')
-    transp =  info.add_instruction(migraphx.op("multibroadcast", out_lens=list(delta.shape().lens()) ), [unsq])
-
-    selection_ind = info.add_instruction(migraphx.op("add"), [delta, transp])
-
-    deft = info.add_instruction(migraphx.op('gather', axis=tuned_axis),
-                                   [arg_data, selection_ind])
-
-    return delta
-
-
-def parse(opd, parser, info, args):
-    axis = 0
-    # if "axis" in info.attributes:
-    #     axis = parser.parse_value(info.attributes["axis"]).item()
-
-    # standardize input data and index
-    arg_data = args[0]
-    arg_ind = args[1]
-    # arg_data = info.make_contiguous(args[0])
-    # arg_ind = info.make_contiguous(args[1])
-   
-
     data_s = arg_data.shape()
     ind_s = arg_ind.shape()
-
-
-    if len(data_s.lens()) != len(ind_s.lens()):
-        raise ValueError("PARSE_GATHER_ELEMENTS: input data and index must have the same rank!")
-
-    n_rank = len(data_s.lens())
+    assert(rank(arg_data) == rank(arg_ind))
+    n_rank = rank(arg_data)
     tuned_axis = tune_axis(n_rank, axis)
 
     axis_stride = data_s.strides()[tuned_axis]
     data_elem_num = data_s.elements()
-    # reshape the input data as one dimension and used as input data
+
+    # reshape the input data as one dimension for use as input data
     # to the gather operator
-    
+
     arg_data = info.add_instruction(migraphx.op("reshape", dims = [data_elem_num]), [arg_data])
-
     elem_num = ind_s.elements()
-
     ind_index = np.arange(elem_num)
     # convert index in input indices to that in input data
-    ds = Shape(data_s.lens())
-    ids = Shape(ind_s.lens())
+
+    ds = data_s
+    ids = ind_s
 
     # 0..elements() converted to multi index
-    data_indices = [ds.index(ids.multi(i)) for i in ind_index]
-    # 0..elements() converted to multi index for selected axis
-    vec_axis_ind = [ids.multi(i)[tuned_axis] for i in ind_index]
+    data_indices = [index(ds, multi(ids, i)) for i in ind_index]
 
-    for a in data_indices:
-        print(' data_indices ', a)
-    for a in vec_axis_ind:
-        print(' vec_axis_ind ', a) 
+    # 0..elements() converted to multi-dim coordinates for selected axis
+    vec_axis_ind = [multi(ids, i)[tuned_axis] for i in ind_index]
 
-    # Python add_literal takes a tensor and an optional data type
-    # weight = mgx_module.add_literal(torch.tensor((1), dtype=dtype).numpy()) 
-    # Take shape of ind_s, populate with contents of data_indices create torch.tensor
+    l_shape_idx = info.add_literal(torch.tensor(data_indices).numpy().reshape(ind_s.lens()))
+    
+    # the stride of the axis we're selecting in, a scalar.
+    # # created as a tensor full of a single value, not multibroadcast like the original is.
+    stride = np.full(len(data_indices), axis_stride, dtype=np.int64)
+    l_stride = info.add_literal(torch.tensor(stride).numpy().reshape(ind_s.lens()) )
+    l_dim_idx = info.add_literal(torch.tensor( vec_axis_ind).numpy().reshape(ind_s.lens()))
 
-    l_shape_idx = info.add_literal(torch.tensor(data_indices).numpy()) #  0 0 1 0 2 0
- 
- 
-    #  npa = np.array(data_indices).reshape(ind_s.lens()) # 3, 1
-    # l_shape_idx = info.add_literal(inds2, torch.tensor(inds2))
-
-    # the "multi" indices of the selected axis
-    l_dim_idx = info.add_literal(torch.tensor( vec_axis_ind).numpy())
-
-    # the stride of the axis we're selecting in, a scalar
-    l_stride = info.add_literal(torch.tensor([axis_stride], dtype=get_arg_dtype(arg_ind)).numpy())
-    # broadcast the scalar stride to match size of index
-    # example:       inp = mgx_module.add_instruction(
-    #    migraphx.op('multibroadcast', out_lens=list(out_shape)), [inp])
-    l_stride = info.add_instruction(migraphx.op('multibroadcast', out_lens=ind_s.lens()), [l_stride])
-
-    for a in arg_ind.shape().lens():
-        print(' arg_ind ', a)
-    for a in l_dim_idx.shape().lens():
-        print(' l_dim_idx ', a) 
-
-    # What are we subtracting and why?
-    # dim_diff = info.add_instruction(migraphx.op("sub"), [arg_ind, l_dim_idx])
-    dim_diff = arg_ind
-    # multiply every row_position by the stride
+    # The multibroadcast and make_contiguous instructions are not necessary because l_stride was created 
+    # with contiguous data
+    dim_diff = info.add_instruction(migraphx.op("sub"), [arg_ind, l_dim_idx])
+    #  multiply the unrolled indexes by the stride
     delta = info.add_instruction(migraphx.op("mul"), [dim_diff, l_stride])
-    # add the other index  stride * row_position + index
+    selection_ind = info.add_instruction(migraphx.op("add"), [l_shape_idx, delta])
 
-    for a in l_shape_idx.shape().lens():
-        print(' l_shape_idx ', a)
-    for a in delta.shape().lens():
-        print(' delta ', a) 
-
-    # problem:  l_shape_idx is 3,2   but  delta is 3, 1
-    # trial and error hacks to make shapes match for "add"
-
-    delta = info.add_instruction(migraphx.op('multibroadcast', out_lens=l_shape_idx.shape().lens()), [delta])
-    for a in delta.shape().lens():
-        print(' new delta ', a) 
-
-
-    ind = info.add_instruction(migraphx.op("add"), [l_shape_idx, delta])
-
-
-    result = info.add_instruction(migraphx.op('gather', axis=axis),  [ind, l_shape_idx])
-    for a in result.shape().lens():
-        print(' resulting shape ', a) 
-    return result
+    # Select indices from 1-D array, always axis 0
+    deft = info.add_instruction(migraphx.op('gather', axis=0),
+                                   [arg_data, selection_ind])
+    return deft
 
 def broadcast_for_elemwise_op(mgx_module,
                               node,
@@ -359,82 +254,67 @@ def acc_ops_nll_loss_forward(mgx_module, node, args, kwargs):
     inp_instr_ref = inp.instr_ref
     target = kwargs['target']
     target_ref = target.instr_ref
+
+    # reduction_mode = kwargs['reduction']
     
     ndims = len(inp_instr_ref.shape().lens())
-
     dtype = get_arg_dtype(inp_instr_ref)
-    # weight = mgx_module.add_literal(torch.tensor(weight, dtype=dtype).numpy())
     # weight should be a vector of 1's if not given
-    weight = mgx_module.add_literal(torch.tensor((1), dtype=dtype).numpy())     if kwargs.get('weight') == None else kwargs['weight']
-    print(' aaaaaaa weight is ', weight.shape().type(),  weight.shape().lens()[0])
-
-
-    zap = Shape(inp_instr_ref.shape().lens())
-    for a in range(6):
-        print('multi index: ', zap.multi(a), type(zap.multi(a)))
-
-    # a dictionary
-    #     "input": args[0],
-    #     "target": torch.Tensor(2, 3),
-    #     "weight": None,
-    #     "size_average": 1,
-    #     "ignore_index": -100
+    weight = mgx_module.add_literal(torch.tensor((1), dtype=dtype).numpy())     if kwargs.get('weight') == None else kwargs['weight'].instr_ref
 
     # This op assumes data has already had log_softmax applied to it.
+
+    #negative of input
     neg_ins = mgx_module.add_instruction(migraphx.op('neg'), [inp_instr_ref])
     #
-    #
-    #                  Call the auto code
-    #
-    # first, make ranks match
+    # make rank of target match the input: unsqueeze
+
     target_ref_unsquoze =  mgx_module.add_instruction(
         migraphx.op('unsqueeze', axes=list(range(1, ndims))), [target_ref])
 
+    # Prepare to select weight for each target
+    # unsqueeze the weight and broadcast to match input shape 
+    weight_unsquoze = mgx_module.add_instruction(
+            migraphx.op('unsqueeze', axes=list(range(ndims-1))), [weight])
 
-    # this is a hack
-    # target_ref_unsquoze =  mgx_module.add_instruction(
-    #     migraphx.op('multibroadcast', out_lens = neg_ins.shape().lens()), [target_ref_unsquoze])
+    weight_bcst = mgx_module.add_instruction(
+            migraphx.op('multibroadcast', out_lens=inp_instr_ref.shape().lens()), [weight_unsquoze])
+    print('TODO: is weight shape correct for both default and input weights?', weight_bcst.shape(), neg_ins.shape())
+    # Use target indexes to select weights
+    axis = 1 # TODO: why axis 1?
+    weight_to_use = gather_elements(mgx_module, axis, [weight_bcst, target_ref_unsquoze])
 
+    # Use target indexes to select inputs
+    parse_ins = gather_elements(mgx_module, axis, [neg_ins, target_ref_unsquoze])
 
-    parser = None
-    # parse_ins = parse(neg_ins, parser, mgx_module, [neg_ins, target_ref_unsquoze])   
-    parse_ins = parse_brian(mgx_module, [neg_ins, target_ref_unsquoze])   
-    # This is a gather_elements equivalent
-    print('PPPPP ', parse_ins.shape().lens(), parse_ins)
-    reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(1))), [parse_ins])
-    dtype2 = get_arg_dtype(reduce_ins)    
-    print('QQQQQ ', reduce_ins.shape().lens(), dtype2)
-    # return MGXInstruction(reduce_ins)
-    # end test code
+    # if kwargs.get('weight') == None:
+    #     # weights is a 1-d vector.  Unsqueeze and broadcast it to match X.
+    #     unsqueeze_ins = mgx_module.add_instruction(
+    #         migraphx.op('unsqueeze', axes=list(range(1, ndims))), [weight])
 
-
-
-
-    # weights is a 1-d vector.  Unsqueeze and broadcast it to match X.
-    unsqueeze_ins = mgx_module.add_instruction(
-        migraphx.op('unsqueeze', axes=list(range(1, ndims))), [weight])
-
-    weight_ins = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=neg_ins.shape().lens()), [unsqueeze_ins])    
-    
-    mul_ins =  mgx_module.add_instruction(migraphx.op('mul'), [neg_ins, weight_ins])
-    # This is elementwise W * X
+    #     weight_ins = mgx_module.add_instruction(
+    #         migraphx.op('multibroadcast', out_lens=parse_ins.shape().lens()), [unsqueeze_ins])
+    # else:
+    #     weight_ins = weight   
+        
+    # W * X, the weighted input values
+    multiply_ins =  mgx_module.add_instruction(migraphx.op('mul'), [weight_to_use, parse_ins])
 
     #
     #    mean-reduction case.  Sum W * X, divide by sum of weights, and return a scalar
     #
 
     # Reduce 
-    reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(ndims))), [mul_ins])
-    # reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(ndims))), [parse_ins])
+    reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(ndims))), [multiply_ins])
     # squeeze the number of dimensions down to 1 (i.e. scalar)
-    squeeze_ins =  mgx_module.add_instruction(migraphx.op('squeeze', axes = list(range(1, ndims))), [reduce_ins])
+    squeezed_reduce_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [reduce_ins])
 
+    # now calculate the sum of weights.  weight_to_use is a 1-d vector
+    sum_ins = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=[0]), [weight_to_use])
 
-    # now calculate the sum of weights.  weights is a 1-d vector
-    sum_ins = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=[0]), [weight])
+    # squeeze the sum of weights to scalar
+    squeezed_sum_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [sum_ins])
 
-    print(' ppppppp ', squeeze_ins.shape().lens(), sum_ins.shape().lens())
     #
     #  TODO:  for the non-reduction case, use this code calculate a vector of loss values
     #
@@ -448,10 +328,16 @@ def acc_ops_nll_loss_forward(mgx_module, node, args, kwargs):
     # Divide W * X by sum of weights
     # nll_loss_ins = mgx_module.add_instruction(migraphx.op('div'), [mul_ins, weight_2_ins])
 
-
+    #
     # Mean-reduction case, continued. Divide W * X by sum of weights
-    nll_loss_ins = mgx_module.add_instruction(migraphx.op('div'), [squeeze_ins, sum_ins])
+    #
+    nll_loss_ins = mgx_module.add_instruction(migraphx.op('div'), [squeezed_reduce_ins, squeezed_sum_ins])
     return MGXInstruction(nll_loss_ins)
+    return_inst =  mgx_module.add_instruction(migraphx.op('squeeze'), [nll_loss_ins])    
+    # return MGXInstruction(nll_loss_ins)
+    mgx_module.print()
+
+    return MGXInstruction(return_inst)
 
 # Brian: why is hardtanh included along with clamp?
 @migraphx_converter(acc_ops.hardtanh)

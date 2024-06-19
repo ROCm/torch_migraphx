@@ -129,10 +129,9 @@ def gather_elements(info, axis, args):
     #  multiply the unrolled indexes by the stride
     delta = info.add_instruction(migraphx.op("mul"), [dim_diff, l_stride])
     print('mul ', delta.shape().lens())
-  
+
     selection_ind = info.add_instruction(migraphx.op("add"), [l_shape_idx, delta])
     print('add ', selection_ind.shape().lens())
-
 
     # Select indices from 1-D array, axis 0
     deft = info.add_instruction(migraphx.op('gather', axis=0),
@@ -169,18 +168,18 @@ def gather_elements(info, axis, args):
 #
 p = migraphx.program()
 mm = p.get_main_module()
-data_arr = [5, 3, 2]
-index_arr = [3, 1, 2]
+data_arr = [3, 2]
+index_arr = [3, 1]
 data_shape =  migraphx.shape(lens=data_arr, type='float_type')
 index_shape =  migraphx.shape(lens=index_arr, type='int64_type')
 input1 = mm.add_parameter('data', data_shape)
 input2 = mm.add_parameter('index', index_shape)
-axis = 0
+axis = 1
 parse_ins = gather_elements(mm, axis, [input1, input2])
 
 # # more code from the real converter
 print('PPPPP ', parse_ins.shape().lens(), parse_ins)
-reduce_ins =  mm.add_instruction(migraphx.op('reduce_sum', axes=list(range(1))), [parse_ins])
+# reduce_ins =  mm.add_instruction(migraphx.op('reduce_sum', axes=list(range(1))), [parse_ins])
 
 # return MGXInstruction(reduce_ins)
 # end test code
@@ -218,9 +217,13 @@ a_data = np.array([[[1., 7.], [2., 0.], [3.05, 4.2]],
                   ]
                   )
 
+a_data = np.array([[1., 7.], [2., 0.], [5., 4.]])
+
+
 inp = torch.tensor(a_data, dtype = torch.float32).numpy()
 # these values must all be less than inp[1]
 target = torch.tensor([[[0, 4]], [[1, 4]], [[1, 3]]], dtype=torch.int64).numpy()
+target = torch.tensor([0, 0, 1], dtype=torch.int64).numpy().reshape([3, 1])
 params = {}
 params['data'] = inp
 params['index'] = target

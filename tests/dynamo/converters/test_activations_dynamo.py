@@ -12,10 +12,11 @@ if not hasattr(torch_migraphx, "dynamo"):
 #  or scalar if there is a reduction
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.nll_loss_forward.default,
                                       ])
-@pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 3)])
+@pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5)])
 def test_nll_loss_forward(op_alias, inp_size, weight_size):
 
     # weight_size should be index-1 dimension of inp_size, aka C or number of classes
+    # or else 0.
     # if weight_size = 0 , then pass weight=None, module should default weights to 1
 
     # target_size = 1 if there's avg. or mean reduction
@@ -26,18 +27,18 @@ def test_nll_loss_forward(op_alias, inp_size, weight_size):
     n =  inp_size[0]
     C = inp_size[1]
     target = torch.randint(C, [n]).cuda()
-
+    print(' tttttttttttttttttarget is ', target)
     # no. of weights/classes equals 0'th dimension of input
-    weight = torch.tensor(torch.randn(C)).cuda()
+    weight = torch.rand(weight_size, dtype=torch.float).cuda()
     if weight_size == 0:
         weight = None 
 
     # target = torch.tensor([1]).cuda()
 
     # weights are important.  Need a weight None, and one that's specified'
-    inp = torch.randn(inp_size).cuda()
+    inp = torch.randn(inp_size, dtype=torch.float).cuda()
 
-    # op alias followed by any number of arguments.  They all go into *args for FuncModule().  kwargs is not used unless given as 'kwargs=...'  The arguments in https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/LossNLL.cpp are: 
+    # ATen op alias followed by any number of arguments.  They all go into *args for FuncModule().  kwargs is not used unless given as 'kwargs=...'  The arguments in https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/LossNLL.cpp are: 
     #   self, target, weight_opt, reduction, ignore_index
     mod = FuncModule(op_alias, target, weight, 0, -100).cuda()
     # mod = torch.nn.LogSoftmax(1)

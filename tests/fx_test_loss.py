@@ -19,32 +19,34 @@ def convert_to_mgx(mod, inp):
 class CustomModule(torch.nn.Module):
     def __init__(self):
         super(CustomModule, self).__init__()
-        # self.loss = torch.nn.NLLLoss(weight=torch.tensor([2,3,4])) reduction='mean' etc.
-        self.loss = torch.nn.NLLLoss(reduction='mean') # reduction is not an attribute of NLLLoss
-    def forward(self, x, target):
-        lsmax = torch.nn.functional.log_softmax(x, 1)
-        # debug: skip the log softmax part
-        lsmax = x
-        result = self.loss(lsmax, target)
-        return result
+    def forward(self, x, target, weight):
+        # lsmax = torch.nn.functional.log_softmax(x, 1)
+        # mod1 = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
+        #                    reduction = 'mean', ignore_index = -100)        
+        return torch.nn.functional.nll_loss(x, target=target, weight=weight,
+                       reduction = 'mean', ignore_index = -100)
+        
 
 mod = CustomModule()
 inp = torch.randn(3, 2)
-a = np.array([[1., 7.], [2., 0.], [5., 4.]])
+
+weight = torch.tensor(np.array([1.1, 2.]))
+# a = np.array([[1., 7.], [2., 0.], [5., 4.]])
+a = np.array([[1., 1.], [1., 1.], [1., 3.]])
 
 inp = torch.tensor(a)
 # these values must all be less than inp[1]
 target = torch.tensor([0, 0, 1])
 
-torch_out = mod(inp, target)
+torch_out = mod(inp, target, weight)
 
 print(' inp = ', inp)
-mgx_mod = torch_migraphx.fx.lower_to_mgx(mod, [inp, target],
+mgx_mod = torch_migraphx.fx.lower_to_mgx(mod, [inp, target, weight],
                                          min_acc_module_size=1,
                                          suppress_accuracy_check=False)
 # mgx_mod =  convert_to_mgx(mod, [inp, target])  # this local function has less housekeeping
 # mgx_mod = torch.compile(mod, backend="migraphx", options={"verbose": True})
 
-mgx_out = mgx_mod(inp.cuda(), target.cuda())
+mgx_out = mgx_mod(inp.cuda(), target.cuda(), weight.cuda())
 print(' torch result is ', torch_out)
 print(' migraphx result is ', mgx_out)

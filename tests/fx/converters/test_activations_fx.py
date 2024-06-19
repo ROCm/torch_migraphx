@@ -4,22 +4,59 @@ from fx_test_utils import randbounds, FuncModule, MethodModule, convert_to_mgx, 
 
 
 # placeholder from Brian, see test_clamp just below
-# @pytest.mark.parametrize('inp_size', [(4, 2)])
-# @pytest.mark.parametrize('inp_size, target_size', [((3, 5), 3)])
+# @pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5), ((3, 5), 0)])
+@pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5)])
+def test_nll_loss_forward_fx(inp_size, weight_size):
+   # weight_size should be index-1 dimension of inp_size, aka C or number of classes
+    # or else 0.
+    # if weight_size = 0 , then pass weight=None, module should default weights to 1
 
-# def test_nll_loss_forward(inp_size, target_size):
-#     print('%%%%%%%%%%%%%%%%%%%%%%\n\n%%%%%%%%%%%%%%%%%%%%%%\n')
-#     inp = torch.randn(inp_size)
-#     target = torch.tensor([1, 0, 4])
-#     weight=None
+    # target_size = 1 if there's avg. or mean reduction
+    #             = C if reduction is None
 
-#     # todo: add NLL-relevant content
-#     mod1 = FuncModule(torch.nn.functional.nll_loss, target, weight,
-#                        reduction = 'mean', ignore_index = -100)
 
-#     for mod in [mod1]:
-#         mgx_mod = convert_to_mgx(mod, [inp])
-#         verify_outputs(mod, mgx_mod, inp)
+    # add all the arguments here
+    n =  inp_size[0]
+    C = inp_size[1]
+    target = torch.randint(C, [n]).cuda()
+    print(' tttttttttttttttttarget is ', target)
+    # no. of weights/classes equals 0'th dimension of input
+    weight = torch.rand(weight_size, dtype=torch.float).cuda()
+    if weight_size == 0:
+        weight = None 
+
+    # target = torch.tensor([1]).cuda()
+
+    # weights are important.  Need a weight None, and one that's specified'
+    inp = torch.randn(inp_size, dtype=torch.float).cuda()
+
+    # todo: add NLL-relevant content
+    mod1 = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
+                       reduction = 'mean', ignore_index = -100)
+    # mod2 = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
+    #                    reduction = 'sum', ignore_index = -100)
+    # mod3 = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
+    #                    reduction = 'none', ignore_index = -100)
+
+    #
+    #           Debug block:  same as verify_outputs
+    #
+    mgx_mod = convert_to_mgx(mod1, [inp])
+    inp_mgx = [i.cuda() for i in inp]
+    inp_mgx = [inp]
+    brian = mgx_mod(*inp_mgx)
+    print('brian ', brian)
+    brian2 = mod1(inp)
+    print('brian2 ', brian2)
+    exit(1)
+    #
+    #                End debug block
+    #
+
+    # for mod in [mod1, mod2, mod3]:
+    for mod in [mod1]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, [inp])
 
 
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
