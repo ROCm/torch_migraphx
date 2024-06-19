@@ -75,3 +75,14 @@ def test_isinf(op_alias):
     mod = FuncModule(op_alias)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.isnan.default])
+def test_isnan(op_alias):
+    inp = torch.randn(32, 43, 11, 2, 1).cuda()
+    inp[1:3, 5:9, :, :, :] = float('nan') * torch.ones(2, 4, 11, 2, 1)
+    inp[6:7, 21:27, :, 0:1, :] = float('nan') * torch.ones(1, 6, 11, 1, 1)
+
+    mod = FuncModule(op_alias)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)

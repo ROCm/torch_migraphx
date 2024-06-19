@@ -1934,7 +1934,7 @@ def ge(*, input, other):
 @register_acc_op
 def le(*, input, other):
     return operator.le(input, other)
-  
+
 
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
 @register_acc_op_mapping(op_and_target=("call_function", torch.isinf))
@@ -1942,3 +1942,16 @@ def le(*, input, other):
 def isinf(*, input):
     return torch.isinf(input=input)
 
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.isnan))
+@register_acc_op
+def isnan(*, input):
+    return torch.isnan(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.nan_to_num))
+@register_acc_op
+def nan_to_num(*, input, nan=0.0, posinf=None, neginf=None):
+    return torch.nan_to_num(input=input, nan=nan, posinf=posinf, neginf=neginf)
