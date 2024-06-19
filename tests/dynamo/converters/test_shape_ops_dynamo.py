@@ -150,9 +150,12 @@ def test_as_strided(op_alias, size, new_size, strides, offset):
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
+
 class StackModule(FuncModule):
+
     def forward(self, x1, x2, x3):
         return self.func([x1, x2, x3], *self.args, **self.kwargs)
+
 
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.stack.default])
 @pytest.mark.parametrize('dim', [0, 3, -1])
@@ -161,4 +164,40 @@ def test_stack(op_alias, dim):
     mod = StackModule(op_alias, dim=dim)
     mgx_mod = convert_to_mgx(mod, inp)
     verify_outputs(mod, mgx_mod, inp)
-    
+
+
+@pytest.mark.parametrize('op_alias', [torch.ops.aten._to_copy.default])
+def test_to_copy(op_alias):
+    inp = torch.randn(6, 2, 5, 4).cuda()
+    mod = FuncModule(op_alias, dtype=torch.half)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('op_alias', [
+    torch.ops.aten.copy.default,
+    torch.ops.aten.detach.default,
+    torch.ops.aten._to_copy.default,
+    torch.ops.aten.clone.default,
+])
+def test_shape_no_ops(op_alias):
+    inp = torch.randn(6, 2, 5, 4).cuda()
+    if op_alias == torch.ops.aten.copy.default:
+        cpy_tensor = torch.empty(6, 2, 5, 4)
+        mod = FuncModule(op_alias, cpy_tensor)
+    else:
+        mod = FuncModule(op_alias)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('op_alias', [
+    torch.ops.aten.lift_fresh_copy.default,
+    torch.ops.aten.lift_fresh.default,
+    torch.ops.aten.lift.default,
+])
+def test_lift_ops(op_alias):
+    inp = torch.randn(6, 2, 5, 4).cuda()
+    mod = FuncModule(op_alias)
+    mgx_mod = convert_to_mgx(mod, [inp], tracer=acc_tracer)
+    verify_outputs(mod, mgx_mod, inp)
