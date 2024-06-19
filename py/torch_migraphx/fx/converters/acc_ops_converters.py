@@ -137,7 +137,6 @@ def gather_elements(info, axis, args):
     elem_num = ind_s.elements()
     ind_index = np.arange(elem_num)
     # convert index in input indices to that in input data
-
     ds = data_s
     ids = ind_s
 
@@ -150,12 +149,13 @@ def gather_elements(info, axis, args):
     l_shape_idx = info.add_literal(torch.tensor(data_indices).numpy().reshape(ind_s.lens()))
     
     # the stride of the axis we're selecting in, a scalar.
-    # # created as a tensor full of a single value, not multibroadcast like the original is.
+    # # created as a tensor full of a single value, not multibroadcast like the c++ ver.
     stride = np.full(len(data_indices), axis_stride, dtype=np.int64)
     l_stride = info.add_literal(torch.tensor(stride).numpy().reshape(ind_s.lens()) )
     l_dim_idx = info.add_literal(torch.tensor( vec_axis_ind).numpy().reshape(ind_s.lens()))
 
-    # The multibroadcast and make_contiguous instructions are not necessary because l_stride was created 
+    # multibroadcast and make_contiguous instructions are not necessary here
+    # because l_stride was created 
     # with contiguous data
     dim_diff = info.add_instruction(migraphx.op("sub"), [arg_ind, l_dim_idx])
     #  multiply the unrolled indexes by the stride
@@ -255,8 +255,6 @@ def acc_ops_nll_loss_forward(mgx_module, node, args, kwargs):
     target = kwargs['target']
     target_ref = target.instr_ref
 
-    # reduction_mode = kwargs['reduction']
-    
     ndims = len(inp_instr_ref.shape().lens())
     dtype = get_arg_dtype(inp_instr_ref)
     # weight should be a vector of 1's if not given
@@ -264,7 +262,7 @@ def acc_ops_nll_loss_forward(mgx_module, node, args, kwargs):
 
     # This op assumes data has already had log_softmax applied to it.
 
-    #negative of input
+    # negative of input
     neg_ins = mgx_module.add_instruction(migraphx.op('neg'), [inp_instr_ref])
     #
     # make rank of target match the input: unsqueeze
@@ -274,72 +272,50 @@ def acc_ops_nll_loss_forward(mgx_module, node, args, kwargs):
 
     # Prepare to select weight for each target
     # unsqueeze the weight and broadcast to match input shape 
+    #  TODO: see if this can be done more easily with broadcast_for_elemwise_op()
     weight_unsquoze = mgx_module.add_instruction(
             migraphx.op('unsqueeze', axes=list(range(ndims-1))), [weight])
 
     weight_bcst = mgx_module.add_instruction(
             migraphx.op('multibroadcast', out_lens=inp_instr_ref.shape().lens()), [weight_unsquoze])
-    print('TODO: is weight shape correct for both default and input weights?', weight_bcst.shape(), neg_ins.shape())
+
     # Use target indexes to select weights
     axis = 1 # TODO: why axis 1?
     weight_to_use = gather_elements(mgx_module, axis, [weight_bcst, target_ref_unsquoze])
 
     # Use target indexes to select inputs
-    parse_ins = gather_elements(mgx_module, axis, [neg_ins, target_ref_unsquoze])
+    x_to_use = gather_elements(mgx_module, axis, [neg_ins, target_ref_unsquoze])
 
-    # if kwargs.get('weight') == None:
-    #     # weights is a 1-d vector.  Unsqueeze and broadcast it to match X.
-    #     unsqueeze_ins = mgx_module.add_instruction(
-    #         migraphx.op('unsqueeze', axes=list(range(1, ndims))), [weight])
-
-    #     weight_ins = mgx_module.add_instruction(
-    #         migraphx.op('multibroadcast', out_lens=parse_ins.shape().lens()), [unsqueeze_ins])
-    # else:
-    #     weight_ins = weight   
-        
     # W * X, the weighted input values
-    multiply_ins =  mgx_module.add_instruction(migraphx.op('mul'), [weight_to_use, parse_ins])
+    multiply_ins =  mgx_module.add_instruction(migraphx.op('mul'), [weight_to_use, x_to_use])
 
-    #
-    #    mean-reduction case.  Sum W * X, divide by sum of weights, and return a scalar
-    #
+    if kwargs.get('reduction') == 'none':
+        # Don't reduce; return a 1-d vector
+        squeezed_multiply_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [multiply_ins])
+        return MGXInstruction(squeezed_multiply_ins)
+    else:
+        #
+        #    sum- or mean-reduction case.  Sum W * X, divide by sum of weights, and return a scalar
+        #
 
-    # Reduce 
-    reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(ndims))), [multiply_ins])
-    # squeeze the number of dimensions down to 1 (i.e. scalar)
-    squeezed_reduce_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [reduce_ins])
+        # Reduce, i.e. take the sum of all values 
+        reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(ndims))), [multiply_ins])
+        # squeeze the number of dimensions down to none (i.e. scalar)
+        squeezed_reduce_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [reduce_ins])
+        if kwargs.get('reduction') == 'sum':
+            return MGXInstruction(squeezed_reduce_ins)
+        #
+        # the default reduction type is 'mean'
+        #
+        # Calculate the sum of weights.  weight_to_use is a 1-d vector
+        sum_ins = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=[0]), [weight_to_use])
 
-    # now calculate the sum of weights.  weight_to_use is a 1-d vector
-    sum_ins = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=[0]), [weight_to_use])
+        # squeeze the sum of weights to scalar
+        squeezed_sum_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [sum_ins])
+        nll_loss_ins = mgx_module.add_instruction(migraphx.op('div'), [squeezed_reduce_ins, squeezed_sum_ins])
+        return MGXInstruction(nll_loss_ins)
 
-    # squeeze the sum of weights to scalar
-    squeezed_sum_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [sum_ins])
 
-    #
-    #  TODO:  for the non-reduction case, use this code calculate a vector of loss values
-    #
-    # # unsqueeze this scalar to ndims dimensions (1, 1, ...) then broadcast to full size
-    # unsqueeze_2_ins = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=list(range(1, ndims))), [sum_ins])
-    # weight_2_ins = mgx_module.add_instruction(
-    #     migraphx.op('multibroadcast', out_lens=mul_ins.shape().lens()), [unsqueeze_2_ins])
-    # # this is an expanded tensor; every value is sum of weights  
-    # print(' dddddd ')
-    
-    # Divide W * X by sum of weights
-    # nll_loss_ins = mgx_module.add_instruction(migraphx.op('div'), [mul_ins, weight_2_ins])
-
-    #
-    # Mean-reduction case, continued. Divide W * X by sum of weights
-    #
-    nll_loss_ins = mgx_module.add_instruction(migraphx.op('div'), [squeezed_reduce_ins, squeezed_sum_ins])
-    return MGXInstruction(nll_loss_ins)
-    return_inst =  mgx_module.add_instruction(migraphx.op('squeeze'), [nll_loss_ins])    
-    # return MGXInstruction(nll_loss_ins)
-    mgx_module.print()
-
-    return MGXInstruction(return_inst)
-
-# Brian: why is hardtanh included along with clamp?
 @migraphx_converter(acc_ops.hardtanh)
 @migraphx_converter(acc_ops.clamp)
 def acc_ops_clamp(mgx_module, node, args, kwargs):

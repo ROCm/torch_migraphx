@@ -3,9 +3,9 @@ import torch
 from fx_test_utils import randbounds, FuncModule, MethodModule, convert_to_mgx, verify_outputs
 
 
-# placeholder from Brian, see test_clamp just below
-# @pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5), ((3, 5), 0)])
-@pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5)])
+# TODO: test with more dimensions
+@pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5), ((3, 5), 0)])
+# @pytest.mark.parametrize('inp_size, weight_size', [((3, 2, 5), 5)])
 def test_nll_loss_forward_fx(inp_size, weight_size):
    # weight_size should be index-1 dimension of inp_size, aka C or number of classes
     # or else 0.
@@ -16,11 +16,18 @@ def test_nll_loss_forward_fx(inp_size, weight_size):
 
 
     # add all the arguments here
-    n =  inp_size[0]
     C = inp_size[1]
-    target = torch.randint(C, [n]).cuda()
-    print(' tttttttttttttttttarget is ', target)
+    if len(inp_size) == 2:
+        target_size =  [inp_size[0]]
+    else:  # k-dimensional inputs
+        #   <== remove C instead of index 0, then the rest is the shape of target
+        target_size = inp_size[:1] + inp_size[2:]
+        print('  &&&&& ', target_size)
+    target = torch.randint(C, target_size).cuda()
+    print(' ***** target is ', target)
+
     # no. of weights/classes equals 0'th dimension of input
+    # TODO: get correct weight size for k-dimensional case
     weight = torch.rand(weight_size, dtype=torch.float).cuda()
     if weight_size == 0:
         weight = None 
@@ -30,31 +37,28 @@ def test_nll_loss_forward_fx(inp_size, weight_size):
     # weights are important.  Need a weight None, and one that's specified'
     inp = torch.randn(inp_size, dtype=torch.float).cuda()
 
-    # todo: add NLL-relevant content
     mod1 = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
                        reduction = 'mean', ignore_index = -100)
-    # mod2 = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
-    #                    reduction = 'sum', ignore_index = -100)
-    # mod3 = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
-    #                    reduction = 'none', ignore_index = -100)
+    mod2 = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
+                       reduction = 'sum', ignore_index = -100)
+    mod3 = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
+                       reduction = 'none', ignore_index = -100)
 
     #
     #           Debug block:  same as verify_outputs
     #
-    mgx_mod = convert_to_mgx(mod1, [inp])
-    inp_mgx = [i.cuda() for i in inp]
-    inp_mgx = [inp]
-    brian = mgx_mod(*inp_mgx)
-    print('brian ', brian)
-    brian2 = mod1(inp)
-    print('brian2 ', brian2)
-    exit(1)
+    # mgx_mod = convert_to_mgx(mod1, [inp])
+    # inp_mgx = [i.cuda() for i in inp]
+    # inp_mgx = [inp]
+    # brian = mgx_mod(*inp_mgx)
+    # brian2 = mod1(inp)
+    # exit(1)
     #
     #                End debug block
     #
 
-    # for mod in [mod1, mod2, mod3]:
-    for mod in [mod1]:
+    for mod in [mod1, mod2, mod3]:
+    # for mod in [mod1]:
         mgx_mod = convert_to_mgx(mod, [inp])
         verify_outputs(mod, mgx_mod, [inp])
 

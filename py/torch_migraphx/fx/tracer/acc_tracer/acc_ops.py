@@ -254,32 +254,26 @@ def select_scatter(*, input, src, dim, index):
 def linear(*, input, weight, bias):
     return nn.functional.linear(input=input, weight=weight, bias=bias)
 
+# arg_replacement_tuples may be redundant here unless we want to rename an att
+# (Useful when we can reuse a converter by giving attributes different names)
 @register_acc_op_mapping(
-    # op_and_target=("call_function", torch.nn.NLLLoss),
     op_and_target=("call_function", torch.nn.functional.nll_loss),
     arg_replacement_tuples=[
-        ("input", "input", False),  
-        ("target", "target", False),
-        ("weight",  "weight", True),
-        ("size_average", "size_average", True),
-        ("ignore_index" , "ignore_index" , True)
+        ("input", "input"),  
+        ("target", "target"),
+        ("weight",  "weight", this_arg_is_optional),
+        ("size_average", "size_average", this_arg_is_optional),
+        ("reduce", "reduce", this_arg_is_optional),
+        ("reduction", "reduction", this_arg_is_optional),
+        ("ignore_index" , "ignore_index" , this_arg_is_optional)
     ],
 )
-# there is no nll_loss method in a Tensor object.
-# @register_acc_op_mapping(
-#     op_and_target=("call_method", "NLLLoss"),
-#     arg_replacement_tuples=[
-#         ("input", "input", False),  
-#         ("target", "target", False),
-#         ("weight",  "weight", True),
-#         ("size_average", "size_average", True),
-#         ("ignore_index" , "ignore_index" , True)
-#     ],
-
-# )
+# defines the list of arguments recognized when we define a forward 
+# function in a torch.nn.Module .
 @register_acc_op
-def nll_loss_forward(*, input, target, weight, size_average=True, ignore_index=-101):
+def nll_loss_forward(*, input, target, weight=None, reduce=None, reduction='mean', size_average=None, ignore_index=-100):
     return torch.nn.functional.nll_loss(input=input, target=target, weight=weight,
+                                        reduce=reduce, reduction=reduction,
                                       size_average=size_average, ignore_index=ignore_index)
 
 
