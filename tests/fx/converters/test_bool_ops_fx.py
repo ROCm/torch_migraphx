@@ -44,3 +44,13 @@ def test_isinf():
     mod = FuncModule(torch.isinf)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+
+def test_isnan():
+    inp = torch.randn(32, 43, 11, 2, 1)
+    inp[9:10, 5:11, :, 0:1, :] = float('nan') * torch.ones(1, 6, 11, 1, 1)
+    inp[6:7, 21:27, :, 0:1, :] = float('nan') * torch.ones(1, 6, 11, 1, 1)
+
+    mod = FuncModule(torch.isnan)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)

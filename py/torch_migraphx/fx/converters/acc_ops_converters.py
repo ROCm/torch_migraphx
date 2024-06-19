@@ -1928,4 +1928,62 @@ def acc_ops_isinf(mgx_module, node, args, kwargs):
 
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('isinf'), [inp.instr_ref]))
-    
+
+  
+@migraphx_converter(acc_ops.isnan)
+def acc_ops_isnan(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('isnan'), [inp.instr_ref]))
+
+
+@migraphx_converter(acc_ops.nan_to_num)
+def acc_ops_nan_to_num(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    nan_val = kwargs.get('nan', None)
+    posinf_val = kwargs.get('posinf', None)
+    neginf_val = kwargs.get('neginf', None)
+    input_instr_ref = inp.instr_ref
+    output_dtype = get_arg_dtype(input_instr_ref)
+    output_lens = inp.shape().lens()
+    # where(isnan(x), nan_val, x)
+    if nan_val is None:
+        nan_val = 0.0
+    if posinf_val is None:
+        try:
+            posinf_val = torch.iinfo(output_dtype).max
+        except TypeError:
+            posinf_val = torch.finfo(output_dtype).max
+
+    if neginf_val is None:
+        try:
+            neginf_val = torch.iinfo(output_dtype).min
+        except TypeError:
+            neginf_val = torch.finfo(output_dtype).min
+    # add all the literals we need
+    nan_val_lit = mgx_module.add_literal(torch.tensor([nan_val], dtype=output_dtype).numpy())
+    mb_nan_val = mgx_module.add_instruction(migraphx.op('multibroadcast', out_lens=output_lens), [nan_val_lit])
+    zero_lit = mgx_module.add_literal(torch.tensor([0.], dtype=output_dtype).numpy())
+    mb_zero = mgx_module.add_instruction(migraphx.op('multibroadcast', out_lens=output_lens), [zero_lit])
+    posinf_val_lit = mgx_module.add_literal(torch.tensor([posinf_val], dtype=output_dtype).numpy())
+    mb_posinf_val = mgx_module.add_instruction(migraphx.op('multibroadcast', out_lens=output_lens), [posinf_val_lit])
+    neginf_val_lit = mgx_module.add_literal(torch.tensor([neginf_val], dtype=output_dtype).numpy())
+    mb_neginf_val = mgx_module.add_instruction(migraphx.op('multibroadcast', out_lens=output_lens), [neginf_val_lit])
+
+    # make NaN mask and replace NaN with nan_val
+    isnan = mgx_module.add_instruction(migraphx.op('isnan'), [input_instr_ref])
+    result = mgx_module.add_instruction(migraphx.op('where'), [isnan, mb_nan_val, input_instr_ref])
+    # make +inf and -inf masks. Change +inf to posinf_val and -inf to neginf_val
+    isinf = mgx_module.add_instruction(migraphx.op('isinf'), [input_instr_ref])
+    less = mgx_module.add_instruction(migraphx.op('less'), [input_instr_ref, mb_zero])
+    greater = mgx_module.add_instruction(migraphx.op('greater'), [input_instr_ref, mb_zero])
+    if less.shape().type() != migraphx.shape.type_t.bool_type:
+        less = mgx_module.add_instruction(migraphx.op('convert', target_type=migraphx.shape.type_t.bool_type), [less])
+    if greater.shape().type() != migraphx.shape.type_t.bool_type:
+        greater = mgx_module.add_instruction(migraphx.op('convert', target_type=migraphx.shape.type_t.bool_type), [greater])
+    neginf_mask = mgx_module.add_instruction(migraphx.op('logical_and'), [less, isinf])
+    posinf_mask = mgx_module.add_instruction(migraphx.op('logical_and'), [greater, isinf])
+    result = mgx_module.add_instruction(migraphx.op('where'), [neginf_mask, mb_neginf_val, result])
+    result = mgx_module.add_instruction(migraphx.op('where'), [posinf_mask, mb_posinf_val, result])
+    return MGXInstruction(result)
