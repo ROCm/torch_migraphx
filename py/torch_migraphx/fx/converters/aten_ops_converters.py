@@ -148,6 +148,15 @@ def aten_ops_select_scatter(mgx_module, node, args, kwargs):
                                                      acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.index_select.default)
+def aten_ops_index_select(mgx_module, node, args, kwargs):
+    assert len(args) == 3
+    acc_kwargs = {"input": args[0], "dim": args[1], "index": args[2]}
+
+    return acc_ops_converters.acc_ops_index_select(mgx_module, node, (),
+                                                   acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.maximum.default)
 def aten_ops_maximum(mgx_module, node, args, kwargs):
     assert len(args) == 2
@@ -394,8 +403,8 @@ def aten_ops_log_softmax(mgx_module, node, args, _kwargs):
     acc_kwargs = {"input": args[0], "dim": args[1]}
 
     return acc_ops_converters.acc_ops_log_softmax(mgx_module, node, (), acc_kwargs)
- 
- 
+
+
 @migraphx_converter(torch.ops.aten.sqrt.default)
 def aten_ops_sqrt(mgx_module, node, args, kwargs):
     assert len(args) == 1

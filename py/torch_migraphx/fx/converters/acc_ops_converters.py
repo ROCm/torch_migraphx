@@ -1599,6 +1599,24 @@ def acc_ops_select_scatter(mgx_module, node, args, kwargs):
     return acc_ops_slice_scatter(mgx_module, node, args, new_kwargs)
 
 
+@migraphx_converter(acc_ops.index_select)
+def acc_ops_index_select(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    dim = kwargs["dim"]
+    idx = kwargs["index"]
+    in_shape = inp.shape().lens()
+
+    slices = [slice(None, None, None) for _ in in_shape]
+    slices[dim] = idx
+
+    return acc_ops_getitem(mgx_module,
+                           node, (),
+                           kwargs={
+                               'input': inp,
+                               'idx': slices
+                           })
+
+
 @migraphx_converter(acc_ops.batch_norm)
 def acc_ops_batch_norm(mgx_module, node, args, kwargs):
 
@@ -1908,7 +1926,7 @@ def acc_ops_le(mgx_module, node, args, kwargs):
                                                      [gt.instr_ref]),
                           bool_output=True)
 
-  
+
 @migraphx_converter(acc_ops.isinf)
 def acc_ops_isinf(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
@@ -1916,7 +1934,7 @@ def acc_ops_isinf(mgx_module, node, args, kwargs):
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('isinf'), [inp.instr_ref]))
 
-  
+
 @migraphx_converter(acc_ops.isnan)
 def acc_ops_isnan(mgx_module, node, args, kwargs):
     inp = kwargs["input"]

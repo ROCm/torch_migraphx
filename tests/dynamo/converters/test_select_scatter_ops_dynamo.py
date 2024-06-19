@@ -86,3 +86,19 @@ def test_index(op_alias, idx):
     mod = FuncModule(op_alias, idx).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.index_select.default])
+@pytest.mark.parametrize('dim, index', [
+    (0, [3]),
+    (4, [0, 5]),
+    (2, [2, 6, 7]),
+    (-1, [2, 1]),
+    (-2, [0]),
+])
+def test_index_select(op_alias, dim, index):
+    inp = torch.randn(32, 43, 11, 2, 12).cuda()
+    idx_tensor = torch.tensor(index).cuda()
+    mod = FuncModule(op_alias, dim, idx_tensor).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)

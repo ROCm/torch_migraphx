@@ -219,7 +219,7 @@ def min(*, input, dim=None, keepdim=False):
 @register_acc_op
 def minimum(*, input, other):
     return torch.minimum(input=input, other=other)
-    
+
 
 @register_acc_op_mapping(op_and_target=("call_function", operator.getitem))
 @register_acc_op
@@ -254,6 +254,12 @@ def slice_scatter(*, input, src, dim=0, start=None, end=None, step=1):
 @register_acc_op
 def select_scatter(*, input, src, dim, index):
     return torch.select_scatter(input=input, src=src, dim=dim, index=index)
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.index_select))
+@register_acc_op
+def index_select(*, input, dim, index):
+    return torch.index_select(input, dim, index)
 
 
 @register_acc_op_mapping(op_and_target=("call_function", nn.functional.linear))
