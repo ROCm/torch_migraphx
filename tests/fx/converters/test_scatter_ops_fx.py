@@ -41,22 +41,78 @@ def test_select_scatter(in_size, dim, src_dims, idx):
     verify_outputs(mod, mgx_mod, inp)
 
 
+# TODO: Add test case for mean reduction once supported
 @pytest.mark.parametrize('inp_size, src_size, index, dim, reduce', [
     ((4, ), (6, ), [0, 1, 0, 1, 2, 1], 0, "sum"),
     ((3, 5), (2, 5), [[0, 1, 2, 0, 0]], 0, "amax"),
     ((3, 5), (3, 2), [[0, 1], [4, 2]], 1, "prod"),
     ((3, 5, 2), (3, 1, 2), [[[0, 1]], [[1, 0]], [[1, 1]]], -1, "amin"),
 ])
-def test_scatter_reduce(inp_size, src_size, index, dim, reduce):
-    inp = torch.zeros(*inp_size, dtype=torch.float32)
-    src = torch.zeros(*src_size, dtype=torch.float32)
+@pytest.mark.parametrize('include_self', [True, False])
+def test_scatter_reduce_func(inp_size, src_size, index, dim, reduce,
+                             include_self):
+    inp = torch.randn(*inp_size)
+    src = torch.randn(*src_size)
     idx = torch.tensor(index)
 
     mod = FuncModule(torch.scatter_reduce,
                      src=src,
                      dim=dim,
                      index=idx,
-                     reduce=reduce)
+                     reduce=reduce,
+                     include_self=include_self)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('inp_size, src_size, index, dim, reduce', [
+    ((3, 5, 2), (3, 1, 2), [[[0, 1]], [[1, 0]], [[1, 1]]], -1, "sum"),
+])
+@pytest.mark.parametrize('include_self', [True, False])
+def test_scatter_reduce_method(inp_size, src_size, index, dim, reduce,
+                               include_self):
+    inp = torch.randn(*inp_size)
+    src = torch.randn(*src_size)
+    idx = torch.tensor(index)
+
+    mod = MethodModule("scatter_reduce",
+                       src=src,
+                       dim=dim,
+                       index=idx,
+                       reduce=reduce,
+                       include_self=include_self)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('inp_size, src_size, index, dim', [
+    ((4, ), (6, ), [0, 1, 3, 1, 2, 1], 0),
+    ((3, 5), (2, 5), [[0, 1, 2, 0, 0]], 0),
+    ((3, 5), (3, 2), [[0, 1], [4, 2]], 1),
+    ((3, 5, 2), (3, 1, 2), [[[0, 1]], [[1, 0]], [[1, 1]]], -1),
+])
+def test_scatter_add_func(inp_size, src_size, index, dim):
+    inp = torch.randn(*inp_size)
+    src = torch.randn(*src_size)
+    idx = torch.tensor(index)
+
+    mod = FuncModule(torch.scatter_add, src=src, dim=dim, index=idx)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('inp_size, src_size, index, dim', [
+    ((3, 5), (3, 2), [[0, 1], [4, 2]], 1),
+])
+def test_scatter_add_method(inp_size, src_size, index, dim):
+    inp = torch.randn(*inp_size)
+    src = torch.randn(*src_size)
+    idx = torch.tensor(index)
+
+    mod = MethodModule("scatter_add", src=src, dim=dim, index=idx)
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
