@@ -39,3 +39,24 @@ def test_select_scatter(in_size, dim, src_dims, idx):
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('inp_size, src_size, index, dim, reduce', [
+    ((4, ), (6, ), [0, 1, 0, 1, 2, 1], 0, "sum"),
+    ((3, 5), (2, 5), [[0, 1, 2, 0, 0]], 0, "amax"),
+    ((3, 5), (3, 2), [[0, 1], [4, 2]], 1, "prod"),
+    ((3, 5, 2), (3, 1, 2), [[[0, 1]], [[1, 0]], [[1, 1]]], -1, "amin"),
+])
+def test_scatter_reduce(inp_size, src_size, index, dim, reduce):
+    inp = torch.zeros(*inp_size, dtype=torch.float32)
+    src = torch.zeros(*src_size, dtype=torch.float32)
+    idx = torch.tensor(index)
+
+    mod = FuncModule(torch.scatter_reduce,
+                     src=src,
+                     dim=dim,
+                     index=idx,
+                     reduce=reduce)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)

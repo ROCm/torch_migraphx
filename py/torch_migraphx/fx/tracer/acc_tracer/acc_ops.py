@@ -256,6 +256,45 @@ def select_scatter(*, input, src, dim, index):
     return torch.select_scatter(input=input, src=src, dim=dim, index=index)
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.scatter_reduce))
+@register_acc_op_mapping(op_and_target=("call_method", "scatter_reduce"))
+@register_acc_op_mapping(op_and_target=("call_method", "scatter_reduce_"))
+@register_acc_op
+def scatter_reduce(*, input, dim, index, src, reduce, include_self=True):
+    return torch.scatter_reduce(input=input,
+                                dim=dim,
+                                index=index,
+                                src=src,
+                                reduce=reduce,
+                                include_self=include_self)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.scatter_add),
+    arg_replacement_tuples=[("input", "input"), ("dim", "dim"),
+                            ("index", "index"), ("src", "src")],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "scatter_add"),
+    arg_replacement_tuples=[("input", "input"), ("dim", "dim"),
+                            ("index", "index"), ("src", "src")],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "scatter_add_"),
+    arg_replacement_tuples=[("input", "input"), ("dim", "dim"),
+                            ("index", "index"), ("src", "src")],
+)
+def scatter_add_mapper(node: torch.fx.Node, _: nn.Module):
+    with node.graph.inserting_before(node):
+        kwargs = {k: v for k, v in node.kwargs}
+        kwargs["reduce"] = "sum"
+        new_node = node.graph.create_node("call_function",
+                                          scatter_reduce,
+                                          kwargs=kwargs)
+        new_node.meta = node.meta.copy()
+    return new_node
+
+
 @register_acc_op_mapping(op_and_target=("call_function", nn.functional.linear))
 @register_acc_op
 def linear(*, input, weight, bias):

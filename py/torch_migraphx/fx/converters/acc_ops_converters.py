@@ -1599,6 +1599,28 @@ def acc_ops_select_scatter(mgx_module, node, args, kwargs):
     return acc_ops_slice_scatter(mgx_module, node, args, new_kwargs)
 
 
+@migraphx_converter(acc_ops.scatter_reduce)
+def acc_ops_scatter_reduce(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    dim = kwargs["dim"]
+    idx = kwargs["index"]
+    src = kwargs["src"]
+    reduce = kwargs["reduce"]
+    include_self = kwargs["include_self"]
+
+    reduce_map = {
+        "sum": "scatter_add",
+        "prod": "scatter_mul",
+        "amax": "scatter_max",
+        "amin": "scatter_min"
+    }
+
+    return MGXInstruction(
+        mgx_module.add_instruction(
+            migraphx.op(reduce_map[reduce], axis=dim),
+            [inp.instr_ref, idx.instr_ref, src.instr_ref]))
+
+
 @migraphx_converter(acc_ops.batch_norm)
 def acc_ops_batch_norm(mgx_module, node, args, kwargs):
 
