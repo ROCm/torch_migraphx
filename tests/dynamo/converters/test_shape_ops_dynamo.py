@@ -183,7 +183,8 @@ def test_to_copy(op_alias):
 def test_shape_no_ops(op_alias):
     inp = torch.randn(6, 2, 5, 4).cuda()
     if op_alias == torch.ops.aten.copy.default:
-        cpy_tensor = torch.empty(6, 2, 5, 4)
+        cpy_tensor = inp
+        inp = torch.empty(6, 2, 5, 4).cuda()
         mod = FuncModule(op_alias, cpy_tensor)
     else:
         mod = FuncModule(op_alias)
