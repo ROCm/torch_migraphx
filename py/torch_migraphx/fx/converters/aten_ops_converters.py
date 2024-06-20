@@ -41,6 +41,9 @@ from ..mgx_module import MGXInstruction
 _LOGGER = logging.getLogger(__name__)
 
 
+@migraphx_converter(torch.ops.aten.lift_fresh_copy.default)
+@migraphx_converter(torch.ops.aten.lift_fresh.default)
+@migraphx_converter(torch.ops.aten.lift.default)
 @migraphx_converter(torch.ops.aten._to_copy.default)
 @migraphx_converter(torch.ops.aten.clone.default)
 @migraphx_converter(torch.ops.aten.copy.default)
