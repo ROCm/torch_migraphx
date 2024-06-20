@@ -1604,7 +1604,20 @@ def acc_ops_batch_norm(mgx_module, node, args, kwargs):
 
     inp, weight, bias = kwargs['input'], kwargs['weight'], kwargs['bias']
     r_mean, r_var = kwargs['running_mean'], kwargs['running_var']
-    assert all(not i.is_quantized()
+
+    if weight is None:
+        weight = MGXInstruction(
+            mgx_module.add_literal(
+                torch.tensor(1,
+                             dtype=get_arg_dtype(r_mean.instr_ref)).numpy()))
+
+    if bias is None:
+        bias = MGXInstruction(
+            mgx_module.add_literal(
+                torch.tensor(0,
+                             dtype=get_arg_dtype(r_mean.instr_ref)).numpy()))
+
+    assert all(i and not i.is_quantized()
                for i in [inp, r_mean, r_var, weight, bias])
     inp, weight, bias = inp.instr_ref, weight.instr_ref, bias.instr_ref
     r_mean, r_var = r_mean.instr_ref, r_var.instr_ref
@@ -1908,7 +1921,7 @@ def acc_ops_le(mgx_module, node, args, kwargs):
                                                      [gt.instr_ref]),
                           bool_output=True)
 
-  
+
 @migraphx_converter(acc_ops.isinf)
 def acc_ops_isinf(mgx_module, node, args, kwargs):
     inp = kwargs["input"]

@@ -3,15 +3,18 @@ import torch
 from fx_test_utils import convert_to_mgx, verify_outputs
 
 
-@pytest.mark.parametrize('num_feat, eps, momentum', [(3, 1e-5, 0.1),
-                                                     (25, 1e-2, 0.4),
-                                                     (2, 1e-10, 0.7)])
-def test_batchnorm2d(num_feat, eps, momentum):
+@pytest.mark.parametrize('num_feat, eps, momentum, affine', [
+    (3, 1e-5, 0.1, True),
+    (25, 1e-2, 0.4, True),
+    (2, 1e-10, 0.7, False),
+])
+def test_batchnorm2d(num_feat, eps, momentum, affine):
     inp = torch.randn(8, num_feat, 50, 50)
 
     mod = torch.nn.BatchNorm2d(num_features=num_feat,
                                eps=eps,
-                               momentum=momentum).eval()
+                               momentum=momentum,
+                               affine=affine).eval()
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
@@ -23,8 +26,7 @@ def test_batchnorm2d(num_feat, eps, momentum):
 def test_layernorm(normalized_shape, eps):
     inp = torch.randn(8, 6, 50, 50)
 
-    mod = torch.nn.LayerNorm(normalized_shape=normalized_shape,
-                             eps=eps).eval()
+    mod = torch.nn.LayerNorm(normalized_shape=normalized_shape, eps=eps).eval()
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
