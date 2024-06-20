@@ -155,6 +155,13 @@ def aten_ops_maximum(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_maximum(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.minimum.default)
+def aten_ops_minimum(mgx_module, node, args, _kwargs):
+    assert len(args) == 2
+    acc_kwargs = {"input": args[0], "other": args[1]}
+    return acc_ops_converters.acc_ops_minimum(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.permute.default)
 def aten_ops_permute(mgx_module, node, args, kwargs):
     assert len(args) == 2
@@ -411,6 +418,13 @@ def aten_ops_log_softmax(mgx_module, node, args, _kwargs):
     acc_kwargs = {"input": args[0], "dim": args[1]}
 
     return acc_ops_converters.acc_ops_log_softmax(mgx_module, node, (), acc_kwargs)
+ 
+ 
+@migraphx_converter(torch.ops.aten.sqrt.default)
+def aten_ops_sqrt(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+    return acc_ops_converters.acc_ops_sqrt(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.sin.default)
@@ -969,7 +983,7 @@ def aten_ops_le(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": inp, "other": other}
     return acc_ops_converters.acc_ops_le(mgx_module, node, (), acc_kwargs)
 
-  
+
 @migraphx_converter(torch.ops.aten.neg.default)
 def aten_ops_neg(mgx_module, node, args, kwargs):
     assert len(args) == 1
@@ -978,9 +992,38 @@ def aten_ops_neg(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_neg(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.abs.default)
+def aten_ops_abs(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+
+    return acc_ops_converters.acc_ops_abs(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.isinf.default)
 def aten_ops_isinf(mgx_module, node, args, kwargs):
     assert len(args) == 1
     acc_kwargs = {"input": args[0]}
 
     return acc_ops_converters.acc_ops_isinf(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.isnan.default)
+def aten_ops_isnan(mgx_module, node, args, _kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+
+    return acc_ops_converters.acc_ops_isnan(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.nan_to_num.default)
+def aten_ops_nan_to_num(mgx_module, node, args, _kwargs):
+    assert len(args) >= 1
+    acc_kwargs = {"input": args[0]}
+    if len(args) >= 2:
+        acc_kwargs["nan"] = args[1]
+    if len(args) >= 3:
+        acc_kwargs["posinf"] = args[2]
+    if len(args) >= 4:
+        acc_kwargs["neginf"] = args[3]
+    return acc_ops_converters.acc_ops_nan_to_num(mgx_module, node, (), acc_kwargs)

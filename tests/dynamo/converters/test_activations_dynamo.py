@@ -48,8 +48,9 @@ def test_nll_loss_forward(op_alias, inp_size, weight_size):
     verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('op_alias', [torch.ops.aten.clamp.default,
-                                      torch.ops.aten.hardtanh.default])
+@pytest.mark.parametrize(
+    'op_alias',
+    [torch.ops.aten.clamp.default, torch.ops.aten.hardtanh.default])
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
                                       (1, 3, 6, 128, 128)])
 def test_clamp(op_alias, inp_size):
@@ -61,18 +62,23 @@ def test_clamp(op_alias, inp_size):
 
 
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.clamp.Tensor])
-@pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
-                                      (1, 3, 6, 128, 128)])
-def test_clamp_tensor(op_alias, inp_size):
+@pytest.mark.parametrize('inp_size, inp_type',
+                         [((4, 2, 7), torch.float32),
+                          ((128, 2048), torch.float16),
+                          ((1, 3, 6, 128, 128), torch.float32)])
+def test_clamp_tensor(op_alias, inp_size, inp_type):
     min_, max_ = randbounds(-1, 1)
-    inp = torch.randn(inp_size).cuda()
-    mod = FuncModule(op_alias, torch.tensor(min_).cuda(), torch.tensor(max_).cuda()).cuda()
+    inp = torch.randn(inp_size, dtype=inp_type).cuda()
+    mod = FuncModule(op_alias,
+                     torch.tensor(min_).cuda(),
+                     torch.tensor(max_).cuda()).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('op_alias', [torch.ops.aten.clamp_min.default,
-                                      torch.ops.aten.clamp_max.default])
+@pytest.mark.parametrize(
+    'op_alias',
+    [torch.ops.aten.clamp_min.default, torch.ops.aten.clamp_max.default])
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
                                       (1, 3, 6, 128, 128)])
 def test_clamp_min_max(op_alias, inp_size):
@@ -83,8 +89,9 @@ def test_clamp_min_max(op_alias, inp_size):
     verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('op_alias', [torch.ops.aten.clamp_min.Tensor,
-                                      torch.ops.aten.clamp_max.Tensor])
+@pytest.mark.parametrize(
+    'op_alias',
+    [torch.ops.aten.clamp_min.Tensor, torch.ops.aten.clamp_max.Tensor])
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
                                       (1, 3, 6, 128, 128)])
 def test_clamp_min_max_tensor(op_alias, inp_size):

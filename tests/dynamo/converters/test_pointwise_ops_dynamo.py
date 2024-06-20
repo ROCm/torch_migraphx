@@ -8,10 +8,12 @@ if not hasattr(torch_migraphx, "dynamo"):
 
 
 @pytest.mark.parametrize('op_alias', [
-    torch.ops.aten.sin.default,
+    torch.ops.aten.abs.default,
     torch.ops.aten.cos.default,
     torch.ops.aten.exp.default,
     torch.ops.aten.neg.default,
+    torch.ops.aten.sin.default,
+    torch.ops.aten.sqrt.default,
 ])
 def test_unary_func(op_alias):
     inp = torch.randn(2, 9, 11, 1).cuda()
@@ -70,3 +72,51 @@ def test_binary_tensor(op_alias, in_shape, other_shape):
     mod = FuncModule(op_alias, other).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+def test_nan_to_num0():
+    inp = torch.randn(32, 43, 11, 2, 1)
+    inp[9:10, 5:11, :, 0:1, :] = float('inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[6:7, 21:27, :, 0:1, :] = float('-inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[1:2, 2:8, :, 0:1, :] = float('nan') * torch.ones(1, 6, 11, 1, 1)
+    inp = inp.cuda()
+    mod = FuncModule(torch.ops.aten.nan_to_num.default)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+def test_nan_to_num1():
+    inp = torch.randn(32, 43, 11, 2, 1)
+    inp[9:10, 5:11, :, 0:1, :] = float('inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[6:7, 21:27, :, 0:1, :] = float('-inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[1:2, 2:8, :, 0:1, :] = float('nan') * torch.ones(1, 6, 11, 1, 1)
+    inp = inp.cuda()
+    mod = FuncModule(torch.ops.aten.nan_to_num.default, -1)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+def test_nan_to_num2():
+    inp = torch.randn(32, 43, 11, 2, 1)
+    inp[9:10, 5:11, :, 0:1, :] = float('inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[6:7, 21:27, :, 0:1, :] = float('-inf') * torch.ones(1, 6, 11, 1, 1)
+    inp = inp.cuda()
+    mod = FuncModule(torch.ops.aten.nan_to_num.default, 0, 1000, -1000)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+@pytest.mark.parametrize('op_alias',
+    [
+        torch.ops.aten.maximum.default,
+        torch.ops.aten.minimum.default,
+    ]
+)
+def test_binary_compare(op_alias):
+    inp = torch.randn(32, 43, 11, 2, 1).cuda()
+    other = torch.randn(32, 1, 11, 2, 12).cuda()
+
+    mod = FuncModule(op_alias, other).cuda()
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)

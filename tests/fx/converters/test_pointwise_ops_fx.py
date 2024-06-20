@@ -54,14 +54,14 @@ def test_pointwise_method(method):
 
 @pytest.mark.parametrize('oper', [
     torch.abs,
+    torch.ceil,
+    torch.exp,
+    torch.floor,
     torch.neg,
+    torch.reciprocal,
     torch.square,
     torch.sign,
-    torch.exp,
     torch.sqrt,
-    torch.reciprocal,
-    torch.floor,
-    torch.ceil,
 ])
 def test_unary_func(oper):
     inp = torch.randn(2, 9, 11, 1)
@@ -96,3 +96,46 @@ def test_trig_func(oper):
     mod = FuncModule(oper)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+def test_nan_to_num0():
+    inp = torch.randn(32, 43, 11, 2, 1)
+    inp[9:10, 5:11, :, 0:1, :] = float('inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[6:7, 21:27, :, 0:1, :] = float('-inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[1:2, 2:8, :, 0:1, :] = float('nan') * torch.ones(1, 6, 11, 1, 1)
+    mod = FuncModule(torch.nan_to_num)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+def test_nan_to_num1():
+    inp = torch.randn(32, 43, 11, 2, 1)
+    inp[9:10, 5:11, :, 0:1, :] = float('inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[6:7, 21:27, :, 0:1, :] = float('-inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[1:2, 2:8, :, 0:1, :] = float('nan') * torch.ones(1, 6, 11, 1, 1)
+    mod = FuncModule(torch.nan_to_num, nan=-1)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+def test_nan_to_num2():
+    inp = torch.randn(32, 43, 11, 2, 1)
+    inp[9:10, 5:11, :, 0:1, :] = float('inf') * torch.ones(1, 6, 11, 1, 1)
+    inp[6:7, 21:27, :, 0:1, :] = float('-inf') * torch.ones(1, 6, 11, 1, 1)
+    mod = FuncModule(torch.nan_to_num, nan=0, posinf=1000, neginf=-1000)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+@pytest.mark.parametrize('oper', [
+    torch.maximum,
+    torch.minimum,
+])
+def test_binary_compare_func(oper):
+    inp = torch.randn(32, 43, 11, 2, 1)
+    other = torch.randn(32, 1, 11, 2, 12)
+
+    mod = FuncModule(oper, other=other)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
