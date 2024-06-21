@@ -225,19 +225,6 @@ def broadcast_for_elemwise_op(mgx_module,
 
     return inp, other
 
-def broadcast_scalar_for_elemwise_op(mgx_module,
-                              node,
-                              inp,
-                              other,
-                              use_node_dtype=True):
-    inp = inp.instr_ref if isinstance(inp, MGXInstruction) else inp
-    other = other.instr_ref if isinstance(other, MGXInstruction) else other
-
-    if (inp == other):
-        return inp, other
-
-    return inp, other
-
 
 @migraphx_converter(acc_ops.linear)
 def acc_ops_linear(mgx_module, node, args, kwargs):
