@@ -295,26 +295,38 @@ def aten_ops_clamp(mgx_module, node, args, _kwargs):
 
 @migraphx_converter(torch.ops.aten.nll_loss_forward.default)
 def aten_ops_nllloss(mgx_module, node, args, _kwargs):
-    assert len(args) >= 1
     assert len(args) == 5
-    # this is a wrapper to make sure that all the args are populated.
-    print('ready to run the module &&&&& \n')
 
-    # TODO: does this do anything?
+    #TODO: find where this enum comversion is defined in library code
+    reduction = None
+    if args[3] == 0:
+        reduction = 'none'
+    elif args[3] == 1:
+        reduction = 'mean'
+    elif args[3] == 2:
+        reduction = 'sum'
+
+    target_lens = args[1].instr_ref.shape().lens()
+    ignore_index = args[4]
+
     acc_kwargs = {
         "input": args[0],
         "target": args[1],
         "weight": args[2],
-        "size_average": args[3],
-        "ignore_index": args[4]
+        "reduction": reduction,
+        "ignore_index": ignore_index,
+        "reduction_size": True
     }
-
-
-    print(' the args are:  ', args)
-
-    zzz = acc_ops_converters.acc_ops_nll_loss_forward(mgx_module, node, (), acc_kwargs)
-    print('the module ((((((((((( is \n', mgx_module)
-    return zzz
+    # TODO:  to support the reduction_size attrib, insert MIGraphX instructions
+    # to count the number of times the value instruction_size appears in the
+    # targets array, and subtract that number from targets
+    to_ignore = 0
+    targets = args[1].instr_ref.shape().elements() - to_ignore
+    
+    weights_inst  = mgx_module.add_literal(torch.tensor((targets), dtype=torch.int64).numpy())
+    
+    # The acc op returns one tensor, while the aten op returns two tensors
+    return acc_ops_converters.acc_ops_nll_loss_forward(mgx_module, node, (), acc_kwargs), MGXInstruction(weights_inst)
 
 
 @migraphx_converter(torch.ops.aten.relu.default)

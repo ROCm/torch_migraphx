@@ -261,8 +261,6 @@ def select_scatter(*, input, src, dim, index):
 def linear(*, input, weight, bias):
     return nn.functional.linear(input=input, weight=weight, bias=bias)
 
-# arg_replacement_tuples may be redundant here unless we want to rename an att
-# (Useful when we can reuse a converter by giving attributes different names)
 @register_acc_op_mapping(
     op_and_target=("call_function", torch.nn.functional.nll_loss),
     arg_replacement_tuples=[
@@ -281,7 +279,7 @@ def linear(*, input, weight, bias):
 def nll_loss_forward(*, input, target, weight=None, reduce=None, reduction='mean', size_average=None, ignore_index=-100):
     return torch.nn.functional.nll_loss(input=input, target=target, weight=weight,
                                         reduce=reduce, reduction=reduction,
-                                      size_average=size_average, ignore_index=ignore_index)
+                                        size_average=size_average, ignore_index=ignore_index)
 
 
 @register_acc_op_mapping(

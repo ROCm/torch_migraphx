@@ -109,9 +109,34 @@ def rank(s):
     assert(isinstance(s, migraphx.instruction_ref))
     return len(s.shape().lens())
 
-def gather_elements(info, axis, args):
+ 
+#  Equivalent of the Onnx GatherElements op.  Fetches selected elements of an array, using 
+#  values in a second array as indexes.
+ 
+#  Inputs:   data = args[0]     a data tensor.  Can be any shape and data type.
+#            index = args[1]    a tensor of index values.  type int64.  Must have same rank (number of dimensions) as data.
+# 		                        Each dimension must be <= size of corresponding dimension of data.  Each value must be 
+# 							    0 <= value < C where C is dimension "axis" of data, i.e. a valid index value on that axis.
+		   
+#  Attributes:  axis  int64     the axis to gather along.  Must have value -n_dim < axis < ndim where n_dim is rank of data.
+#                               Follows the Numpy convention for negative axis values.
+							  
+#  Output:                      Tensor.  Output has the same shape as index, containing elements from data.  To find the value 
+# 							    to use for a given location, keep all the coordinates the same except for the "axis" 
+# 							    coordinate.  Set that coordinate to the value of "index" at that location, then look at that
+#                               location in data.  
 
-    # standardize input data and index
+#                               Thus, to find the value for Output at coordinates (x1, x2, ... x(ndim-1))
+							  
+# 							                                Output[x1, x2, ... xA, ... x(ndim-1)] = ?
+															
+# 							    where xA is the coordinate on the "axis" dimension; substitute the value from "index":
+							  
+# 							                                A_ind = index[x1, x2, ... xA, ... x(ndim-1)] 
+# 							    then fetch 
+#                                                             data[x1, x2, ... A_ind, ... x(ndim-1)]							  
+
+def gather_elements(info, axis, args):
     arg_data = args[0]
     arg_ind = args[1]
 
@@ -140,7 +165,7 @@ def gather_elements(info, axis, args):
     ds = data_s
     ids = ind_s
 
-    # 0..elements() converted to multi index
+    # 0..elements() converted to index in ds
     data_indices = [index(ds, multi(ids, i)) for i in ind_index]
 
     # 0..elements() converted to multi-dim coordinates for selected axis
@@ -247,6 +272,8 @@ def acc_ops_linear(mgx_module, node, args, kwargs):
     return MGXInstruction(out_mgx)
 
 
+# NLL (negative log likelihood loss) converter.  This op assumes data has already been normalized with log_softmax
+# to give meaningful results, although there is no restriction on input values.
 @migraphx_converter(acc_ops.nll_loss_forward)
 def acc_ops_nll_loss_forward(mgx_module, node, args, kwargs):
 
@@ -258,37 +285,34 @@ def acc_ops_nll_loss_forward(mgx_module, node, args, kwargs):
     ndims = len(inp_instr_ref.shape().lens())
     dtype = get_arg_dtype(inp_instr_ref)
     # weight should be a vector of 1's if not given
-    weight = mgx_module.add_literal(torch.tensor((1), dtype=dtype).numpy())     if kwargs.get('weight') == None else kwargs['weight'].instr_ref
-
-    # This op assumes data has already had log_softmax applied to it.
+    weight = mgx_module.add_literal(torch.tensor((1), dtype=dtype).numpy()) if kwargs.get('weight') is None else kwargs['weight'].instr_ref
 
     # negative of input
     neg_ins = mgx_module.add_instruction(migraphx.op('neg'), [inp_instr_ref])
     #
-    # make rank of target match the input: unsqueeze
-
+    # match rank of target to the input: unsqueeze
     target_ref_unsquoze =  mgx_module.add_instruction(
         migraphx.op('unsqueeze', axes=list(range(1, ndims))), [target_ref])
 
     # Prepare to select weight for each target
     # unsqueeze the weight and broadcast to match input shape 
-    #  TODO: see if this can be done more easily with broadcast_for_elemwise_op()
+    #  TODO: this does not work for ndims > 2 (not currently supported)
     weight_unsquoze = mgx_module.add_instruction(
             migraphx.op('unsqueeze', axes=list(range(ndims-1))), [weight])
-
     weight_bcst = mgx_module.add_instruction(
             migraphx.op('multibroadcast', out_lens=inp_instr_ref.shape().lens()), [weight_unsquoze])
 
-    # Use target indexes to select weights
-    axis = 1 # TODO: why axis 1?
-    weight_to_use = gather_elements(mgx_module, axis, [weight_bcst, target_ref_unsquoze])
+    # Use target indexes to select weights, one for each class
+    class_axis = 1
+    weight_to_use = gather_elements(mgx_module, class_axis, [weight_bcst, target_ref_unsquoze])
 
     # Use target indexes to select inputs
-    x_to_use = gather_elements(mgx_module, axis, [neg_ins, target_ref_unsquoze])
+    x_to_use = gather_elements(mgx_module, class_axis, [neg_ins, target_ref_unsquoze])
 
     # W * X, the weighted input values
     multiply_ins =  mgx_module.add_instruction(migraphx.op('mul'), [weight_to_use, x_to_use])
 
+    # reduction type.  'none' must be specified; an empty value of Python None defaults to 'mean'
     if kwargs.get('reduction') == 'none':
         # Don't reduce; return a 1-d vector
         squeezed_multiply_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [multiply_ins])
@@ -1685,10 +1709,6 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
             migraphx.op('step', axes=dims_to_step, steps=steps), [out_mgx])
 
     if dims_to_squeeze:
-        # print(" ^^^^^ ")
-        # for i in dims_to_squeeze:
-        #     print(' dims_to_squeeze is ', i)
-        # traceback.print_stack()
         out_mgx = mgx_module.add_instruction(
             migraphx.op('squeeze', axes=dims_to_squeeze), [out_mgx])
 

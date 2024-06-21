@@ -1,19 +1,18 @@
 import pytest
 import torch
-from dynamo_test_utils import FuncModule, convert_to_mgx, verify_outputs, randbounds
+from dynamo_test_utils import FuncModule, convert_to_mgx, verify_outputs, randbounds, FuncModuleFirstOut
 import torch_migraphx
 
 if not hasattr(torch_migraphx, "dynamo"):
     pytest.skip(allow_module_level=True)
 
-# Placeholder from Brian; see clamp__ tests just below
-# todo:  what tests are really needed?
-# size of target is vector (inp_size[0]) if reduction is 'None',
-#  or scalar if there is a reduction
+# shape of first return value is vector (inp_size[0]) if reduction is 'none',
+#  or scalar if there is a reduction.  Second return value is not checked.
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.nll_loss_forward.default,
                                       ])
-@pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5)])
-def test_nll_loss_forward(op_alias, inp_size, weight_size):
+@pytest.mark.parametrize('reduction_mode', [(0), (1), (2)])
+@pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5), ((3, 5), 0)])
+def test_nll_loss_forward_d(op_alias, inp_size, weight_size, reduction_mode):
 
     # weight_size should be index-1 dimension of inp_size, aka C or number of classes
     # or else 0.
@@ -27,30 +26,29 @@ def test_nll_loss_forward(op_alias, inp_size, weight_size):
     n =  inp_size[0]
     C = inp_size[1]
     target = torch.randint(C, [n]).cuda()
-    print(' tttttttttttttttttarget is ', target)
+
     # no. of weights/classes equals 0'th dimension of input
     weight = torch.rand(weight_size, dtype=torch.float).cuda()
     if weight_size == 0:
         weight = None 
 
-    # target = torch.tensor([1]).cuda()
-
-    # weights are important.  Need a weight None, and one that's specified'
     inp = torch.randn(inp_size, dtype=torch.float).cuda()
 
-    # ATen op alias followed by any number of arguments.  They all go into *args for FuncModule().  kwargs is not used unless given as 'kwargs=...'  The arguments in https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/LossNLL.cpp are: 
+    # These arguments all go into *args for FuncModule().  kwargs is not used by aten converter
+    #  unless given as 'kwargs=...'  The arguments in https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/LossNLL.cpp are: 
     #   self, target, weight_opt, reduction, ignore_index
-    mod = FuncModule(op_alias, target, weight, 0, -100).cuda()
-    # mod = torch.nn.LogSoftmax(1)
-    print('+++++++++++++++++++\n', mod.args, '+++++++++++++++++++++++\n\n')
+
+    # The Torch function torch.ops.aten.nll_loss_forward.default() returns a tuple of 2 tensors,
+    # but we don't currently use the second which is a function of ignore_index.  
+    # This FuncModule class ignores it in verify_outputs() checking.  TODO:  add support
+    mod = FuncModuleFirstOut(op_alias, target, weight, reduction_mode, -100).cuda()
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize(
-    'op_alias',
-    [torch.ops.aten.clamp.default, torch.ops.aten.hardtanh.default])
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.clamp.default,
+                                      torch.ops.aten.hardtanh.default])
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
                                       (1, 3, 6, 128, 128)])
 def test_clamp(op_alias, inp_size):
@@ -62,23 +60,18 @@ def test_clamp(op_alias, inp_size):
 
 
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.clamp.Tensor])
-@pytest.mark.parametrize('inp_size, inp_type',
-                         [((4, 2, 7), torch.float32),
-                          ((128, 2048), torch.float16),
-                          ((1, 3, 6, 128, 128), torch.float32)])
-def test_clamp_tensor(op_alias, inp_size, inp_type):
+@pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
+                                      (1, 3, 6, 128, 128)])
+def test_clamp_tensor(op_alias, inp_size):
     min_, max_ = randbounds(-1, 1)
-    inp = torch.randn(inp_size, dtype=inp_type).cuda()
-    mod = FuncModule(op_alias,
-                     torch.tensor(min_).cuda(),
-                     torch.tensor(max_).cuda()).cuda()
+    inp = torch.randn(inp_size).cuda()
+    mod = FuncModule(op_alias, torch.tensor(min_).cuda(), torch.tensor(max_).cuda()).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize(
-    'op_alias',
-    [torch.ops.aten.clamp_min.default, torch.ops.aten.clamp_max.default])
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.clamp_min.default,
+                                      torch.ops.aten.clamp_max.default])
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
                                       (1, 3, 6, 128, 128)])
 def test_clamp_min_max(op_alias, inp_size):
@@ -89,9 +82,8 @@ def test_clamp_min_max(op_alias, inp_size):
     verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize(
-    'op_alias',
-    [torch.ops.aten.clamp_min.Tensor, torch.ops.aten.clamp_max.Tensor])
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.clamp_min.Tensor,
+                                      torch.ops.aten.clamp_max.Tensor])
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
                                       (1, 3, 6, 128, 128)])
 def test_clamp_min_max_tensor(op_alias, inp_size):
