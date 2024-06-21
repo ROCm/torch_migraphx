@@ -26,7 +26,7 @@ class LambdaModule(torch.nn.Module):
     def forward(self, x):
         return self.lambd(x)
 
-# Brian: what does MethodModule do?
+
 class MethodModule(torch.nn.Module):
 
     def __init__(self, method, *args, **kwargs):
@@ -47,14 +47,12 @@ def verify_outputs(mod, mgx_mod, inp, rtol=3e-3, atol=1e-2, equal_nan=False):
     out1, out2 = mod(*inp), mgx_mod(*inp_mgx)
 
     if isinstance(out1, (list, tuple)):
-        print('brian-------list/Tuple Outputs:  ', out1, out2)
         assert len(out1) == len(out2)
         assert all(
             torch.allclose(o1.cpu(), o2.cpu(), rtol=rtol, atol=atol, equal_nan=equal_nan)
             for o1, o2 in zip(out1, out2))
 
     else:
-        print('brian-------Outputs:  ', out1, out2)
         assert torch.allclose(out1.cpu(),
                               out2.cpu(),
                               rtol=rtol,

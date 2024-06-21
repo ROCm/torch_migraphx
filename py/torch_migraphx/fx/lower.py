@@ -221,10 +221,10 @@ class Lowerer:
         atol = lower_setting.correctness_atol
         rtol = lower_setting.correctness_rtol
 
-        # @validate_inference(atol=atol,
-        #                     rtol=rtol,
-        #                     suppress_accuracy_check_failure=lower_setting.
-        #                     suppress_accuracy_check)
+        @validate_inference(atol=atol,
+                            rtol=rtol,
+                            suppress_accuracy_check_failure=lower_setting.
+                            suppress_accuracy_check)
         def lower_mod(module: nn.Module, inputs: Input) -> nn.Module:
             module.eval()
 

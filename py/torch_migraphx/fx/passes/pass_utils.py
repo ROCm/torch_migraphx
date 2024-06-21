@@ -101,8 +101,6 @@ def validate_inference(rtol=None,
                     x = x.reshape(1)
                 if not y.shape:
                     y = y.reshape(1)
-                print('x is ', x)
-                print('y is ', y)
                 accuracy_check = torch.allclose(x, y, **kwargs)
                 if not accuracy_check:
                     _LOGGER.error(
