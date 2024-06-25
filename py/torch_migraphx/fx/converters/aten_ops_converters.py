@@ -41,6 +41,9 @@ from ..mgx_module import MGXInstruction
 _LOGGER = logging.getLogger(__name__)
 
 
+@migraphx_converter(torch.ops.aten.lift_fresh_copy.default)
+@migraphx_converter(torch.ops.aten.lift_fresh.default)
+@migraphx_converter(torch.ops.aten.lift.default)
 @migraphx_converter(torch.ops.aten._to_copy.default)
 @migraphx_converter(torch.ops.aten.clone.default)
 @migraphx_converter(torch.ops.aten.copy.default)
@@ -145,6 +148,22 @@ def aten_ops_select_scatter(mgx_module, node, args, kwargs):
     }
 
     return acc_ops_converters.acc_ops_select_scatter(mgx_module, node, (),
+                                                     acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.scatter_add.default)
+def aten_ops_scatter_add(mgx_module, node, args, kwargs):
+    assert len(args) == 4
+    acc_kwargs = {
+        "input": args[0],
+        "dim": args[1],
+        "index": args[2],
+        "src": args[3],
+        "reduce": "sum",
+        "include_self": True
+    }
+
+    return acc_ops_converters.acc_ops_scatter_reduce(mgx_module, node, (),
                                                      acc_kwargs)
 
 
@@ -394,8 +413,8 @@ def aten_ops_log_softmax(mgx_module, node, args, _kwargs):
     acc_kwargs = {"input": args[0], "dim": args[1]}
 
     return acc_ops_converters.acc_ops_log_softmax(mgx_module, node, (), acc_kwargs)
- 
- 
+
+
 @migraphx_converter(torch.ops.aten.sqrt.default)
 def aten_ops_sqrt(mgx_module, node, args, kwargs):
     assert len(args) == 1

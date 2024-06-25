@@ -39,6 +39,29 @@ def test_batchnorm(op_alias, bn, in_shape):
     verify_outputs(mod, mgx_mod, inp)
 
 
+@pytest.mark.parametrize('op_alias', [
+    torch.ops.aten.batch_norm.default,
+    torch.ops.aten._native_batch_norm_legit_no_training.default
+])
+def test_batchnorm_no_affine(op_alias):
+    bn = torch.nn.BatchNorm2d(num_features=25,
+                              eps=1e-2,
+                              momentum=0.4,
+                              affine=False).cuda().eval()
+
+    inp = torch.randn(8, bn.num_features, 14, 3).cuda()
+    if op_alias == torch.ops.aten._native_batch_norm_legit_no_training.default:
+        mod = FuncModuleFirstOut(op_alias, bn.weight, bn.bias, bn.running_mean,
+                                 bn.running_var, bn.momentum, bn.eps)
+    else:
+        mod = FuncModuleFirstOut(op_alias, bn.weight, bn.bias, bn.running_mean,
+                                 bn.running_var, False, bn.momentum, bn.eps,
+                                 False)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
 @pytest.mark.parametrize('op_alias',
                          [torch.ops.aten.native_group_norm.default])
 @pytest.mark.parametrize('gn', [
