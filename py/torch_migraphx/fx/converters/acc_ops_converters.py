@@ -29,6 +29,7 @@
 import operator
 import warnings
 from typing import cast, Dict, Optional, Sequence, Tuple, Union
+import logging
 
 import migraphx
 import torch
@@ -40,6 +41,8 @@ from torch.fx.node import Argument, Target
 from .utils import *
 from ..utils import torch_dtype_from_mgx, torch_dtype_to_mgx_enum
 from ..mgx_module import MGXInstruction
+
+logger = logging.getLogger(__name__)
 
 
 def broadcast_for_elemwise_op(mgx_module,
@@ -1599,6 +1602,54 @@ def acc_ops_select_scatter(mgx_module, node, args, kwargs):
     return acc_ops_slice_scatter(mgx_module, node, args, new_kwargs)
 
 
+# TODO: Support mean reduction once supported in MIGraphX
+# For now we will default to onnx parsing behaviour:
+# https://github.com/pytorch/pytorch/blob/main/torch/onnx/symbolic_opset16.py#L121
+# TODO: Ideally "include_self" should be supported by backend op. For now we
+# add an additional scatter op to replicate the behaviour
+@migraphx_converter(acc_ops.scatter_reduce)
+def acc_ops_scatter_reduce(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    dim = kwargs["dim"]
+    idx = kwargs["index"]
+    src = kwargs["src"]
+    reduce = kwargs["reduce"]
+    include_self = kwargs["include_self"]
+
+    reduce_map = {
+        "mean": "scatter_none",
+        "sum": "scatter_add",
+        "prod": "scatter_mul",
+        "amax": "scatter_max",
+        "amin": "scatter_min"
+    }
+
+    inp = inp.instr_ref
+    idx = idx.instr_ref
+    if not include_self and reduce != "mean":
+        dtype = get_arg_dtype(inp)
+        neg_inf, pos_inf = get_min_max_val(dtype)
+        base_literals = {"sum": 0, "prod": 1, "amax": neg_inf, "amin": pos_inf}
+
+        idx_shape = idx.shape().lens()
+        lit_mgx = mgx_module.add_literal(
+            torch.tensor(base_literals[reduce], dtype=dtype).numpy())
+        lit_mgx_bc = mgx_module.add_instruction(
+            migraphx.op("multibroadcast", out_lens=list(idx_shape)), [lit_mgx])
+        inp = mgx_module.add_instruction(migraphx.op("scatter_none", axis=dim),
+                                         [inp, idx, lit_mgx_bc])
+    elif reduce == "mean":
+        logger.warning(
+            """Model contains a scatter_reduce node with reduce="mean", """
+            """this type of scatter reduction is not supported in migraphx. """
+            """Default behavior is the same as onnx export, where no reduction"""
+            """is applied in this case.""")
+
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op(reduce_map[reduce], axis=dim),
+                                   [inp, idx, src.instr_ref]))
+
+
 @migraphx_converter(acc_ops.batch_norm)
 def acc_ops_batch_norm(mgx_module, node, args, kwargs):
 
@@ -1929,7 +1980,7 @@ def acc_ops_isinf(mgx_module, node, args, kwargs):
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('isinf'), [inp.instr_ref]))
 
-  
+
 @migraphx_converter(acc_ops.isnan)
 def acc_ops_isnan(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
@@ -1951,16 +2002,11 @@ def acc_ops_nan_to_num(mgx_module, node, args, kwargs):
     if nan_val is None:
         nan_val = 0.0
     if posinf_val is None:
-        try:
-            posinf_val = torch.iinfo(output_dtype).max
-        except TypeError:
-            posinf_val = torch.finfo(output_dtype).max
+        _, posinf_val = get_min_max_val(output_dtype)
 
     if neginf_val is None:
-        try:
-            neginf_val = torch.iinfo(output_dtype).min
-        except TypeError:
-            neginf_val = torch.finfo(output_dtype).min
+        neginf_val, _ = get_min_max_val(output_dtype)
+
     # add all the literals we need
     nan_val_lit = mgx_module.add_literal(torch.tensor([nan_val], dtype=output_dtype).numpy())
     mb_nan_val = mgx_module.add_instruction(migraphx.op('multibroadcast', out_lens=output_lens), [nan_val_lit])
