@@ -159,6 +159,22 @@ def aten_ops_index_select(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_index_select(mgx_module, node, (),
                                                    acc_kwargs)
 
+  
+@migraphx_converter(torch.ops.aten.scatter_add.default)
+def aten_ops_scatter_add(mgx_module, node, args, kwargs):
+    assert len(args) == 4
+    acc_kwargs = {
+        "input": args[0],
+        "dim": args[1],
+        "index": args[2],
+        "src": args[3],
+        "reduce": "sum",
+        "include_self": True
+    }
+
+    return acc_ops_converters.acc_ops_scatter_reduce(mgx_module, node, (),
+                                                     acc_kwargs)
+
 
 @migraphx_converter(torch.ops.aten.maximum.default)
 def aten_ops_maximum(mgx_module, node, args, kwargs):

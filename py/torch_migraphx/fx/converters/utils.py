@@ -218,6 +218,13 @@ def normalize_permutation(ax):
     return [len(ax) + i if i < 0 else i for i in ax]
 
 
+def get_min_max_val(dtype):
+    try:
+        return torch.iinfo(dtype).min, torch.iinfo(dtype).max
+    except TypeError:
+        return torch.finfo(dtype).min, torch.finfo(dtype).max
+
+
 def debug_print(f):
 
     def f_with_print(mgx_module, node, args, kwargs):
