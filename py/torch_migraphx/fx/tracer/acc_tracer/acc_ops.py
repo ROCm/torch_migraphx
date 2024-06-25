@@ -256,6 +256,40 @@ def select_scatter(*, input, src, dim, index):
     return torch.select_scatter(input=input, src=src, dim=dim, index=index)
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.scatter_reduce))
+@register_acc_op_mapping(op_and_target=("call_method", "scatter_reduce"))
+@register_acc_op
+def scatter_reduce(*, input, dim, index, src, reduce, include_self=True):
+    return torch.scatter_reduce(input=input,
+                                dim=dim,
+                                index=index,
+                                src=src,
+                                reduce=reduce,
+                                include_self=include_self)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.scatter_add),
+    arg_replacement_tuples=[("input", "input"), ("dim", "dim"),
+                            ("index", "index"), ("src", "src")],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "scatter_add"),
+    arg_replacement_tuples=[("input", "input"), ("dim", "dim"),
+                            ("index", "index"), ("src", "src")],
+)
+def scatter_add_mapper(node: torch.fx.Node, _: nn.Module):
+    with node.graph.inserting_before(node):
+        kwargs = {k: v for k, v in node.kwargs.items()}
+        kwargs["reduce"] = "sum"
+        kwargs["include_self"] = True
+        new_node = node.graph.create_node("call_function",
+                                          scatter_reduce,
+                                          kwargs=kwargs)
+        new_node.meta = node.meta.copy()
+    return new_node
+
+
 @register_acc_op_mapping(op_and_target=("call_function", nn.functional.linear))
 @register_acc_op
 def linear(*, input, weight, bias):
@@ -1934,7 +1968,7 @@ def ge(*, input, other):
 @register_acc_op
 def le(*, input, other):
     return operator.le(input, other)
-  
+
 
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
 @register_acc_op_mapping(op_and_target=("call_function", torch.isinf))
@@ -1969,3 +2003,17 @@ def any(*, input, dim=None, keepdim=False):
 def any_mapper(node: torch.fx.Node,
                mod: torch.fx.GraphModule) -> torch.fx.Node:
     return reduce_op_mapper(node, mod, max)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.isnan))
+@register_acc_op
+def isnan(*, input):
+    return torch.isnan(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.nan_to_num))
+@register_acc_op
+def nan_to_num(*, input, nan=0.0, posinf=None, neginf=None):
+    return torch.nan_to_num(input=input, nan=nan, posinf=posinf, neginf=neginf)

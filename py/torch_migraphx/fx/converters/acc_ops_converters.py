@@ -29,6 +29,7 @@
 import operator
 import warnings
 from typing import cast, Dict, Optional, Sequence, Tuple, Union
+import logging
 
 import migraphx
 import torch
@@ -40,6 +41,8 @@ from torch.fx.node import Argument, Target
 from .utils import *
 from ..utils import torch_dtype_from_mgx, torch_dtype_to_mgx_enum
 from ..mgx_module import MGXInstruction
+
+logger = logging.getLogger(__name__)
 
 
 def broadcast_for_elemwise_op(mgx_module,
@@ -127,13 +130,13 @@ def acc_ops_clamp(mgx_module, node, args, kwargs):
             'max'] if 'max' in kwargs and kwargs['max'] is not None else 1e16
 
     if isinstance(min_val, MGXInstruction):
-        min_mgx = min_val.instr_ref
+        min_mgx = convert_arg(mgx_module, min_val.instr_ref, dtype)
     else:
         min_mgx = mgx_module.add_literal(
             torch.tensor([min_val], dtype=dtype).numpy())
 
     if isinstance(max_val, MGXInstruction):
-        max_mgx = max_val.instr_ref
+        max_mgx = convert_arg(mgx_module, max_val.instr_ref, dtype)
     else:
         max_mgx = mgx_module.add_literal(
             torch.tensor([max_val], dtype=dtype).numpy())
@@ -1599,12 +1602,73 @@ def acc_ops_select_scatter(mgx_module, node, args, kwargs):
     return acc_ops_slice_scatter(mgx_module, node, args, new_kwargs)
 
 
+# TODO: Support mean reduction once supported in MIGraphX
+# For now we will default to onnx parsing behaviour:
+# https://github.com/pytorch/pytorch/blob/main/torch/onnx/symbolic_opset16.py#L121
+# TODO: Ideally "include_self" should be supported by backend op. For now we
+# add an additional scatter op to replicate the behaviour
+@migraphx_converter(acc_ops.scatter_reduce)
+def acc_ops_scatter_reduce(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    dim = kwargs["dim"]
+    idx = kwargs["index"]
+    src = kwargs["src"]
+    reduce = kwargs["reduce"]
+    include_self = kwargs["include_self"]
+
+    reduce_map = {
+        "mean": "scatter_none",
+        "sum": "scatter_add",
+        "prod": "scatter_mul",
+        "amax": "scatter_max",
+        "amin": "scatter_min"
+    }
+
+    inp = inp.instr_ref
+    idx = idx.instr_ref
+    if not include_self and reduce != "mean":
+        dtype = get_arg_dtype(inp)
+        neg_inf, pos_inf = get_min_max_val(dtype)
+        base_literals = {"sum": 0, "prod": 1, "amax": neg_inf, "amin": pos_inf}
+
+        idx_shape = idx.shape().lens()
+        lit_mgx = mgx_module.add_literal(
+            torch.tensor(base_literals[reduce], dtype=dtype).numpy())
+        lit_mgx_bc = mgx_module.add_instruction(
+            migraphx.op("multibroadcast", out_lens=list(idx_shape)), [lit_mgx])
+        inp = mgx_module.add_instruction(migraphx.op("scatter_none", axis=dim),
+                                         [inp, idx, lit_mgx_bc])
+    elif reduce == "mean":
+        logger.warning(
+            """Model contains a scatter_reduce node with reduce="mean", """
+            """this type of scatter reduction is not supported in migraphx. """
+            """Default behavior is the same as onnx export, where no reduction"""
+            """is applied in this case.""")
+
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op(reduce_map[reduce], axis=dim),
+                                   [inp, idx, src.instr_ref]))
+
+
 @migraphx_converter(acc_ops.batch_norm)
 def acc_ops_batch_norm(mgx_module, node, args, kwargs):
 
     inp, weight, bias = kwargs['input'], kwargs['weight'], kwargs['bias']
     r_mean, r_var = kwargs['running_mean'], kwargs['running_var']
-    assert all(not i.is_quantized()
+
+    if weight is None:
+        weight = MGXInstruction(
+            mgx_module.add_literal(
+                torch.tensor(1,
+                             dtype=get_arg_dtype(r_mean.instr_ref)).numpy()))
+
+    if bias is None:
+        bias = MGXInstruction(
+            mgx_module.add_literal(
+                torch.tensor(0,
+                             dtype=get_arg_dtype(r_mean.instr_ref)).numpy()))
+
+    assert all(i and not i.is_quantized()
                for i in [inp, r_mean, r_var, weight, bias])
     inp, weight, bias = inp.instr_ref, weight.instr_ref, bias.instr_ref
     r_mean, r_var = r_mean.instr_ref, r_var.instr_ref
@@ -1908,7 +1972,7 @@ def acc_ops_le(mgx_module, node, args, kwargs):
                                                      [gt.instr_ref]),
                           bool_output=True)
 
-  
+
 @migraphx_converter(acc_ops.isinf)
 def acc_ops_isinf(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
@@ -1938,3 +2002,56 @@ def acc_ops_max(mgx_module, node, args, kwargs):
                                           [reduce_any])
 
     return MGXInstruction(reduce_any, qparams=qparams)
+
+@migraphx_converter(acc_ops.isnan)
+def acc_ops_isnan(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('isnan'), [inp.instr_ref]))
+
+
+@migraphx_converter(acc_ops.nan_to_num)
+def acc_ops_nan_to_num(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    nan_val = kwargs.get('nan', None)
+    posinf_val = kwargs.get('posinf', None)
+    neginf_val = kwargs.get('neginf', None)
+    input_instr_ref = inp.instr_ref
+    output_dtype = get_arg_dtype(input_instr_ref)
+    output_lens = inp.shape().lens()
+    # where(isnan(x), nan_val, x)
+    if nan_val is None:
+        nan_val = 0.0
+    if posinf_val is None:
+        _, posinf_val = get_min_max_val(output_dtype)
+
+    if neginf_val is None:
+        neginf_val, _ = get_min_max_val(output_dtype)
+
+    # add all the literals we need
+    nan_val_lit = mgx_module.add_literal(torch.tensor([nan_val], dtype=output_dtype).numpy())
+    mb_nan_val = mgx_module.add_instruction(migraphx.op('multibroadcast', out_lens=output_lens), [nan_val_lit])
+    zero_lit = mgx_module.add_literal(torch.tensor([0.], dtype=output_dtype).numpy())
+    mb_zero = mgx_module.add_instruction(migraphx.op('multibroadcast', out_lens=output_lens), [zero_lit])
+    posinf_val_lit = mgx_module.add_literal(torch.tensor([posinf_val], dtype=output_dtype).numpy())
+    mb_posinf_val = mgx_module.add_instruction(migraphx.op('multibroadcast', out_lens=output_lens), [posinf_val_lit])
+    neginf_val_lit = mgx_module.add_literal(torch.tensor([neginf_val], dtype=output_dtype).numpy())
+    mb_neginf_val = mgx_module.add_instruction(migraphx.op('multibroadcast', out_lens=output_lens), [neginf_val_lit])
+
+    # make NaN mask and replace NaN with nan_val
+    isnan = mgx_module.add_instruction(migraphx.op('isnan'), [input_instr_ref])
+    result = mgx_module.add_instruction(migraphx.op('where'), [isnan, mb_nan_val, input_instr_ref])
+    # make +inf and -inf masks. Change +inf to posinf_val and -inf to neginf_val
+    isinf = mgx_module.add_instruction(migraphx.op('isinf'), [input_instr_ref])
+    less = mgx_module.add_instruction(migraphx.op('less'), [input_instr_ref, mb_zero])
+    greater = mgx_module.add_instruction(migraphx.op('greater'), [input_instr_ref, mb_zero])
+    if less.shape().type() != migraphx.shape.type_t.bool_type:
+        less = mgx_module.add_instruction(migraphx.op('convert', target_type=migraphx.shape.type_t.bool_type), [less])
+    if greater.shape().type() != migraphx.shape.type_t.bool_type:
+        greater = mgx_module.add_instruction(migraphx.op('convert', target_type=migraphx.shape.type_t.bool_type), [greater])
+    neginf_mask = mgx_module.add_instruction(migraphx.op('logical_and'), [less, isinf])
+    posinf_mask = mgx_module.add_instruction(migraphx.op('logical_and'), [greater, isinf])
+    result = mgx_module.add_instruction(migraphx.op('where'), [neginf_mask, mb_neginf_val, result])
+    result = mgx_module.add_instruction(migraphx.op('where'), [posinf_mask, mb_posinf_val, result])
+    return MGXInstruction(result)
