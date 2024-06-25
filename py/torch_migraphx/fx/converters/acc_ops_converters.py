@@ -1994,7 +1994,7 @@ def acc_ops_max(mgx_module, node, args, kwargs):
             migraphx.op("convert",
                         target_type=migraphx.shape.type_t.bool_type), [inp])
 
-    reduce_any = mgx_module.add_instruction(migraphx.op('reduce_max', axes=dims),
+    reduce_any = mgx_module.add_instruction(migraphx.op('reduce_any', axes=dims),
                                       [inp])
 
     if not kwargs.get("keepdim", False):
