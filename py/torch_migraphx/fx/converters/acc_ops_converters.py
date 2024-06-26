@@ -1982,7 +1982,7 @@ def acc_ops_isinf(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.any)
-def acc_ops_max(mgx_module, node, args, kwargs):
+def acc_ops_any(mgx_module, node, args, kwargs):
     inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
     in_shape = inp.shape().lens()
     dtype = get_arg_dtype(inp)
