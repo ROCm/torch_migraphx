@@ -12,7 +12,7 @@ if not hasattr(torch_migraphx, "dynamo"):
                                       ])
 @pytest.mark.parametrize('reduction_mode', [(0), (1), (2)])
 @pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5), ((3, 5), 0)])
-def test_nll_loss_forward_d(op_alias, inp_size, weight_size, reduction_mode):
+def test_nll_loss_forward(op_alias, inp_size, weight_size, reduction_mode):
 
     # weight_size should be index-1 dimension of inp_size, aka C or number of classes
     # or else 0.

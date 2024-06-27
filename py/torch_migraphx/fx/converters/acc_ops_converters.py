@@ -41,156 +41,7 @@ from torch.fx.node import Argument, Target
 from .utils import *
 from ..utils import torch_dtype_from_mgx, torch_dtype_to_mgx_enum
 from ..mgx_module import MGXInstruction
-import numbers
 
-   
-###################  shape util operations not in any class
-#  TODO:  expose the same functions in the MigraphX Python API; then we won't need these
-
-# see shape_impl::get_index(size_t i) const
-def get_index(_shape, i):
-    assert isinstance(_shape, migraphx.shape)
-    result = 0
-    s      = 1
-    for k in np.flip(range(_shape.ndim())):
-        stride = _shape.strides()[k]
-        len    = _shape.lens()[k]
-        idx    = (i % (s * len)) / s
-        result += stride * idx
-        s *= len
-    return result
-
-# takes either an integer or vector of integers as input
-def index(_shape, i):
-    assert isinstance(_shape, migraphx.shape)
-    if _shape.dynamic():
-        raise ValueError("SHAPE: index() called on dynamic shape")
-    assert len(_shape.lens()) == len(_shape.strides())
-
-    if not isinstance(i, numbers.Integral):
-        return np.array(i).dot(_shape.strides())
-    if  _shape.standard():
-        return i;
-    return get_index(_shape, i)
-
-# given a set of dimensions (lens), convert a raw pointer offset into a series of coordinates
-# input:  pointer offset in 1-D   
-# output: set of coordinates
-def multi(_shape, idx):
-    assert isinstance(_shape, migraphx.shape)
-    assert idx < _shape.elements()
-    indices = np.empty(len(_shape.lens()), dtype=np.int64)
-    multi_copy(_shape, idx, indices)
-    return indices
-
-# utility for multi.  start is pointer into an np array of size ndim, populate it with indices
-def multi_copy(_shape, idx, start):
-    assert isinstance(_shape, migraphx.shape)
-    tidx = idx
-    assert idx < _shape.elements()
-    assert len(_shape.lens()) <= len(start)
-    for ii in range(len(_shape.lens()) - 1, 0, -1):
-        start[ii] = tidx % _shape.lens()[ii]
-        tidx //= _shape.lens()[ii]
-    start[0] = tidx
-
-# Normalize negative axis values (a Numpy convention)
-def tune_axis(n_dim, axis, op_name="OPERATOR"):
-    if axis < 0:
-        axis += n_dim
-    
-    if axis < 0 or axis >= n_dim:
-        raise migraphx.Exception(op_name.upper() + ": axis is out of range.")
-    
-    return axis
-
-# input: an Migraphx instruction
-def rank(s):
-    assert(isinstance(s, migraphx.instruction_ref))
-    return len(s.shape().lens())
-
- 
-#  Equivalent of the Onnx GatherElements op.  Fetches selected elements of an array, using 
-#  values in a second array as indexes.
- 
-#  Inputs:   data = args[0]     a data tensor.  Can be any shape and data type.
-#            index = args[1]    a tensor of index values.  type int64.  Must have same rank (number of dimensions) as data.
-# 		                        Each dimension must be <= size of corresponding dimension of data.  Each value must be 
-# 							    0 <= value < C where C is dimension "axis" of data, i.e. a valid index value on that axis.
-		   
-#  Attributes:  axis  int64     the axis to gather along.  Must have value -n_dim < axis < ndim where n_dim is rank of data.
-#                               Follows the Numpy convention for negative axis values.
-							  
-#  Output:                      Tensor.  Output has the same shape as index, containing elements from data.  To find the value 
-# 							    to use for a given location, keep all the coordinates the same except for the "axis" 
-# 							    coordinate.  Set that coordinate to the value of "index" at that location, then look at that
-#                               location in data.  
-
-#                               Thus, to find the value for Output at coordinates (x1, x2, ... x(ndim-1))
-							  
-# 							                                Output[x1, x2, ... xA, ... x(ndim-1)] = ?
-															
-# 							    where xA is the coordinate on the "axis" dimension; substitute the value from "index":
-							  
-# 							                                A_ind = index[x1, x2, ... xA, ... x(ndim-1)] 
-# 							    then fetch 
-#                                                             data[x1, x2, ... A_ind, ... x(ndim-1)]							  
-
-def gather_elements(info, axis, args):
-    arg_data = args[0]
-    arg_ind = args[1]
-
-    # todo: how to deal with nonstandard shapes?  The C++ version inserts two make_contiguous()
-    # calls but I think this code doesn't need them.
-
-    # if not arg_data.shape().standard():
-    #     arg_data = info.add_instruction(migraphx.op("contiguous"), [arg_data])
-    
-    data_s = arg_data.shape()
-    ind_s = arg_ind.shape()
-    assert(rank(arg_data) == rank(arg_ind))
-    n_rank = rank(arg_data)
-    tuned_axis = tune_axis(n_rank, axis)
-
-    axis_stride = data_s.strides()[tuned_axis]
-    data_elem_num = data_s.elements()
-
-    # reshape the input data as one dimension for use as input data
-    # to the gather operator
-
-    arg_data = info.add_instruction(migraphx.op("reshape", dims = [data_elem_num]), [arg_data])
-    elem_num = ind_s.elements()
-    ind_index = np.arange(elem_num)
-    # convert index in input indices to that in input data
-    ds = data_s
-    ids = ind_s
-
-    # 0..elements() converted to index in ds
-    data_indices = [index(ds, multi(ids, i)) for i in ind_index]
-
-    # 0..elements() converted to multi-dim coordinates for selected axis
-    vec_axis_ind = [multi(ids, i)[tuned_axis] for i in ind_index]
-
-    l_shape_idx = info.add_literal(torch.tensor(data_indices).numpy().reshape(ind_s.lens()))
-    
-    # the stride of the axis we're selecting in, a scalar.
-    # # created as a tensor full of a single value, not multibroadcast like the c++ ver.
-    stride = np.full(len(data_indices), axis_stride, dtype=np.int64)
-    l_stride = info.add_literal(torch.tensor(stride).numpy().reshape(ind_s.lens()) )
-    l_dim_idx = info.add_literal(torch.tensor( vec_axis_ind).numpy().reshape(ind_s.lens()))
-
-    # multibroadcast and make_contiguous instructions are not necessary here
-    # because l_stride was created 
-    # with contiguous data
-    dim_diff = info.add_instruction(migraphx.op("sub"), [arg_ind, l_dim_idx])
-    #  multiply the unrolled indexes by the stride
-    delta = info.add_instruction(migraphx.op("mul"), [dim_diff, l_stride])
-    selection_ind = info.add_instruction(migraphx.op("add"), [l_shape_idx, delta])
-
-    # Select indices from 1-D array, always axis 0
-    deft = info.add_instruction(migraphx.op('gather', axis=0),
-                                   [arg_data, selection_ind])
-    return deft
 
 def broadcast_for_elemwise_op(mgx_module,
                               node,
@@ -261,8 +112,8 @@ def acc_ops_linear(mgx_module, node, args, kwargs):
 
 # NLL (negative log likelihood loss) converter.  This op assumes data has already been normalized with log_softmax
 # to give meaningful results, although there is no restriction on input values.
-@migraphx_converter(acc_ops.nll_loss_forward)
-def acc_ops_nll_loss_forward(mgx_module, node, args, kwargs):
+@migraphx_converter(acc_ops.nll_loss)
+def acc_ops_nll_loss(mgx_module, node, args, kwargs):
 
     inp = kwargs['input']
     inp_instr_ref = inp.instr_ref

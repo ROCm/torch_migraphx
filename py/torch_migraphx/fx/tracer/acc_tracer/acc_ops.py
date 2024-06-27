@@ -273,15 +273,15 @@ def linear(*, input, weight, bias):
         ("ignore_index" , "ignore_index" , this_arg_is_optional)
     ],
 )
-# defines the list of arguments recognized when we define a forward 
+
+# registering an acc op defines the list of arguments recognized when we define a forward 
 # function in a torch.nn.Module .
 @register_acc_op
-def nll_loss_forward(*, input, target, weight=None, reduce=None, reduction='mean', size_average=None, ignore_index=-100):
+def nll_loss(*, input, target, weight=None, reduce=None, reduction='mean', size_average=None, ignore_index=-100):
     return torch.nn.functional.nll_loss(input=input, target=target, weight=weight,
                                         reduce=reduce, reduction=reduction,
                                         size_average=size_average, ignore_index=ignore_index)
-
-
+    
 @register_acc_op_mapping(
     op_and_target=("call_function", torch.clamp),
     arg_replacement_tuples=[

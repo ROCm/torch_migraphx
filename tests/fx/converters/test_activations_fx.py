@@ -4,8 +4,9 @@ from fx_test_utils import randbounds, FuncModule, MethodModule, convert_to_mgx, 
 
 
 # TODO: test with 3 or more dimensions
+@pytest.mark.parametrize('reduction', [('mean'), ('sum'), ('none')])
 @pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5), ((3, 5), 0)])
-def test_nll_loss_forward_fx(inp_size, weight_size):
+def test_nll_loss_forward(inp_size, weight_size, reduction):
     # weight_size should be either inp_size[1], aka C or number of classes
     # or else 0.
     # if weight_size = 0 , then pass weight=None, module should default weights to 1
@@ -24,19 +25,11 @@ def test_nll_loss_forward_fx(inp_size, weight_size):
     if weight_size == 0:
         weight = None
 
-
     inp = torch.randn(inp_size, dtype=torch.float).cuda()
-
-    mod1 = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
-                       reduction = 'mean', ignore_index = -100)
-    mod2 = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
-                       reduction = 'sum', ignore_index = -100)
-    mod3 = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
-                       reduction = 'none', ignore_index = -100)
-
-    for mod in [mod1, mod2, mod3]:
-        mgx_mod = convert_to_mgx(mod, [inp])
-        verify_outputs(mod, mgx_mod, [inp])
+    mod = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
+                       reduction = reduction, ignore_index = -100)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, [inp])
 
 
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
