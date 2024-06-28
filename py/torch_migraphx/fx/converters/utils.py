@@ -345,11 +345,11 @@ def gather_elements(info, axis, args):
     arg_data = args[0]
     arg_ind = args[1]
 
-    # todo: how to deal with nonstandard shapes?  The C++ version inserts two make_contiguous()
-    # calls but I think this code doesn't need them.
-
-    # if not arg_data.shape().standard():
-    #     arg_data = info.add_instruction(migraphx.op("contiguous"), [arg_data])
+    # Convert argument inputs to std. shape and contiguous memory if necessary; may reallocate and copy data
+    if not arg_data.shape().standard():
+        arg_data = info.add_instruction(migraphx.op("contiguous"), [arg_data])
+    if not arg_ind.shape().standard():
+        arg_ind = info.add_instruction(migraphx.op("contiguous"), [arg_ind])
     
     data_s = arg_data.shape()
     ind_s = arg_ind.shape()

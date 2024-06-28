@@ -6,7 +6,7 @@ from fx_test_utils import randbounds, FuncModule, MethodModule, convert_to_mgx, 
 # TODO: test with 3 or more dimensions
 @pytest.mark.parametrize('reduction', [('mean'), ('sum'), ('none')])
 @pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5), ((3, 5), 0)])
-def test_nll_loss_forward(inp_size, weight_size, reduction):
+def test_nll_loss(inp_size, weight_size, reduction):
     # weight_size should be either inp_size[1], aka C or number of classes
     # or else 0.
     # if weight_size = 0 , then pass weight=None, module should default weights to 1
