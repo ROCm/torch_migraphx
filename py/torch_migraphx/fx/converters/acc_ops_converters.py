@@ -1671,6 +1671,23 @@ def acc_ops_select_scatter(mgx_module, node, args, kwargs):
     return acc_ops_slice_scatter(mgx_module, node, args, new_kwargs)
 
 
+@migraphx_converter(acc_ops.index_select)
+def acc_ops_index_select(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    dim = kwargs["dim"]
+    idx = kwargs["index"]
+    in_shape = inp.shape().lens()
+
+    slices = [slice(None, None, None) for _ in in_shape]
+    slices[dim] = idx
+
+    return acc_ops_getitem(mgx_module,
+                           node, (),
+                           kwargs={
+                               'input': inp,
+                               'idx': slices
+                           })
+
 # TODO: Support mean reduction once supported in MIGraphX
 # For now we will default to onnx parsing behaviour:
 # https://github.com/pytorch/pytorch/blob/main/torch/onnx/symbolic_opset16.py#L121
