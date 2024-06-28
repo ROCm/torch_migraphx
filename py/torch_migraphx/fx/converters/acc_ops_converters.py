@@ -34,6 +34,7 @@ import logging
 import migraphx
 import torch
 import numpy as np
+import traceback
 
 from ..converter_registry import migraphx_converter
 from ..tracer.acc_tracer import acc_ops
@@ -110,6 +111,74 @@ def acc_ops_linear(mgx_module, node, args, kwargs):
                                              [out_mgx, b_mgx])
 
     return MGXInstruction(out_mgx)
+
+
+# NLL (negative log likelihood loss) converter.  This op assumes data has already been normalized with log_softmax
+# to give meaningful results, although there is no restriction on input values.
+@migraphx_converter(acc_ops.nll_loss)
+def acc_ops_nll_loss(mgx_module, node, args, kwargs):
+
+    inp = kwargs['input']
+    inp_instr_ref = inp.instr_ref
+    target = kwargs['target']
+    target_ref = target.instr_ref
+
+    ndims = len(inp_instr_ref.shape().lens())
+    dtype = get_arg_dtype(inp_instr_ref)
+    # weight should be a vector of 1's if not given
+    weight = mgx_module.add_literal(torch.tensor((1), dtype=dtype).numpy()) if kwargs.get('weight') is None else kwargs['weight'].instr_ref
+
+    # negative of input
+    neg_ins = mgx_module.add_instruction(migraphx.op('neg'), [inp_instr_ref])
+    #
+    # match rank of target to the input: unsqueeze
+    target_ref_unsquoze =  mgx_module.add_instruction(
+        migraphx.op('unsqueeze', axes=list(range(1, ndims))), [target_ref])
+
+    # Prepare to select weight for each target
+    # unsqueeze the weight and broadcast to match input shape 
+    #  TODO: this does not work for ndims > 2 (not currently supported)
+    weight_unsquoze = mgx_module.add_instruction(
+            migraphx.op('unsqueeze', axes=list(range(ndims-1))), [weight])
+    weight_bcst = mgx_module.add_instruction(
+            migraphx.op('multibroadcast', out_lens=inp_instr_ref.shape().lens()), [weight_unsquoze])
+
+    # Use target indexes to select weights, one for each class
+    class_axis = 1
+    weight_to_use = gather_elements(mgx_module, class_axis, [weight_bcst, target_ref_unsquoze])
+
+    # Use target indexes to select inputs
+    x_to_use = gather_elements(mgx_module, class_axis, [neg_ins, target_ref_unsquoze])
+
+    # W * X, the weighted input values
+    multiply_ins =  mgx_module.add_instruction(migraphx.op('mul'), [weight_to_use, x_to_use])
+
+    # reduction type.  'none' must be specified; an empty value of Python None defaults to 'mean'
+    if kwargs.get('reduction') == 'none':
+        # Don't reduce; return a 1-d vector
+        squeezed_multiply_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [multiply_ins])
+        return MGXInstruction(squeezed_multiply_ins)
+    else:
+        #
+        #    sum- or mean-reduction case.  Sum W * X, divide by sum of weights, and return a scalar
+        #
+
+        # Reduce, i.e. take the sum of all values 
+        reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(ndims))), [multiply_ins])
+        # squeeze the number of dimensions down to none (i.e. scalar)
+        squeezed_reduce_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [reduce_ins])
+        if kwargs.get('reduction') == 'sum':
+            return MGXInstruction(squeezed_reduce_ins)
+        #
+        # the default reduction type is 'mean'
+        #
+        # Calculate the sum of weights.  weight_to_use is a 1-d vector
+        sum_ins = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=[0]), [weight_to_use])
+
+        # squeeze the sum of weights to scalar
+        squeezed_sum_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [sum_ins])
+        nll_loss_ins = mgx_module.add_instruction(migraphx.op('div'), [squeezed_reduce_ins, squeezed_sum_ins])
+        return MGXInstruction(nll_loss_ins)
 
 
 @migraphx_converter(acc_ops.hardtanh)

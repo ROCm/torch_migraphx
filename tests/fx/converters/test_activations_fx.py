@@ -3,6 +3,35 @@ import torch
 from fx_test_utils import randbounds, FuncModule, MethodModule, convert_to_mgx, verify_outputs
 
 
+# TODO: test with 3 or more dimensions
+@pytest.mark.parametrize('reduction', [('mean'), ('sum'), ('none')])
+@pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5), ((3, 5), 0)])
+def test_nll_loss(inp_size, weight_size, reduction):
+    # weight_size should be either inp_size[1], aka C or number of classes
+    # or else 0.
+    # if weight_size = 0 , then pass weight=None, module should default weights to 1
+
+    # C is the number of classes and weights
+    C = inp_size[1]
+    if len(inp_size) == 2:
+        target_size =  [inp_size[0]]
+    else:  # k-dimensional inputs
+        #   remove C at index 1, then the rest is the shape of target
+        target_size = inp_size[:1] + inp_size[2:]
+    target = torch.randint(C, target_size).cuda()
+
+    # TODO: get correct weight size for k-dimensional case
+    weight = torch.rand(weight_size, dtype=torch.float).cuda()
+    if weight_size == 0:
+        weight = None
+
+    inp = torch.randn(inp_size, dtype=torch.float).cuda()
+    mod = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
+                       reduction = reduction, ignore_index = -100)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, [inp])
+
+
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
                                       (1, 3, 6, 128, 128)])
 def test_clamp(inp_size):
