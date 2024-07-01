@@ -12,6 +12,7 @@ if not hasattr(torch_migraphx, "dynamo"):
     torch.ops.aten.cos.default,
     torch.ops.aten.exp.default,
     torch.ops.aten.neg.default,
+    torch.ops.aten.reciprocal.default,
     torch.ops.aten.sin.default,
     torch.ops.aten.sqrt.default,
 ])
