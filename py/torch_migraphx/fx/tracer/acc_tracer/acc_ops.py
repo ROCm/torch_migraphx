@@ -2002,7 +2002,35 @@ def any(*, input, dim=None, keepdim=False):
 )
 def any_mapper(node: torch.fx.Node,
                mod: torch.fx.GraphModule) -> torch.fx.Node:
-    return reduce_op_mapper(node, mod, max)
+    return reduce_op_mapper(node, mod, any)
+
+
+@register_acc_op
+def all(*, input, dim=None, keepdim=False):
+    if dim is not None:
+        return torch.all(input, dim=dim, keepdim=keepdim)
+    return input.all(dtype=dtype)
+
+
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "all"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.all),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+def all_mapper(node: torch.fx.Node,
+               mod: torch.fx.GraphModule) -> torch.fx.Node:
+    return reduce_op_mapper(node, mod, all)
 
 
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)

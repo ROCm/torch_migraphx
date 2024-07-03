@@ -2003,6 +2003,30 @@ def acc_ops_any(mgx_module, node, args, kwargs):
 
     return MGXInstruction(reduce_any, qparams=qparams)
 
+
+@migraphx_converter(acc_ops.all)
+def acc_ops_all(mgx_module, node, args, kwargs):
+    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
+    in_shape = inp.shape().lens()
+    dtype = get_arg_dtype(inp)
+    dims = list(kwargs['dim']) if 'dim' in kwargs else list(
+        range(len(in_shape)))
+
+    if dtype not in [torch.bool, torch.uint8]:
+        inp = mgx_module.add_instruction(
+            migraphx.op("convert",
+                        target_type=migraphx.shape.type_t.bool_type), [inp])
+
+    reduce_all = mgx_module.add_instruction(migraphx.op('reduce_all', axes=dims),
+                                      [inp])
+
+    if not kwargs.get("keepdim", False):
+        reduce_all = mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
+                                          [reduce_all])
+
+    return MGXInstruction(reduce_all, qparams=qparams)
+
+
 @migraphx_converter(acc_ops.isnan)
 def acc_ops_isnan(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
