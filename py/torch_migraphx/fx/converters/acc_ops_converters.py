@@ -130,25 +130,27 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
 
     # negative of input
     neg_ins = mgx_module.add_instruction(migraphx.op('neg'), [inp_instr_ref])
-    #
-    # match rank of target to the input: unsqueeze
-    target_ref_unsquoze =  mgx_module.add_instruction(
-        migraphx.op('unsqueeze', axes=list(range(1, ndims))), [target_ref])
 
     # Prepare to select weight for each target
     # unsqueeze the weight and broadcast to match input shape 
     #  TODO: this does not work for ndims > 2 (not currently supported)
+    
+    # Insert 1 dimension (batch) before the C value and 
+    # k dimensions, if any, after.
+    axis_list = [0] + [*range(2, ndims)]
+
     weight_unsquoze = mgx_module.add_instruction(
-            migraphx.op('unsqueeze', axes=list(range(ndims-1))), [weight])
+            migraphx.op('unsqueeze', axes=axis_list), [weight])
     weight_bcst = mgx_module.add_instruction(
             migraphx.op('multibroadcast', out_lens=inp_instr_ref.shape().lens()), [weight_unsquoze])
-
-    # Use target indexes to select weights, one for each class
-    class_axis = 1
-    weight_to_use = gather_elements(mgx_module, class_axis, [weight_bcst, target_ref_unsquoze])
-
-    # Use target indexes to select inputs
-    x_to_use = gather_elements(mgx_module, class_axis, [neg_ins, target_ref_unsquoze])
+    
+    target_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]), [target_ref])
+    batch_dim_indices = mgx_module.add_literal(torch.arange(target_ref.shape().elements()).numpy())
+    batch_dim_indices_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]), [batch_dim_indices])
+    gathernd_indices = mgx_module.add_instruction(migraphx.op('concat', axis=-1), [batch_dim_indices_unsq, target_unsq])
+    
+    weight_to_use = mgx_module.add_instruction(migraphx.op('gathernd'), [weight_bcst, gathernd_indices])
+    x_to_use = mgx_module.add_instruction(migraphx.op('gathernd'), [neg_ins, gathernd_indices])
 
     # W * X, the weighted input values
     multiply_ins =  mgx_module.add_instruction(migraphx.op('mul'), [weight_to_use, x_to_use])
@@ -164,7 +166,7 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
         #
 
         # Reduce, i.e. take the sum of all values 
-        reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(ndims))), [multiply_ins])
+        reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(len(multiply_ins.shape().lens())))), [multiply_ins])
         # squeeze the number of dimensions down to none (i.e. scalar)
         squeezed_reduce_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [reduce_ins])
         if kwargs.get('reduction') == 'sum':
