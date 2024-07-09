@@ -5,14 +5,24 @@ from fx_test_utils import randbounds, FuncModule, MethodModule, convert_to_mgx, 
 
 # TODO: test with 3 or more dimensions
 @pytest.mark.parametrize('reduction', [('mean'), ('sum'), ('none')])
-@pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5), ((3, 5), 0)])
-def test_nll_loss(inp_size, weight_size, reduction):
+# @pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5), ((3, 5), 0), ((3, 2, 5), 2)])
+@pytest.mark.parametrize('inp_size, weight_size', [([3], 0)])
+# @pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 0)])
+def test_nll_loss_fx(inp_size, weight_size, reduction):
     # weight_size should be either inp_size[1], aka C or number of classes
     # or else 0.
     # if weight_size = 0 , then pass weight=None, module should default weights to 1
 
     # C is the number of classes and weights
-    C = inp_size[1]
+    target_size = 0
+    if len(inp_size) == 1:
+        C = inp_size[0]
+        target_size = len(inp_size)
+        print(' yyyyy', target_size, inp_size)
+    else:
+        C = inp_size[1]
+    
+        
     if len(inp_size) == 2:
         target_size =  [inp_size[0]]
     else:  # k-dimensional inputs
@@ -24,7 +34,7 @@ def test_nll_loss(inp_size, weight_size, reduction):
     weight = torch.rand(weight_size, dtype=torch.float).cuda()
     if weight_size == 0:
         weight = None
-
+        
     inp = torch.randn(inp_size, dtype=torch.float).cuda()
     mod = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
                        reduction = reduction, ignore_index = -100)

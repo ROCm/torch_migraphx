@@ -128,6 +128,16 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
     # weight should be a vector of 1's if not given
     weight = mgx_module.add_literal(torch.tensor((1), dtype=dtype).numpy()) if kwargs.get('weight') is None else kwargs['weight'].instr_ref
 
+    if ndims == 1:
+        # The single dimension is C.  Insert a 0'th dimension
+        inp_unsq =  mgx_module.add_instruction(
+            migraphx.op('unsqueeze', axes=[0]), [inp_instr_ref])
+        ndims = 2
+        print(' CCCC ', target_ref.shape().lens())
+    else:
+        inp_unsq = inp_instr_ref
+
+
     # negative of input
     neg_ins = mgx_module.add_instruction(migraphx.op('neg'), [inp_instr_ref])
 
@@ -142,11 +152,12 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
     weight_unsquoze = mgx_module.add_instruction(
             migraphx.op('unsqueeze', axes=axis_list), [weight])
     weight_bcst = mgx_module.add_instruction(
-            migraphx.op('multibroadcast', out_lens=inp_instr_ref.shape().lens()), [weight_unsquoze])
+            migraphx.op('multibroadcast', out_lens=inp_unsq.shape().lens()), [weight_unsquoze])
     
     target_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]), [target_ref])
     batch_dim_indices = mgx_module.add_literal(torch.arange(target_ref.shape().elements()).numpy())
     batch_dim_indices_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]), [batch_dim_indices])
+    print(' aaaaa ', batch_dim_indices_unsq.shape().lens(), target_unsq.shape().lens(), target.shape().lens())
     gathernd_indices = mgx_module.add_instruction(migraphx.op('concat', axis=-1), [batch_dim_indices_unsq, target_unsq])
     
     weight_to_use = mgx_module.add_instruction(migraphx.op('gathernd'), [weight_bcst, gathernd_indices])
