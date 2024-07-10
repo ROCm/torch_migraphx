@@ -130,7 +130,7 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
 
     if ndims == 1:
         # The single dimension is C.  Insert a 0'th dimension
-        inp_unsq =  mgx_module.add_instruction(
+        inp_instr_ref =  mgx_module.add_instruction(
             migraphx.op('unsqueeze', axes=[0]), [inp_instr_ref])
         ndims = 2
         print(' CCCC ', target_ref.shape().lens())
@@ -152,7 +152,7 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
     weight_unsquoze = mgx_module.add_instruction(
             migraphx.op('unsqueeze', axes=axis_list), [weight])
     weight_bcst = mgx_module.add_instruction(
-            migraphx.op('multibroadcast', out_lens=inp_unsq.shape().lens()), [weight_unsquoze])
+            migraphx.op('multibroadcast', out_lens=inp_instr_ref.shape().lens()), [weight_unsquoze])
     
     target_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]), [target_ref])
     batch_dim_indices = mgx_module.add_literal(torch.arange(target_ref.shape().elements()).numpy())
