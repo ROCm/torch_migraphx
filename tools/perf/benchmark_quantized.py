@@ -1,5 +1,6 @@
 import sys
 import copy
+from packaging import version
 from argparse import ArgumentParser
 import torch
 import torch_migraphx
@@ -33,6 +34,15 @@ parser.add_argument('--no-compare', action='store_true', default=False)
 parser.add_argument('-i', '--iter', type=int, default=100)
 
 
+def stable_convert_pt2e(model, use_reference_representation=False):
+    if version.parse(torch.__version__) < version.parse("2.2"):
+        return convert_pt2e(model, use_reference_representation)
+    else:
+        return convert_pt2e(model,
+                            use_reference_representation,
+                            fold_quantize=False)
+
+
 def move_q_gm_to_device(gm, device="cuda"):
     gm = gm.to(device)
     for node in gm.graph.nodes:
@@ -64,7 +74,7 @@ def benchmark_torchvision_models(model_name, args):
     with torch.no_grad():
         m(input_fp32)
 
-    q_m = convert_pt2e(m)
+    q_m = stable_convert_pt2e(m)
 
     mgx_mod = torch.compile(q_m,
                             backend='migraphx',
@@ -127,7 +137,7 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
     quantizer = MGXQuantizer(asymmetric_activations=args.asymmetric)
     m = prepare_pt2e(model_export, quantizer)
     m(inp)
-    q_m = convert_pt2e(m)
+    q_m = stable_convert_pt2e(m)
 
     # BUG: There is bug in PyTorch <= 2.2 where torch.compile cannot properly handle
     # functions that create new tensors on a pre-defined device (eg. cpu) that is
