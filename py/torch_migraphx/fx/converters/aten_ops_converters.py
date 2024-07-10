@@ -460,6 +460,13 @@ def aten_ops_log_softmax(mgx_module, node, args, _kwargs):
     return acc_ops_converters.acc_ops_log_softmax(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.reciprocal.default)
+def aten_ops_reciprocal(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+    return acc_ops_converters.acc_ops_reciprocal(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.sqrt.default)
 def aten_ops_sqrt(mgx_module, node, args, kwargs):
     assert len(args) == 1
