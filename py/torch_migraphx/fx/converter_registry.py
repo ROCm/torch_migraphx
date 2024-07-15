@@ -39,7 +39,7 @@ CONVERTERS = {}
 
 def migraphx_converter(target: Target,
                        enabled: bool = True,
-                       min_migraphx_ver=None):
+                       min_migraphx_ver: str = None):
 
     def register_converter(fn):
         CONVERTERS[target] = fn
