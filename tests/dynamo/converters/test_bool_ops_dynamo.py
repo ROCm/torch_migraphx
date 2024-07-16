@@ -19,11 +19,13 @@ def test_where(op_alias):
     verify_outputs(mod, mgx_mod, cond)
 
 
-@pytest.mark.parametrize('op_alias', [torch.ops.aten.masked_fill.Scalar])
-def test_masked_fill(op_alias):
-    inp = torch.randn(32, 43, 11, 2, 1).cuda()
-    mask = torch.randn(1, 43, 11, 1, 1).cuda() > 0
-    value = 2
+@pytest.mark.parametrize('op_alias, value', [
+    (torch.ops.aten.masked_fill.Scalar, 2),
+    (torch.ops.aten.masked_fill.Tensor, torch.tensor(5)),
+])
+def test_masked_fill(op_alias, value):
+    inp = torch.randn(4, 7, 3, 2, 1).cuda()
+    mask = torch.randn(1, 7, 3, 1, 1).cuda() > 0
 
     mod = FuncModule(op_alias, mask, value).cuda()
 
