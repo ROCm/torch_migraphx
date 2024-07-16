@@ -35,6 +35,7 @@ from torch.fx.passes.operator_support import OperatorSupport
 
 from torch_migraphx.fx.converter_registry import CONVERTERS
 from ..utils import print_graph_info
+from ...fx.utils import TYPE_MAP
 
 
 class MGXOperatorSupport(OperatorSupport):
@@ -42,13 +43,17 @@ class MGXOperatorSupport(OperatorSupport):
 
     def __init__(self, support_dict=None):
         super().__init__(support_dict)
-
+        self.supported_dtypes = TYPE_MAP.keys()
         # Keep track of visited ops for support summary
         self.supported = set()
         self.unsupported = set()
 
     def is_node_supported(self, submodules: Mapping[str, torch.nn.Module],
                           node: torch.fx.Node) -> bool:
+        node_meta = node.meta.get("tensor_meta", None)
+        if node_meta and not node_meta.dtype in self.supported_dtypes:
+            self.unsupported.add(f"{node.target} : {node_meta.dtype}")
+            return False
 
         if node.op == "get_attr": return True
 
@@ -83,8 +88,7 @@ def partition(gm: torch.fx.GraphModule,
     """
 
     op_support = MGXOperatorSupport()
-    partitioner = CapabilityBasedPartitioner(gm,
-                                             op_support)
+    partitioner = CapabilityBasedPartitioner(gm, op_support)
 
     partitons = partitioner.propose_partitions()
     fused_gm = partitioner.fuse_partitions(partitons)
@@ -101,7 +105,7 @@ def partition(gm: torch.fx.GraphModule,
         raise RuntimeError(
             f'Found {len(partitons)} partitions, max allowed: {max_partitions}.'
         )
-    
+
     return fused_gm
 
 
