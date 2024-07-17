@@ -14,10 +14,10 @@ def test_where():
     verify_outputs(mod, mgx_mod, cond)
 
 
-def test_masked_fill():
-    inp = torch.randn(32, 43, 11, 2, 1)
-    mask = torch.randn(1, 43, 11, 1, 1) > 0
-    value = 2
+@pytest.mark.parametrize("value", [2, 0.4, torch.tensor(3)])
+def test_masked_fill(value):
+    inp = torch.randn(4, 6, 3, 2, 1)
+    mask = torch.randn(1, 6, 3, 1, 1) > 0
 
     mod = MethodModule("masked_fill", mask=mask, value=value)
 
