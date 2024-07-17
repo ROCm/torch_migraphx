@@ -113,6 +113,7 @@ def aten_ops_where(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(torch.ops.aten.masked_fill.Scalar)
+@migraphx_converter(torch.ops.aten.masked_fill.Tensor)
 def aten_ops_masked_fill(mgx_module, node, args, kwargs):
     assert len(args) == 3
 
