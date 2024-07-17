@@ -1019,7 +1019,7 @@ def aten_ops_isinf(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_isinf(mgx_module, node, (), acc_kwargs)
 
 
-@migraphx_converter(torch.ops.aten.any.default)
+@migraphx_converter(torch.ops.aten.any.default, min_migraphx_ver="2.11.0")
 def aten_ops_any(mgx_module, node, args, _kwargs):
     assert len(args) >= 1
 
@@ -1038,7 +1038,7 @@ def aten_ops_any(mgx_module, node, args, _kwargs):
     return acc_ops_converters.acc_ops_any(mgx_module, node, (), acc_kwargs)
 
 
-@migraphx_converter(torch.ops.aten.all.default)
+@migraphx_converter(torch.ops.aten.all.default, min_migraphx_ver="2.11.0")
 def aten_ops_all(mgx_module, node, args, _kwargs):
     assert len(args) >= 1
 

@@ -1998,8 +1998,8 @@ def acc_ops_isinf(mgx_module, node, args, kwargs):
         mgx_module.add_instruction(migraphx.op('isinf'), [inp.instr_ref]))
 
 
-@migraphx_converter(acc_ops.any)
-def acc_ops_any(mgx_module, node, args, kwargs):
+@migraphx_converter(acc_ops.any, min_migraphx_ver="2.11.0")
+def acc_ops_any(mgx_module, node, _args, kwargs):
     inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
     in_shape = inp.shape().lens()
     dtype = get_arg_dtype(inp)
@@ -2021,8 +2021,8 @@ def acc_ops_any(mgx_module, node, args, kwargs):
     return MGXInstruction(reduce_any, qparams=qparams)
 
 
-@migraphx_converter(acc_ops.all)
-def acc_ops_all(mgx_module, node, args, kwargs):
+@migraphx_converter(acc_ops.all, min_migraphx_ver="2.11.0")
+def acc_ops_all(mgx_module, node, _args, kwargs):
     inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
     in_shape = inp.shape().lens()
     dtype = get_arg_dtype(inp)
