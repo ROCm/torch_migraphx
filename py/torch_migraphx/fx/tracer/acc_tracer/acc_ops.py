@@ -1134,6 +1134,12 @@ def exp(*, input):
 def sqrt(*, input):
     return torch.sqrt(input=input)
 
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.rsqrt))
+@register_acc_op_mapping(op_and_target=("call_method", "rsqrt"))
+@register_acc_op
+def rsqrt(*, input):
+    return torch.rsqrt(input=input)
 
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
 @register_acc_op_mapping(op_and_target=("call_function", torch.reciprocal))
