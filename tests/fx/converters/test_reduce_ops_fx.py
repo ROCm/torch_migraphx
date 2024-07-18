@@ -119,6 +119,7 @@ def test_any(dim, keepdim):
         verify_outputs(mod, mgx_mod, inp)
 
 
+@pytest.mark.skip_min_migraphx_ver("2.11.0")
 @pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False),
                                           ([2, 3], False), (None, None)])
 def test_all(dim, keepdim):
