@@ -124,6 +124,8 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
     target_ref = target.instr_ref
 
     ndims = len(inp_instr_ref.shape().lens())
+    if ndims > 2:
+        raise Exception("nll_loss" + ": k-dimensional inputs > 2 not currently supported.")
     dtype = get_arg_dtype(inp_instr_ref)
     # weight should be a vector of 1's if not given
     weight = mgx_module.add_literal(torch.tensor((1), dtype=dtype).numpy()) if kwargs.get('weight') is None else kwargs['weight'].instr_ref
@@ -133,7 +135,6 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
         inp_instr_ref =  mgx_module.add_instruction(
             migraphx.op('unsqueeze', axes=[0]), [inp_instr_ref])
         ndims = 2
-        print(' CCCC ', target_ref.shape().lens())
     else:
         inp_unsq = inp_instr_ref
 
@@ -176,7 +177,7 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
         #
 
         # Reduce, i.e. take the sum of all values 
-        reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(len(multiply_ins.shape().lens())))), [multiply_ins])
+        reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(multiply_ins.shape().ndim()))), [multiply_ins])
         # squeeze the number of dimensions down to none (i.e. scalar)
         squeezed_reduce_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [reduce_ins])
         if kwargs.get('reduction') == 'sum':
