@@ -23,8 +23,8 @@ def test_reduce_ops_sum_mean(op_alias, dim, keepdim):
 @pytest.mark.parametrize('op_alias', [
     torch.ops.aten.max.dim,
     torch.ops.aten.min.dim,
-    torch.ops.aten.all.dim,
-    torch.ops.aten.any.dim,
+    pytest.param(torch.ops.aten.all.dim, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+    pytest.param(torch.ops.aten.any.dim, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
 ])
 @pytest.mark.parametrize('dim, keepdim', [
     (0, True),
