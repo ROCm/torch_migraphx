@@ -157,7 +157,6 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
     target_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]), [target_ref])
     batch_dim_indices = mgx_module.add_literal(torch.arange(target_ref.shape().elements()).numpy())
     batch_dim_indices_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]), [batch_dim_indices])
-    print(' aaaaa ', batch_dim_indices_unsq.shape().lens(), target_unsq.shape().lens(), target.shape().lens())
     gathernd_indices = mgx_module.add_instruction(migraphx.op('concat', axis=-1), [batch_dim_indices_unsq, target_unsq])
     
     weight_to_use = mgx_module.add_instruction(migraphx.op('gathernd'), [weight_bcst, gathernd_indices])
