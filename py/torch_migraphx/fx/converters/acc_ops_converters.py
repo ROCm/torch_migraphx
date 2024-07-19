@@ -1248,9 +1248,13 @@ def acc_ops_masked_fill(mgx_module, node, args, kwargs):
     inp, mask, value = kwargs["input"], kwargs["mask"], kwargs["value"]
     assert all(not i.is_quantized() for i in (inp, mask))
 
-    dtype = get_arg_dtype(inp)
-    value_mgx = mgx_module.add_literal(
-        torch.tensor(value, dtype=dtype).numpy())
+    dtype = get_arg_dtype(inp.instr_ref)
+    if isinstance(value, MGXInstruction):
+        assert value.shape().scalar()
+        value_mgx = convert_arg(mgx_module, value.instr_ref, dtype)
+    else:
+        value_mgx = mgx_module.add_literal(
+            torch.tensor(value, dtype=dtype).numpy())
 
     new_kwargs = {
         "input": MGXInstruction(value_mgx),
