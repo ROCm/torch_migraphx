@@ -27,6 +27,7 @@ def skip_min_migraphx_version(request, migraphx_version):
     if request.node.get_closest_marker('skip_min_migraphx_ver'):
         min_ver = request.node.get_closest_marker(
             'skip_min_migraphx_ver').args[0]
+        min_ver += ".dev"
         if version.parse(migraphx_version) < version.parse(min_ver):
             pytest.skip(
                 f"Skipping because found MIgraphX version {migraphx_version} < {min_ver}"
