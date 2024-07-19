@@ -326,14 +326,8 @@ def aten_ops_clamp(mgx_module, node, args, _kwargs):
 def aten_ops_nll_loss_forward(mgx_module, node, args, _kwargs):
     assert len(args) == 5
 
-    #TODO: find where this enum comversion is defined in library code
-    reduction = None
-    if args[3] == 0:
-        reduction = 'none'
-    elif args[3] == 1:
-        reduction = 'mean'
-    elif args[3] == 2:
-        reduction = 'sum'
+    reduction_dict = {torch.nn.functional._Reduction.get_enum(k):k for k in ["none", "sum", "mean"]}
+    reduction = reduction_dict[args[3]]
 
     target_lens = args[1].instr_ref.shape().lens()
     ignore_index = args[4]
@@ -344,18 +338,14 @@ def aten_ops_nll_loss_forward(mgx_module, node, args, _kwargs):
         "weight": args[2],
         "reduction": reduction,
         "ignore_index": ignore_index,
-        "reduction_size": True
+        "weight_sum": True
     }
-    # TODO:  to support the reduction_size attrib, insert MIGraphX instructions
-    # to count the number of times the value instruction_size appears in the
-    # targets array, and subtract that number from targets
-    to_ignore = 0
-    targets = args[1].instr_ref.shape().elements() - to_ignore
-    
-    weights_inst  = mgx_module.add_literal(torch.tensor((targets), dtype=torch.int64).numpy())
+    # Use "weight_sum" parameter to flag acc converter to return a tuple. Ideally, it would
+    # be nice to have the computation for that here, but that would mean a lot of repeated
+    # computations
     
     # The acc op returns one tensor, while the aten op returns two tensors
-    return acc_ops_converters.acc_ops_nll_loss(mgx_module, node, (), acc_kwargs), MGXInstruction(weights_inst)
+    return acc_ops_converters.acc_ops_nll_loss(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.relu.default)

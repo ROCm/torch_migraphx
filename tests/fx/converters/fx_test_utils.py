@@ -40,11 +40,14 @@ class MethodModule(torch.nn.Module):
         return m(*self.args, **self.kwargs)
 
 
-def verify_outputs(mod, mgx_mod, inp, rtol=3e-3, atol=1e-2, equal_nan=False):
+def verify_outputs(mod, mgx_mod, inp, rtol=3e-3, atol=1e-2, equal_nan=False, scalar=False):
     if not isinstance(inp, (list, tuple)):
         inp = (inp, )
     inp_mgx = [i.cuda() for i in inp]
     out1, out2 = mod(*inp), mgx_mod(*inp_mgx)
+    if scalar:
+        out1 = out1.squeeze()
+        out2 = out2.squeeze()
 
     if isinstance(out1, (list, tuple)):
         assert len(out1) == len(out2)
