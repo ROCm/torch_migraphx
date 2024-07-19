@@ -34,7 +34,6 @@ import logging
 import migraphx
 import torch
 import numpy as np
-import traceback
 
 from ..converter_registry import migraphx_converter
 from ..tracer.acc_tracer import acc_ops
