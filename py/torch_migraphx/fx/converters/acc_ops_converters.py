@@ -310,6 +310,13 @@ def acc_ops_log(mgx_module, node, args, kwargs):
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('log'), [inp.instr_ref]))
 
+@migraphx_converter(acc_ops.log2)
+def acc_ops_log2(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    assert not inp.is_quantized()
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('log2'), [inp.instr_ref]))
+
 
 @migraphx_converter(acc_ops.matmul)
 def acc_ops_matmul(mgx_module, node, args, kwargs):
