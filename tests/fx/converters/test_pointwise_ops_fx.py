@@ -71,7 +71,7 @@ def test_unary_func(oper):
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
 
 
-@pytest.mark.parametrize('oper', [torch.log, torch.log1p])
+@pytest.mark.parametrize('oper', [torch.log, torch.log1p, torch.log2])
 def test_log(oper):
     inp = torch.abs(torch.randn(2, 9, 11, 1))
     mod = FuncModule(oper)
