@@ -302,7 +302,27 @@ def scatter_add_mapper(node: torch.fx.Node, _: nn.Module):
 def linear(*, input, weight, bias):
     return nn.functional.linear(input=input, weight=weight, bias=bias)
 
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.nn.functional.nll_loss),
+    arg_replacement_tuples=[
+        ("input", "input"),  
+        ("target", "target"),
+        ("weight",  "weight", this_arg_is_optional),
+        ("size_average", "size_average", this_arg_is_optional),
+        ("reduce", "reduce", this_arg_is_optional),
+        ("reduction", "reduction", this_arg_is_optional),
+        ("ignore_index" , "ignore_index" , this_arg_is_optional)
+    ],
+)
 
+# registering an acc op defines the list of arguments recognized when we define a forward 
+# function in a torch.nn.Module .
+@register_acc_op
+def nll_loss(*, input, target, weight=None, reduce=None, reduction='mean', size_average=None, ignore_index=-100):
+    return torch.nn.functional.nll_loss(input=input, target=target, weight=weight,
+                                        reduce=reduce, reduction=reduction,
+                                        size_average=size_average, ignore_index=ignore_index)
+    
 @register_acc_op_mapping(
     op_and_target=("call_function", torch.clamp),
     arg_replacement_tuples=[
