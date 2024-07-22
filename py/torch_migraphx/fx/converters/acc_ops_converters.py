@@ -1954,6 +1954,55 @@ def acc_ops_group_norm(mgx_module, node, args, kwargs):
     return MGXInstruction(norm_mgx)
 
 
+@migraphx_converter(acc_ops.linalg_vector_norm)
+def acc_ops_linalg_vector_norm(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    ord = kwargs["ord"]
+    dim = kwargs["dim"]
+    keepdim = kwargs["keepdim"]
+
+    dtype = get_arg_dtype(inp.instr_ref)
+    axes = list(range(inp.shape().ndim())) if dim is None else [dim]
+
+    abs_x = mgx_module.add_instruction(migraphx.op('abs'), [inp.instr_ref])
+    ord_mgx = mgx_module.add_literal(torch.tensor(ord, dtype=dtype).numpy())
+    ord_bc = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=inp.shape().lens()), [ord_mgx])
+    if ord == 0:
+        # sum(x != 0)
+        non_zero_vals = mgx_module.add_instruction(migraphx.op('greater'),
+                                                   [abs_x, ord_bc])
+        non_zero_numeric = convert_arg(mgx_module, non_zero_vals, dtype)
+        out = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=axes),
+                                         [non_zero_numeric])
+    elif ord == torch.inf:
+        # max(abs(x))
+        out = mgx_module.add_instruction(migraphx.op('reduce_max', axes=axes),
+                                         [abs_x])
+    elif ord == -torch.inf:
+        # min(abs(x))
+        out = mgx_module.add_instruction(migraphx.op('reduce_min', axes=axes),
+                                         [abs_x])
+    else:
+        # sum(abs(x)^{ord})^{(1 / ord)}
+        pow_x = mgx_module.add_instruction(migraphx.op('pow'), [abs_x, ord_bc])
+        sum_pow_x = mgx_module.add_instruction(
+            migraphx.op('reduce_sum', axes=axes), [pow_x])
+        recip_ord = mgx_module.add_instruction(migraphx.op('recip'), [ord_mgx])
+        recip_ord_bc = mgx_module.add_instruction(
+            migraphx.op('multibroadcast', out_lens=sum_pow_x.shape().lens()),
+            [recip_ord])
+
+        out = mgx_module.add_instruction(migraphx.op('pow'),
+                                         [sum_pow_x, recip_ord_bc])
+
+    if not keepdim:
+        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=axes),
+                                         [out])
+
+    return MGXInstruction(out)
+
+
 @migraphx_converter(acc_ops.new_zeros)
 def acc_ops_new_zeros(mgx_module, node, args, kwargs):
 
