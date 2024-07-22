@@ -744,6 +744,14 @@ def acc_ops_sqrt(mgx_module, node, args, kwargs):
         mgx_module.add_instruction(migraphx.op('sqrt'), [inp.instr_ref]))
 
 
+@migraphx_converter(acc_ops.rsqrt)
+def acc_ops_rsqrt(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    assert not inp.is_quantized()
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('rsqrt'), [inp.instr_ref]))
+
+
 @migraphx_converter(acc_ops.reciprocal)
 def acc_ops_reciprocal(mgx_module, node, args, kwargs):
     inp = kwargs['input']
