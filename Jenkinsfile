@@ -36,7 +36,7 @@ def runTests() {
 pipeline {
     agent { label 'build-only' }
     environment {
-        MIGRAPHX_BRANCH = 'rocm-6.1.0'
+        MIGRAPHX_BRANCH = 'release/rocm-rel-6.2'
     }
     stages {
         stage('matrix') {
