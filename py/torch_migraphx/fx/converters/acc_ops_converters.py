@@ -325,6 +325,16 @@ def acc_ops_abs(mgx_module, node, args, kwargs):
                           qparams=inp.qparams)
 
 
+@migraphx_converter(acc_ops.logical_not)
+def acc_ops_logical_not(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    inp_bool = mgx_module.add_instruction(
+        migraphx.op('convert',  target_type=migraphx.shape.type_t.bool_type),
+        [inp.instr_ref])
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'),
+                                                     [inp_bool]))
+
+
 @migraphx_converter(acc_ops.neg)
 def acc_ops_neg(mgx_module, node, args, kwargs):
     inp = kwargs["input"]

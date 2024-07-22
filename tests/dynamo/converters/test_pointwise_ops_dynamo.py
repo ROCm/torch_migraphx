@@ -23,6 +23,19 @@ def test_unary_func(op_alias):
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
 
 
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.logical_not.default,])
+@pytest.mark.parametrize('input', [
+    [1, 0],
+    [True, False],
+    [1., 0.],
+])
+def test_pointwise_not(op_alias, input):
+    inp = torch.Tensor(input).cuda()
+    mod = FuncModule(op_alias).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.addcmul.default])
 @pytest.mark.parametrize('in_shape, m1_shape, m2_shape, value', [
     ((32, 24), (1, 24), (32, 1), -2),
