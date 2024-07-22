@@ -150,10 +150,9 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
     # unsqueeze the weight and broadcast to match input shape 
     # Insert 1 dimension (batch) before the C value and 
     # k dimensions, if any, after.
-    axes = list(range(ndims))
-    weight_unsq_axes = axes[:1] + axes[2:]
+    axis_list = [0] + [*range(2, ndims)]
     weight_unsquoze = mgx_module.add_instruction(
-            migraphx.op('unsqueeze', axes=weight_unsq_axes), [weight])
+            migraphx.op('unsqueeze', axes=axis_list), [weight])
     weight_bcst = mgx_module.add_instruction(
             migraphx.op('multibroadcast', out_lens=inp_instr_ref.shape().lens()), [weight_unsquoze])
 
