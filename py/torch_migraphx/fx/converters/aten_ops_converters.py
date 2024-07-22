@@ -482,6 +482,13 @@ def aten_ops_sqrt(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_sqrt(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.rsqrt.default)
+def aten_ops_rsqrt(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+    return acc_ops_converters.acc_ops_rsqrt(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.sin.default)
 def aten_ops_sin(mgx_module, node, args, kwargs):
     assert len(args) == 1
@@ -1038,12 +1045,19 @@ def aten_ops_le(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": inp, "other": other}
     return acc_ops_converters.acc_ops_le(mgx_module, node, (), acc_kwargs)
 
+  
+@migraphx_converter(torch.ops.aten.floor.default)
+def aten_ops_floor(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+
+    return acc_ops_converters.acc_ops_floor(mgx_module, node, (), acc_kwargs)
+
 
 @migraphx_converter(torch.ops.aten.logical_not.default)
 def aten_ops_logical_not(mgx_module, node, args, kwargs):
     assert len(args) == 1
     acc_kwargs = {"input": args[0]}
-
     return acc_ops_converters.acc_ops_logical_not(mgx_module, node, (), acc_kwargs)
 
 

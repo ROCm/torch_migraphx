@@ -62,6 +62,7 @@ def test_pointwise_method(method):
     torch.square,
     torch.sign,
     torch.sqrt,
+    torch.rsqrt,
 ])
 def test_unary_func(oper):
     inp = torch.randn(2, 9, 11, 1)
