@@ -42,8 +42,8 @@ def test_reduce_ops_dim(op_alias, dim, keepdim):
 @pytest.mark.parametrize('op_alias', [
     torch.ops.aten.max.default,
     torch.ops.aten.min.default,
-    pytest.param(torch.ops.aten.all.dim, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
-    pytest.param(torch.ops.aten.any.dim, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+    pytest.param(torch.ops.aten.all.default, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+    pytest.param(torch.ops.aten.any.default, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
 ])
 def test_reduce_ops_no_param(op_alias):
     inp = torch.randn(32, 43, 11, 2, 12).cuda()
