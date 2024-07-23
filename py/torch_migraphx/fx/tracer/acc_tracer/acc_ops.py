@@ -2016,7 +2016,7 @@ def any_mapper(node: torch.fx.Node,
 def all(*, input, dim=None, keepdim=False):
     if dim is not None:
         return torch.all(input, dim=dim, keepdim=keepdim)
-    return input.all(dtype=dtype)
+    return input.all()
 
 
 @register_custom_acc_mapper_fn(
