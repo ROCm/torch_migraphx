@@ -1984,14 +1984,7 @@ def isinf(*, input):
     return torch.isinf(input=input)
 
 
-@register_acc_op
-def any(*, input, dim=None, keepdim=False):
-    if dim is not None:
-        return torch.any(input, dim=dim, keepdim=keepdim)
-    return input.any(dtype=dtype)
-
-
-@register_custom_acc_mapper_fn(
+@register_acc_op_mapping(
     op_and_target=("call_method", "any"),
     arg_replacement_tuples=[
         ("input", "input"),
@@ -1999,7 +1992,7 @@ def any(*, input, dim=None, keepdim=False):
         ("keepdim", "keepdim", this_arg_is_optional),
     ],
 )
-@register_custom_acc_mapper_fn(
+@register_acc_op_mapping(
     op_and_target=("call_function", torch.any),
     arg_replacement_tuples=[
         ("input", "input"),
@@ -2007,19 +2000,14 @@ def any(*, input, dim=None, keepdim=False):
         ("keepdim", "keepdim", this_arg_is_optional),
     ],
 )
-def any_mapper(node: torch.fx.Node,
-               mod: torch.fx.GraphModule) -> torch.fx.Node:
-    return reduce_op_mapper(node, mod, any)
-
-
 @register_acc_op
-def all(*, input, dim=None, keepdim=False):
+def any(*, input, dim=None, keepdim=False):
     if dim is not None:
-        return torch.all(input, dim=dim, keepdim=keepdim)
-    return input.all()
+        return torch.any(input, dim=dim, keepdim=keepdim)
+    return input.any()
 
 
-@register_custom_acc_mapper_fn(
+@register_acc_op_mapping(
     op_and_target=("call_method", "all"),
     arg_replacement_tuples=[
         ("input", "input"),
@@ -2027,7 +2015,7 @@ def all(*, input, dim=None, keepdim=False):
         ("keepdim", "keepdim", this_arg_is_optional),
     ],
 )
-@register_custom_acc_mapper_fn(
+@register_acc_op_mapping(
     op_and_target=("call_function", torch.all),
     arg_replacement_tuples=[
         ("input", "input"),
@@ -2035,9 +2023,11 @@ def all(*, input, dim=None, keepdim=False):
         ("keepdim", "keepdim", this_arg_is_optional),
     ],
 )
-def all_mapper(node: torch.fx.Node,
-               mod: torch.fx.GraphModule) -> torch.fx.Node:
-    return reduce_op_mapper(node, mod, all)
+@register_acc_op
+def all(*, input, dim=None, keepdim=False):
+    if dim is not None:
+        return torch.all(input, dim=dim, keepdim=keepdim)
+    return input.all()
 
 
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)

@@ -1021,6 +1021,7 @@ def aten_ops_isinf(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(torch.ops.aten.any.default, min_migraphx_ver="2.11.0")
+@migraphx_converter(torch.ops.aten.any.dim, min_migraphx_ver="2.11.0")
 def aten_ops_any(mgx_module, node, args, _kwargs):
     assert len(args) >= 1
 
@@ -1040,6 +1041,7 @@ def aten_ops_any(mgx_module, node, args, _kwargs):
 
 
 @migraphx_converter(torch.ops.aten.all.default, min_migraphx_ver="2.11.0")
+@migraphx_converter(torch.ops.aten.all.dim, min_migraphx_ver="2.11.0")
 def aten_ops_all(mgx_module, node, args, _kwargs):
     assert len(args) >= 1
 

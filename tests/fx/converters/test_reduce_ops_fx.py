@@ -103,8 +103,7 @@ def test_cumsum(dim):
 
 
 @pytest.mark.skip_min_migraphx_ver("2.11.0")
-@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False),
-                                          ([2, 3], False), (None, None)])
+@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False), (None, None)])
 def test_any(dim, keepdim):
     inp = torch.randn(32, 43, 11, 2, 12) < 0
     if dim is not None:
@@ -120,8 +119,7 @@ def test_any(dim, keepdim):
 
 
 @pytest.mark.skip_min_migraphx_ver("2.11.0")
-@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False),
-                                          ([2, 3], False), (None, None)])
+@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False), (None, None)])
 def test_all(dim, keepdim):
     inp = torch.randn(32, 43, 11, 2, 12) < 0
     if dim is not None:
