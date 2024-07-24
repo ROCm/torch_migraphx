@@ -62,6 +62,7 @@ def test_pointwise_method(method):
     torch.square,
     torch.sign,
     torch.sqrt,
+    torch.rsqrt,
 ])
 def test_unary_func(oper):
     inp = torch.randn(2, 9, 11, 1)
@@ -69,6 +70,19 @@ def test_unary_func(oper):
     mod = FuncModule(oper)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+@pytest.mark.parametrize('oper', [torch.logical_not,])
+@pytest.mark.parametrize('input', [
+    [1, 0],
+    [True, False],
+    [1., 0.],
+])
+def test_pointwise_not(oper, input):
+    inp = torch.Tensor(input)
+    mod = FuncModule(oper)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
 
 
 @pytest.mark.parametrize('oper', [torch.log, torch.log1p])
