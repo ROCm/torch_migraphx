@@ -2103,7 +2103,7 @@ def acc_ops_any(mgx_module, node, _args, kwargs):
     inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
     in_shape = inp.shape().lens()
     dtype = get_arg_dtype(inp)
-    dims = list(kwargs['dim']) if 'dim' in kwargs else list(
+    dims = [kwargs['dim']] if kwargs.get("dim") else list(
         range(len(in_shape)))
 
     if dtype not in [torch.bool, torch.uint8]:
@@ -2126,7 +2126,7 @@ def acc_ops_all(mgx_module, node, _args, kwargs):
     inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
     in_shape = inp.shape().lens()
     dtype = get_arg_dtype(inp)
-    dims = list(kwargs['dim']) if 'dim' in kwargs else list(
+    dims = [kwargs['dim']] if kwargs.get("dim") else list(
         range(len(in_shape)))
 
     if dtype not in [torch.bool, torch.uint8]:
