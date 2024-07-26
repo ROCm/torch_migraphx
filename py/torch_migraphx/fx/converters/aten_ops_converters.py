@@ -1085,6 +1085,46 @@ def aten_ops_isinf(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_isinf(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.any.default, min_migraphx_ver="2.11.0")
+@migraphx_converter(torch.ops.aten.any.dim, min_migraphx_ver="2.11.0")
+def aten_ops_any(mgx_module, node, args, _kwargs):
+    assert len(args) >= 1
+
+    acc_kwargs = {
+        "input": args[0],
+        "dim": None,
+        "keepdim": False,
+    }
+
+    if len(args) >= 2:
+        acc_kwargs["dim"] = args[1]
+
+    if len(args) >= 3:
+        acc_kwargs["keepdim"] = args[2]
+
+    return acc_ops_converters.acc_ops_any(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.all.default, min_migraphx_ver="2.11.0")
+@migraphx_converter(torch.ops.aten.all.dim, min_migraphx_ver="2.11.0")
+def aten_ops_all(mgx_module, node, args, _kwargs):
+    assert len(args) >= 1
+
+    acc_kwargs = {
+        "input": args[0],
+        "dim": None,
+        "keepdim": False,
+    }
+
+    if len(args) >= 2:
+        acc_kwargs["dim"] = args[1]
+
+    if len(args) >= 3:
+        acc_kwargs["keepdim"] = args[2]
+
+    return acc_ops_converters.acc_ops_all(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.isnan.default)
 def aten_ops_isnan(mgx_module, node, args, _kwargs):
     assert len(args) == 1
