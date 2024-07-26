@@ -193,6 +193,45 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
         return MGXInstruction(nll_loss_ins)
 
 
+# @migraphx_converter(torchvision.ops.roi_align.roi_align)
+@migraphx_converter(acc_ops.roi_align)
+def acc_ops_roi_align(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    inp_instr_ref = inp.instr_ref
+    boxes_ref = kwargs['boxes'].instr_ref
+    
+    # boxes_ins = kwargs['boxes'].instr_ref
+    # print(type(kwargs), kwargs, ' nnnnn')
+    # scale = kwargs['spatial_scale']
+    
+    print(' YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY ', inp_instr_ref.shape().lens(), boxes_ref.shape().lens())
+    
+    #  Round start/end locations
+    #  roi_start_w = offset_rois[1] * spatial_scale - static_cast<T>(0.5);
+
+
+    # auto x    = mm->add_parameter("x", sx);
+    # auto rois = mm->add_parameter("rois", srois);
+    # auto bi   = mm->add_parameter("batch_ind", sbi);
+
+    # // Due to the onnx model using opset 12, the coordinate_transformation_mode should be set to
+    # // output_half_pixel
+    
+    # auto r = mm->add_instruction(
+    #     migraphx::make_op("roialign", {{"coordinate_transformation_mode", "output_half_pixel"}}),
+    #     inp_instr_ref,
+    #     rois,
+    #     bi);
+    # mm->add_return({r});
+    
+    roialign_ins = mgx_module.add_instruction(
+        migraphx.op('roialign', coordinate_transformation_mode="output_half_pixel"), 
+                    [inp_instr_ref, boxes_ref,])
+    
+    
+    return MGXInstruction(boxes_ref)
+
+
 @migraphx_converter(acc_ops.hardtanh)
 @migraphx_converter(acc_ops.clamp)
 def acc_ops_clamp(mgx_module, node, args, kwargs):

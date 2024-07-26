@@ -98,6 +98,7 @@ class MGXModule(torch.nn.Module):
         self.initialized = True
 
         if not self.program.is_compiled():
+            migraphx.save(self.program, "roialign_bug_program.mxr")
             if self.quantize_fp16:
                 migraphx.quantize_fp16(self.program)
 
@@ -134,10 +135,12 @@ class MGXModule(torch.nn.Module):
                     "however, this will add extra overhead if running a performance benckmark."
                 )
                 inp_val = inp_val.cuda()
+                print(' FFFFF ', inp_name, inp_val)
+                print(self.program)
 
             self.mgx_buffers[inp_name] = mgx_argument_from_ptr(
                 inp_val.data_ptr(), mgx_shape)
-
+        
         curr_stream = torch.cuda.current_stream()
         outs = self.program.run_async(self.mgx_buffers,
                                       curr_stream.cuda_stream, HIPSTREAMTYPE)

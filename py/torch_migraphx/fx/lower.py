@@ -53,6 +53,7 @@ Input = Sequence[Any]
 
 
 def to_device(x, device):
+    print(' ddddddddddddddd ', x, device)
     if isinstance(x, torch.Tensor):
         return x.to(device)
     elif isinstance(x, (tuple, list)):
@@ -86,6 +87,8 @@ def lower_to_mgx(module: nn.Module,
     Returns:
         A SplitModule object containing MGXModule (lowered graphs) and torch.fx.GraphModule (unsupported graphs) objects.
     """
+    for x in input:
+        print(' OOOOOOOOOOOOOOOOOOOO ', x, min_acc_module_size)
     module = module.cpu().eval()
     input = [to_device(x, "cpu") for x in input]
     lower_setting = LowerSetting(

@@ -321,6 +321,20 @@ def aten_ops_clamp(mgx_module, node, args, _kwargs):
         acc_kwargs["max"] = args[2] if len(args) == 3 else None
     return acc_ops_converters.acc_ops_clamp(mgx_module, node, (), acc_kwargs)
 
+@migraphx_converter(torch.ops.torchvision.roi_align.default)
+def aten_ops_roi_align(mgx_module, node, args, _kwargs):
+    print('  UUUUUUUUUUUUUUUUUUUUUUU  you hit aten ops ', len(args), args)
+    assert len(args) >= 3
+    acc_kwargs = {
+        "input": args[0],
+        "boxes": args[1],
+        "output_size": args[2]
+    }    
+    acc_kwargs["spatial_scale"] = args[3] if len(args) >= 4 else None
+    acc_kwargs["sampling_ratio"] = args[4] if len(args) >= 5 else None
+    acc_kwargs["aligned"] = args[5] if len(args) >= 6 else None
+    return acc_ops_converters.acc_ops_roi_align(mgx_module, node, (), acc_kwargs)
+
 
 @migraphx_converter(torch.ops.aten.nll_loss_forward.default)
 def aten_ops_nll_loss_forward(mgx_module, node, args, _kwargs):

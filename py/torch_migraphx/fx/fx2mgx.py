@@ -82,6 +82,7 @@ class MGXInterpreter(torch.fx.Interpreter):
         args, kwargs = self.fetch_args_kwargs_from_env(n)
         assert isinstance(args, tuple)
         assert isinstance(kwargs, dict)
+        print(' RRRRR ', args)
         return getattr(self, n.op)(n, args, kwargs)
 
     def placeholder(self, node, args, kwargs):

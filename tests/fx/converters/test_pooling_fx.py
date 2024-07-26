@@ -1,6 +1,22 @@
 import pytest
 import torch
+import torchvision
 from fx_test_utils import convert_to_mgx, verify_outputs
+
+
+@pytest.mark.parametrize(
+    "input, boxes, output_size", [((1, 2, 3, 3),  ([[0, 1.1, 1.2,  0.6, 2.6]]), [2, 2])]
+    )
+def test_roi_align(input, boxes, output_size):
+    inp = torch.randn(input)
+    mod = torchvision.ops.roi_align(input=inp, boxes=boxes, 
+                output_size=output_size,
+                spatial_scale=1.,
+                sampling_ratio=1,
+                aligned=True)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
 
 
 @pytest.mark.parametrize(

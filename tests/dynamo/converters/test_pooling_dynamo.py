@@ -6,6 +6,7 @@ import torch_migraphx
 if not hasattr(torch_migraphx, "dynamo"):
     pytest.skip(allow_module_level=True)
 
+# TODO:  roi_align test
 
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.avg_pool2d.default])
 @pytest.mark.parametrize(
