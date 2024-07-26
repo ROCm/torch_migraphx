@@ -49,7 +49,7 @@ def migraphx_converter(target: Target,
         return fn
 
     if (min_migraphx_ver and version.parse(MIGRAPHX_VERSION)
-            < version.parse(min_migraphx_ver)):
+            < version.parse(min_migraphx_ver + ".dev")):
         return disable_converter
 
     if enabled:

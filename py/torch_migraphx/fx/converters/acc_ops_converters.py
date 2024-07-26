@@ -112,6 +112,87 @@ def acc_ops_linear(mgx_module, node, args, kwargs):
     return MGXInstruction(out_mgx)
 
 
+# NLL (negative log likelihood loss) converter.  This op assumes data has already been normalized with log_softmax
+# to give meaningful results, although there is no restriction on input values.
+@migraphx_converter(acc_ops.nll_loss)
+def acc_ops_nll_loss(mgx_module, node, args, kwargs):
+
+    inp = kwargs['input']
+    inp_instr_ref = inp.instr_ref
+    target = kwargs['target']
+    target_ref = target.instr_ref
+
+    ndims = len(inp_instr_ref.shape().lens())
+    if ndims > 2:
+        raise Exception("nll_loss" + ": k-dimensional inputs > 2 not currently supported.")
+    dtype = get_arg_dtype(inp_instr_ref)
+    # weight should be a vector of 1's if not given
+    weight = mgx_module.add_literal(torch.tensor((1), dtype=dtype).numpy()) if kwargs.get('weight') is None else kwargs['weight'].instr_ref
+
+    if ndims == 1:
+        # The single dimension is C.  Insert a 0'th dimension
+        inp_instr_ref =  mgx_module.add_instruction(
+            migraphx.op('unsqueeze', axes=[0]), [inp_instr_ref])
+        ndims = 2
+    else:
+        inp_unsq = inp_instr_ref
+
+
+    # negative of input
+    neg_ins = mgx_module.add_instruction(migraphx.op('neg'), [inp_instr_ref])
+
+    # Prepare to select weight for each target
+    # unsqueeze the weight and broadcast to match input shape 
+    #  TODO: this does not work for ndims > 2 (not currently supported)
+    
+    # Insert 1 dimension (batch) before the C value and 
+    # k dimensions, if any, after.
+    axis_list = [0] + [*range(2, ndims)]
+
+    weight_unsquoze = mgx_module.add_instruction(
+            migraphx.op('unsqueeze', axes=axis_list), [weight])
+    weight_bcst = mgx_module.add_instruction(
+            migraphx.op('multibroadcast', out_lens=inp_instr_ref.shape().lens()), [weight_unsquoze])
+    
+    target_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]), [target_ref])
+    batch_dim_indices = mgx_module.add_literal(torch.arange(target_ref.shape().elements()).numpy())
+    batch_dim_indices_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]), [batch_dim_indices])
+    gathernd_indices = mgx_module.add_instruction(migraphx.op('concat', axis=-1), [batch_dim_indices_unsq, target_unsq])
+    
+    weight_to_use = mgx_module.add_instruction(migraphx.op('gathernd'), [weight_bcst, gathernd_indices])
+    x_to_use = mgx_module.add_instruction(migraphx.op('gathernd'), [neg_ins, gathernd_indices])
+
+    # W * X, the weighted input values
+    multiply_ins =  mgx_module.add_instruction(migraphx.op('mul'), [weight_to_use, x_to_use])
+
+    # reduction type.  'none' must be specified; an empty value of Python None defaults to 'mean'
+    if kwargs.get('reduction') == 'none':
+        # Don't reduce; return a 1-d vector
+        squeezed_multiply_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [multiply_ins])
+        return MGXInstruction(squeezed_multiply_ins)
+    else:
+        #
+        #    sum- or mean-reduction case.  Sum W * X, divide by sum of weights, and return a scalar
+        #
+
+        # Reduce, i.e. take the sum of all values 
+        reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(multiply_ins.shape().ndim()))), [multiply_ins])
+        # squeeze the number of dimensions down to none (i.e. scalar)
+        squeezed_reduce_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [reduce_ins])
+        if kwargs.get('reduction') == 'sum':
+            return MGXInstruction(squeezed_reduce_ins)
+        #
+        # the default reduction type is 'mean'
+        #
+        # Calculate the sum of weights.  weight_to_use is a 1-d vector
+        sum_ins = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=[0]), [weight_to_use])
+
+        # squeeze the sum of weights to scalar
+        squeezed_sum_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [sum_ins])
+        nll_loss_ins = mgx_module.add_instruction(migraphx.op('div'), [squeezed_reduce_ins, squeezed_sum_ins])
+        return MGXInstruction(nll_loss_ins)
+
+
 @migraphx_converter(acc_ops.hardtanh)
 @migraphx_converter(acc_ops.clamp)
 def acc_ops_clamp(mgx_module, node, args, kwargs):
@@ -242,6 +323,13 @@ def acc_ops_abs(mgx_module, node, args, kwargs):
     return MGXInstruction(mgx_module.add_instruction(migraphx.op('abs'),
                                                      [inp.instr_ref]),
                           qparams=inp.qparams)
+
+
+@migraphx_converter(acc_ops.logical_not)
+def acc_ops_logical_not(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'), [inp.instr_ref]),
+                          bool_output=True)
 
 
 @migraphx_converter(acc_ops.neg)
@@ -632,6 +720,14 @@ def acc_ops_sqrt(mgx_module, node, args, kwargs):
     assert not inp.is_quantized()
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('sqrt'), [inp.instr_ref]))
+
+
+@migraphx_converter(acc_ops.rsqrt)
+def acc_ops_rsqrt(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    assert not inp.is_quantized()
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('rsqrt'), [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.reciprocal)
@@ -2007,6 +2103,52 @@ def acc_ops_isinf(mgx_module, node, args, kwargs):
 
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('isinf'), [inp.instr_ref]))
+
+
+@migraphx_converter(acc_ops.any, min_migraphx_ver="2.11.0")
+def acc_ops_any(mgx_module, node, _args, kwargs):
+    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
+    in_shape = inp.shape().lens()
+    dtype = get_arg_dtype(inp)
+    dims = [kwargs['dim']] if kwargs.get("dim") else list(
+        range(len(in_shape)))
+
+    if dtype not in [torch.bool, torch.uint8]:
+        inp = mgx_module.add_instruction(
+            migraphx.op("convert",
+                        target_type=migraphx.shape.type_t.bool_type), [inp])
+
+    reduce_any = mgx_module.add_instruction(migraphx.op('reduce_any', axes=dims),
+                                      [inp])
+
+    if not kwargs.get("keepdim", False):
+        reduce_any = mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
+                                          [reduce_any])
+
+    return MGXInstruction(reduce_any, qparams=qparams)
+
+
+@migraphx_converter(acc_ops.all, min_migraphx_ver="2.11.0")
+def acc_ops_all(mgx_module, node, _args, kwargs):
+    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
+    in_shape = inp.shape().lens()
+    dtype = get_arg_dtype(inp)
+    dims = [kwargs['dim']] if kwargs.get("dim") else list(
+        range(len(in_shape)))
+
+    if dtype not in [torch.bool, torch.uint8]:
+        inp = mgx_module.add_instruction(
+            migraphx.op("convert",
+                        target_type=migraphx.shape.type_t.bool_type), [inp])
+
+    reduce_all = mgx_module.add_instruction(migraphx.op('reduce_all', axes=dims),
+                                      [inp])
+
+    if not kwargs.get("keepdim", False):
+        reduce_all = mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
+                                          [reduce_all])
+
+    return MGXInstruction(reduce_all, qparams=qparams)
 
 
 @migraphx_converter(acc_ops.isnan)
