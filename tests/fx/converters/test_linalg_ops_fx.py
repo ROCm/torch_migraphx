@@ -25,3 +25,10 @@ def test_linalg_vector_norm(ord, dim, keepdim):
                      keepdim=keepdim)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+
+def test_linalg_vector_norm_defaults():
+    inp = torch.randn(4, 6, 3, 2)
+    mod = FuncModule(torch.linalg.vector_norm)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)

@@ -17,6 +17,7 @@ if not hasattr(torch_migraphx, "dynamo"):
     (2, 1, True),
     (0.5,),
     (4.3, None, True),
+    (),
 ])
 def test_linalg_vector_norm(op_alias, args):
     inp = torch.randn(9, 3, 6, 2).cuda()
