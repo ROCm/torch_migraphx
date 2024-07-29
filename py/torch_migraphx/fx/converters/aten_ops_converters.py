@@ -689,6 +689,13 @@ def aten_ops_linalg_vector_norm(mgx_module, node, args, kwargs):
         "keepdim": args[3] if len(args) >= 4 else False,
     }
     
+    # Aten op decelaration:
+    # aten::linalg_vector_norm(Tensor self, 
+    #                          Scalar ord=2, 
+    #                          int[1]? dim=None, 
+    #                          bool keepdim=False, 
+    #                          *, 
+    #                          ScalarType? dtype=None) -> Tensor
     # For dim the aten type is: int[1]? dim=None. Unfold int[1] to scalar
     if isinstance(acc_kwargs["dim"], (list, tuple)):
         assert len(acc_kwargs["dim"]) == 1
