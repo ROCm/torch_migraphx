@@ -10,6 +10,7 @@ if not hasattr(torch_migraphx, "dynamo"):
 @pytest.mark.parametrize('op_alias', [
     torch.ops.aten.argmax.default,
     torch.ops.aten.argmax.default,
+    torch.ops.aten.topk.default,
 ])
 @pytest.mark.parametrize('dim, keepdim', [
     (2, True),
