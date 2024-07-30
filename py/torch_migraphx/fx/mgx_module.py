@@ -135,7 +135,6 @@ class MGXModule(torch.nn.Module):
                     "however, this will add extra overhead if running a performance benckmark."
                 )
                 inp_val = inp_val.cuda()
-                print(' FFFFF ', inp_name, inp_val)
                 print(self.program)
 
             self.mgx_buffers[inp_name] = mgx_argument_from_ptr(

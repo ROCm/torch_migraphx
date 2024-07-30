@@ -199,37 +199,28 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     inp_instr_ref = inp.instr_ref
     boxes_ref = kwargs['boxes'].instr_ref
+    output_size = kwargs['output_size']
     
-    # boxes_ins = kwargs['boxes'].instr_ref
-    # print(type(kwargs), kwargs, ' nnnnn')
-    # scale = kwargs['spatial_scale']
+    # TODO: currently hard-coded for a single input
+    batch_indices=(0)
     
-    print(' YYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY ', inp_instr_ref.shape().lens(), boxes_ref.shape().lens())
-    
-    #  Round start/end locations
-    #  roi_start_w = offset_rois[1] * spatial_scale - static_cast<T>(0.5);
+    # "boxes" and "roi" both refer to the same region of interest boxes.
+    roi_indices = mgx_module.add_literal(
+            torch.tensor([1, 2, 3, 4], dtype=torch.int64).numpy())
+    # cut off the 0'th column of boxes
+    boxes2 = mgx_module.add_instruction(
+        migraphx.op('gather', axis=1), [boxes_ref, roi_indices])
 
-
-    # auto x    = mm->add_parameter("x", sx);
-    # auto rois = mm->add_parameter("rois", srois);
-    # auto bi   = mm->add_parameter("batch_ind", sbi);
-
-    # // Due to the onnx model using opset 12, the coordinate_transformation_mode should be set to
-    # // output_half_pixel
-    
-    # auto r = mm->add_instruction(
-    #     migraphx::make_op("roialign", {{"coordinate_transformation_mode", "output_half_pixel"}}),
-    #     inp_instr_ref,
-    #     rois,
-    #     bi);
-    # mm->add_return({r});
+    bi_ref = mgx_module.add_literal(
+            torch.tensor([batch_indices], dtype=torch.int64).numpy())
     
     roialign_ins = mgx_module.add_instruction(
-        migraphx.op('roialign', coordinate_transformation_mode="output_half_pixel"), 
-                    [inp_instr_ref, boxes_ref,])
+        migraphx.op('roialign', coordinate_transformation_mode="output_half_pixel",
+                    output_height=output_size[0],
+                    output_width=output_size[1]), 
+                    [inp_instr_ref, boxes2, bi_ref])
     
-    
-    return MGXInstruction(boxes_ref)
+    return MGXInstruction(roialign_ins)
 
 
 @migraphx_converter(acc_ops.hardtanh)
