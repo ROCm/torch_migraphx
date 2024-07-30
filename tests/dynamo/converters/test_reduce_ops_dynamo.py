@@ -13,7 +13,7 @@ if not hasattr(torch_migraphx, "dynamo"):
 ])
 @pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False),
                                           ([2, 3], False), (2, True)])
-def test_reduce_ops(op_alias, dim, keepdim):
+def test_reduce_ops_sum_mean(op_alias, dim, keepdim):
     inp = torch.randn(32, 43, 11, 2, 12).cuda()
     mod = FuncModule(op_alias, dim, keepdim).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
@@ -23,6 +23,8 @@ def test_reduce_ops(op_alias, dim, keepdim):
 @pytest.mark.parametrize('op_alias', [
     torch.ops.aten.max.dim,
     torch.ops.aten.min.dim,
+    pytest.param(torch.ops.aten.all.dim, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+    pytest.param(torch.ops.aten.any.dim, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
 ])
 @pytest.mark.parametrize('dim, keepdim', [
     (0, True),
@@ -30,7 +32,7 @@ def test_reduce_ops(op_alias, dim, keepdim):
     (3, False),
     (2, True),
 ])
-def test_reduce_maxmin_ops_dim(op_alias, dim, keepdim):
+def test_reduce_ops_dim(op_alias, dim, keepdim):
     inp = torch.randn(32, 43, 11, 2, 12).cuda()
     mod = FuncModule(op_alias, dim, keepdim).cuda()
     mgx_mod = convert_to_mgx(mod, [inp], tracer=acc_tracer)
@@ -40,8 +42,10 @@ def test_reduce_maxmin_ops_dim(op_alias, dim, keepdim):
 @pytest.mark.parametrize('op_alias', [
     torch.ops.aten.max.default,
     torch.ops.aten.min.default,
+    pytest.param(torch.ops.aten.all.default, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+    pytest.param(torch.ops.aten.any.default, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
 ])
-def test_reduce_maxmin_ops_no_param(op_alias):
+def test_reduce_ops_no_param(op_alias):
     inp = torch.randn(32, 43, 11, 2, 12).cuda()
     mod = FuncModule(op_alias).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
