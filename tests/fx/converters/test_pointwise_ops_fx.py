@@ -21,6 +21,7 @@ from fx_test_utils import FuncModule, MethodModule, convert_to_mgx, verify_outpu
     pytest.param(
         torch.floor_divide,
         marks=pytest.mark.skip(reason="trunc_div converter not implemented")),
+    pytest.param(torch.bitwise_and, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
 ])
 def test_pointwise_func(oper):
     inps1 = [torch.randn(4, 7, 3), torch.randn(4, 7, 3)]

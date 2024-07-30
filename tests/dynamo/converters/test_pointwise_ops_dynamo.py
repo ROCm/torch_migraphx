@@ -59,6 +59,8 @@ def test_addcmul(op_alias, in_shape, m1_shape, m2_shape, value):
     torch.ops.aten.mul.Scalar,
     torch.ops.aten.div.Scalar,
     torch.ops.aten.pow.Tensor_Scalar,
+    pytest.param(torch.ops.aten.bitwise_and.Scalar, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+    pytest.param(torch.ops.aten.bitwise_and.Tensor, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
 ])
 @pytest.mark.parametrize('in_shape, other', [
     ((4, 7, 3), 4.2),
@@ -78,6 +80,8 @@ def test_binary_scalar(op_alias, in_shape, other):
     torch.ops.aten.mul.Tensor,
     torch.ops.aten.div.Tensor,
     torch.ops.aten.pow.Tensor_Tensor,
+    pytest.param(torch.ops.aten.bitwise_and.Scalar, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+    pytest.param(torch.ops.aten.bitwise_and.Tensor, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
 ])
 @pytest.mark.parametrize('in_shape, other_shape', [((4, 7, 3), (4, 7, 3)),
                                                    ((4, 7, 3), (1)),
