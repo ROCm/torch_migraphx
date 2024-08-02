@@ -19,7 +19,9 @@ class StackModule(FuncModule):
 class BoolOpModule(FuncModule):
 
     def forward(self, x1, x2):
-        gt = x1.gt(x2)  # Func thats not represented as bool in migraphx
+        # In MIGraphX the output type of logical ops is the same as the input types. 
+        # This tests that the output is properly converted to bool_type
+        gt = x1.gt(x2)
         return self.func(gt, *self.args, **self.kwargs)
 
 
