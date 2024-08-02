@@ -71,13 +71,19 @@ def test_unary_func(oper):
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
 
 
-@pytest.mark.parametrize('oper', [torch.log, torch.log1p, torch.log2])
+@pytest.mark.parametrize('oper', [torch.log, torch.log1p])
 def test_log(oper):
     inp = torch.abs(torch.randn(2, 9, 11, 1))
     mod = FuncModule(oper)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
+@pytest.mark.parametrize('oper', [torch.log2])
+def test_log2(oper):
+    inp = torch.abs(torch.randn(2, 9, 11, 1))
+    mod = FuncModule(oper)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
 
 @pytest.mark.parametrize('oper', [
     torch.sin,

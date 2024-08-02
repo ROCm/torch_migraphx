@@ -1326,7 +1326,6 @@ def log(*, input):
 def log2(*, input):
     return torch.log2(input=input)
 
-
 @register_acc_op_properties(AccOpProperty.pointwise)
 @register_acc_op_mapping(op_and_target=("call_function", torch.pow))
 @register_acc_op_mapping(op_and_target=("call_method", "pow"))

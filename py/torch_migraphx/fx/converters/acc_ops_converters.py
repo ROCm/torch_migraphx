@@ -235,6 +235,21 @@ def acc_ops_fmod(mgx_module, node, args, kwargs):
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('fmod'), [inp, other]))
 
+@migraphx_converter(acc_ops.log2)
+def acc_ops_log2(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    assert not inp.is_quantized()
+
+    ln2_value = torch.tensor(0.693147180559945309)
+    log_inp = MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('log'), [inp.instr_ref]))
+    
+    ln2_instr = mgx_module.add_literal(ln2_value.numpy())
+    ln2_instr = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=log_inp.shape().lens()), [ln2_instr])
+    
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('div'), [log_inp.instr_ref, ln2_instr]))
 
 @migraphx_converter(acc_ops.abs)
 def acc_ops_abs(mgx_module, node, args, kwargs):
