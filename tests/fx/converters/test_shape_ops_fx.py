@@ -16,6 +16,13 @@ class StackModule(FuncModule):
         return self.func([x1, x2, x3], *self.args, **self.kwargs)
 
 
+class BoolOpModule(FuncModule):
+
+    def forward(self, x1, x2):
+        gt = x1.gt(x2)  # Func thats not represented as bool in migraphx
+        return self.func(gt, *self.args, **self.kwargs)
+
+
 @pytest.mark.parametrize('start,end', [(0, -1), (0, 2), (4, -1), (3, 5)])
 def test_flatten(start, end):
     inp = torch.randn(8, 7, 2, 3, 12, 34, 1, 2)
@@ -210,3 +217,38 @@ def test_as_strided(size, new_size, strides, offset):
     for mod in [mod_func, mod_method]:
         mgx_mod = convert_to_mgx(mod, [inp])
         verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('op, kwargs', [
+    (torch.tile, {
+        "dims": (1, 1, 3)
+    }),
+    (torch.flatten, {}),
+    (torch.squeeze, {}),
+    (torch.unsqueeze, {
+        "dim": -1
+    }),
+    (torch.reshape, {
+        "shape": (8, 1)
+    }),
+    (torch.permute, {
+        "dims": (2, 0, 1)
+    }),
+    (torch.chunk, {
+        "chunks": 4,
+        "dim": 1
+    }),
+    (torch.split, {
+        "split_size_or_sections": 2,
+        "dim": 1
+    }),
+    (torch.unbind, {
+        "dim": 0
+    }),
+])
+def test_bool_shape_ops(op, kwargs):
+    i1, i2 = torch.rand(2, 4, 1), torch.rand(2, 4, 1)
+    mod = BoolOpModule(op, **kwargs)
+
+    mgx_mod = convert_to_mgx(mod, [i1, i2])
+    verify_outputs(mod, mgx_mod, [i1, i2])
