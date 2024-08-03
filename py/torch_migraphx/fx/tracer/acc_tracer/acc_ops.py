@@ -616,6 +616,12 @@ def linalg_norm(*, input, ord, dim, keepdim):
     return torch.linalg.norm(input=input, ord=ord, dim=dim, keepdim=keepdim)
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.linalg.vector_norm))
+@register_acc_op
+def linalg_vector_norm(*, input, ord, dim, keepdim):
+    return torch.linalg.vector_norm(input=input, ord=ord, dim=dim, keepdim=keepdim)
+
+
 @register_acc_op_mapping(
     op_and_target=("call_function", torch.cumsum),
     arg_replacement_tuples=[

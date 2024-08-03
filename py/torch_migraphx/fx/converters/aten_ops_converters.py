@@ -681,6 +681,33 @@ def aten_ops_group_norm(mgx_module, node, args, kwargs):
 
     return acc_ops_converters.acc_ops_group_norm(mgx_module, node, (),
                                                  acc_kwargs), None, None
+    
+
+@migraphx_converter(torch.ops.aten.linalg_vector_norm.default)
+def aten_ops_linalg_vector_norm(mgx_module, node, args, kwargs):
+    assert len(args) >= 1
+
+    acc_kwargs = {
+        "input": args[0],
+        "ord": args[1] if len(args) >= 2 else 2,
+        "dim": args[2] if len(args) >= 3 else None,
+        "keepdim": args[3] if len(args) >= 4 else False,
+    }
+    
+    # Aten op decelaration:
+    # aten::linalg_vector_norm(Tensor self, 
+    #                          Scalar ord=2, 
+    #                          int[1]? dim=None, 
+    #                          bool keepdim=False, 
+    #                          *, 
+    #                          ScalarType? dtype=None) -> Tensor
+    # For dim the aten type is: int[1]? dim=None. Unfold int[1] to scalar
+    if isinstance(acc_kwargs["dim"], (list, tuple)):
+        assert len(acc_kwargs["dim"]) == 1
+        acc_kwargs["dim"] = acc_kwargs["dim"][0]
+
+    return acc_ops_converters.acc_ops_linalg_vector_norm(
+        mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.convolution.default)
