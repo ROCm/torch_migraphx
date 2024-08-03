@@ -302,7 +302,27 @@ def scatter_add_mapper(node: torch.fx.Node, _: nn.Module):
 def linear(*, input, weight, bias):
     return nn.functional.linear(input=input, weight=weight, bias=bias)
 
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.nn.functional.nll_loss),
+    arg_replacement_tuples=[
+        ("input", "input"),  
+        ("target", "target"),
+        ("weight",  "weight", this_arg_is_optional),
+        ("size_average", "size_average", this_arg_is_optional),
+        ("reduce", "reduce", this_arg_is_optional),
+        ("reduction", "reduction", this_arg_is_optional),
+        ("ignore_index" , "ignore_index" , this_arg_is_optional)
+    ],
+)
 
+# registering an acc op defines the list of arguments recognized when we define a forward 
+# function in a torch.nn.Module .
+@register_acc_op
+def nll_loss(*, input, target, weight=None, reduce=None, reduction='mean', size_average=None, ignore_index=-100):
+    return torch.nn.functional.nll_loss(input=input, target=target, weight=weight,
+                                        reduce=reduce, reduction=reduction,
+                                        size_average=size_average, ignore_index=ignore_index)
+    
 @register_acc_op_mapping(
     op_and_target=("call_function", torch.clamp),
     arg_replacement_tuples=[
@@ -1134,6 +1154,12 @@ def exp(*, input):
 def sqrt(*, input):
     return torch.sqrt(input=input)
 
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.rsqrt))
+@register_acc_op_mapping(op_and_target=("call_method", "rsqrt"))
+@register_acc_op
+def rsqrt(*, input):
+    return torch.rsqrt(input=input)
 
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
 @register_acc_op_mapping(op_and_target=("call_function", torch.reciprocal))
@@ -1214,6 +1240,13 @@ def mul(*, input, other):
 @register_acc_op
 def abs(*, input):
     return torch.abs(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.logical_not))
+@register_acc_op
+def logical_not(*, input):
+    return torch.logical_not(input=input)
 
 
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
@@ -1986,6 +2019,52 @@ def le(*, input, other):
 @register_acc_op
 def isinf(*, input):
     return torch.isinf(input=input)
+
+
+@register_acc_op_mapping(
+    op_and_target=("call_method", "any"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.any),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def any(*, input, dim=None, keepdim=False):
+    if dim is not None:
+        return torch.any(input, dim=dim, keepdim=keepdim)
+    return input.any()
+
+
+@register_acc_op_mapping(
+    op_and_target=("call_method", "all"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.all),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def all(*, input, dim=None, keepdim=False):
+    if dim is not None:
+        return torch.all(input, dim=dim, keepdim=keepdim)
+    return input.all()
 
 
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)

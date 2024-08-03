@@ -11,16 +11,31 @@ if not hasattr(torch_migraphx, "dynamo"):
     torch.ops.aten.abs.default,
     torch.ops.aten.cos.default,
     torch.ops.aten.exp.default,
+    torch.ops.aten.floor.default,
     torch.ops.aten.neg.default,
     torch.ops.aten.reciprocal.default,
     torch.ops.aten.sin.default,
     torch.ops.aten.sqrt.default,
+    torch.ops.aten.rsqrt.default,
 ])
 def test_unary_func(op_alias):
     inp = torch.randn(2, 9, 11, 1).cuda()
     mod = FuncModule(op_alias).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.logical_not.default,])
+@pytest.mark.parametrize('input', [
+    [1, 0],
+    [True, False],
+    [1., 0.],
+])
+def test_pointwise_not(op_alias, input):
+    inp = torch.Tensor(input).cuda()
+    mod = FuncModule(op_alias).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
 
 
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.addcmul.default])
