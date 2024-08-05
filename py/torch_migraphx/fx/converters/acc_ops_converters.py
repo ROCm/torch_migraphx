@@ -201,24 +201,32 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
     boxes_ref = kwargs['boxes'].instr_ref
     output_size = kwargs['output_size']
     
-    # TODO: currently hard-coded for a single input
-    batch_indices=(0)
-    
     # "boxes" and "roi" both refer to the same region of interest boxes.
-    roi_indices = mgx_module.add_literal(
-            torch.tensor([1, 2, 3, 4], dtype=torch.int64).numpy())
-    # cut off the 0'th column of boxes
-    boxes2 = mgx_module.add_instruction(
-        migraphx.op('gather', axis=1), [boxes_ref, roi_indices])
+    if boxes_ref.shape().lens()[1] == 5:
+        roi_indices = mgx_module.add_literal(
+                torch.tensor([1, 2, 3, 4], dtype=torch.int64).numpy())
+        # split off the 0'th column of boxes
+        boxes2 = mgx_module.add_instruction(
+            migraphx.op('gather', axis=1), [boxes_ref, roi_indices])
+        zero_indices = mgx_module.add_literal(
+                torch.tensor([0,], dtype=torch.int64).numpy())
+        batch_indices = mgx_module.add_instruction(
+            migraphx.op('gather', axis=1), [boxes_ref, zero_indices])
+        batch_indices2 =  mgx_module.add_instruction(
+            migraphx.op('squeeze', axes=0), [batch_indices])
+        
+        batch_indices = batch_indices2
+    elif boxes_ref.shape().lens()[1] == 4:
+        batch_indices=range(boxes_ref.shape().lens()[0])
+        raise RuntimeError('List[Tensor[..] boxes input for roi_align() not currently supported')
+    else:
+        raise RuntimeError('boxes input must be Tensor[K, 5] or List[Tensor[L, 4]]')
 
-    bi_ref = mgx_module.add_literal(
-            torch.tensor([batch_indices], dtype=torch.int64).numpy())
-    
     roialign_ins = mgx_module.add_instruction(
         migraphx.op('roialign', coordinate_transformation_mode="output_half_pixel",
                     output_height=output_size[0],
                     output_width=output_size[1]), 
-                    [inp_instr_ref, boxes2, bi_ref])
+                    [inp_instr_ref, boxes2, batch_indices])
     
     return MGXInstruction(roialign_ins)
 

@@ -64,7 +64,6 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
                                         example_inputs,
                                         trace_joint=False)
     
-    print(' TTTTT ', example_inputs)
     compiled_gm = lower_aten_to_mgx(aten_gm, example_inputs, **kwargs)
     if "save_compiled" in kwargs:
         torch.save(compiled_gm, kwargs["save_compiled"], pickle_protocol=4)
