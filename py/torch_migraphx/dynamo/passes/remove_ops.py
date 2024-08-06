@@ -108,12 +108,9 @@ def remove_const_ops(gm: torch.fx.GraphModule, device: str = "cuda"):
             if node.op == "call_function" and node.target in const_ops.keys():
                 og_node = node
                 size = og_node.meta['tensor_meta'].shape
-                dtype = og_node.meta['tensor_meta'].dtype
-                
-                if node.target == torch.ops.aten.zeros_like.default:
-                    value = 0
-                else:
-                    value = node.args[1]
+                dtype = og_node.meta['tensor_meta'].dtype   
+                value = 0 if node.target == torch.ops.aten.zeros_like.default else node.args[1]
+
                 const_tensor = const_ops[node.target](size,
                                                       value,
                                                       dtype=dtype,
