@@ -124,7 +124,7 @@ def aten_ops_masked_fill(mgx_module, node, args, kwargs):
 
 @migraphx_converter(torch.ops.aten.fill.Scalar)
 @migraphx_converter(torch.ops.aten.fill.Tensor)
-def aten_ops_masked_fill(mgx_module, node, args, kwargs):
+def aten_ops_fill(mgx_module, node, args, kwargs):
     assert len(args) == 2
 
     mask_mgx = MGXInstruction(mgx_module.add_literal(torch.tensor(True).numpy()))
