@@ -461,6 +461,13 @@ def aten_ops_log_softmax(mgx_module, node, args, _kwargs):
     return acc_ops_converters.acc_ops_log_softmax(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.logical_not.default)
+def aten_ops_logical_not(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+    return acc_ops_converters.logical_not(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.reciprocal.default)
 def aten_ops_reciprocal(mgx_module, node, args, kwargs):
     assert len(args) == 1
@@ -669,6 +676,33 @@ def aten_ops_group_norm(mgx_module, node, args, kwargs):
 
     return acc_ops_converters.acc_ops_group_norm(mgx_module, node, (),
                                                  acc_kwargs), None, None
+    
+
+@migraphx_converter(torch.ops.aten.linalg_vector_norm.default)
+def aten_ops_linalg_vector_norm(mgx_module, node, args, kwargs):
+    assert len(args) >= 1
+
+    acc_kwargs = {
+        "input": args[0],
+        "ord": args[1] if len(args) >= 2 else 2,
+        "dim": args[2] if len(args) >= 3 else None,
+        "keepdim": args[3] if len(args) >= 4 else False,
+    }
+    
+    # Aten op decelaration:
+    # aten::linalg_vector_norm(Tensor self, 
+    #                          Scalar ord=2, 
+    #                          int[1]? dim=None, 
+    #                          bool keepdim=False, 
+    #                          *, 
+    #                          ScalarType? dtype=None) -> Tensor
+    # For dim the aten type is: int[1]? dim=None. Unfold int[1] to scalar
+    if isinstance(acc_kwargs["dim"], (list, tuple)):
+        assert len(acc_kwargs["dim"]) == 1
+        acc_kwargs["dim"] = acc_kwargs["dim"][0]
+
+    return acc_ops_converters.acc_ops_linalg_vector_norm(
+        mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.convolution.default)
@@ -1038,13 +1072,20 @@ def aten_ops_le(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": inp, "other": other}
     return acc_ops_converters.acc_ops_le(mgx_module, node, (), acc_kwargs)
 
-
+  
 @migraphx_converter(torch.ops.aten.floor.default)
 def aten_ops_floor(mgx_module, node, args, kwargs):
     assert len(args) == 1
     acc_kwargs = {"input": args[0]}
 
     return acc_ops_converters.acc_ops_floor(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.logical_not.default)
+def aten_ops_logical_not(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+    return acc_ops_converters.acc_ops_logical_not(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.neg.default)
@@ -1069,6 +1110,46 @@ def aten_ops_isinf(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": args[0]}
 
     return acc_ops_converters.acc_ops_isinf(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.any.default, min_migraphx_ver="2.11.0")
+@migraphx_converter(torch.ops.aten.any.dim, min_migraphx_ver="2.11.0")
+def aten_ops_any(mgx_module, node, args, _kwargs):
+    assert len(args) >= 1
+
+    acc_kwargs = {
+        "input": args[0],
+        "dim": None,
+        "keepdim": False,
+    }
+
+    if len(args) >= 2:
+        acc_kwargs["dim"] = args[1]
+
+    if len(args) >= 3:
+        acc_kwargs["keepdim"] = args[2]
+
+    return acc_ops_converters.acc_ops_any(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.all.default, min_migraphx_ver="2.11.0")
+@migraphx_converter(torch.ops.aten.all.dim, min_migraphx_ver="2.11.0")
+def aten_ops_all(mgx_module, node, args, _kwargs):
+    assert len(args) >= 1
+
+    acc_kwargs = {
+        "input": args[0],
+        "dim": None,
+        "keepdim": False,
+    }
+
+    if len(args) >= 2:
+        acc_kwargs["dim"] = args[1]
+
+    if len(args) >= 3:
+        acc_kwargs["keepdim"] = args[2]
+
+    return acc_ops_converters.acc_ops_all(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.isnan.default)
