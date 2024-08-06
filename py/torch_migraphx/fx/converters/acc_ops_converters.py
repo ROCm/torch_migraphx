@@ -201,6 +201,8 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
     boxes_ref = kwargs['boxes'].instr_ref
     output_size = kwargs['output_size']
     
+    spatial_scale = kwargs['spatial_scale'] if kwargs['spatial_scale'] is not None else 1.0
+    
     # "boxes" and "roi" both refer to the same region of interest boxes.
     if boxes_ref.shape().lens()[1] == 5:
         roi_indices = mgx_module.add_literal(
@@ -221,13 +223,19 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
         raise RuntimeError('List[Tensor[..] boxes input for roi_align() not currently supported')
     else:
         raise RuntimeError('boxes input must be Tensor[K, 5] or List[Tensor[L, 4]]')
+    
+    # TODO: if argument 'Aligned' is False, use the old roi algorithm.  How to do that in MIGraphX?
+    
+    #TODO: if we return inp_instr_ref here, we see that inputs are corrupted
 
     roialign_ins = mgx_module.add_instruction(
-        migraphx.op('roialign', coordinate_transformation_mode="output_half_pixel",
+        migraphx.op('roialign', coordinate_transformation_mode="half_pixel",
                     output_height=output_size[0],
-                    output_width=output_size[1]), 
+                    output_width=output_size[1],
+                    spatial_scale = spatial_scale),
                     [inp_instr_ref, boxes2, batch_indices])
     
+    return MGXInstruction(inp_instr_ref)   # debug code!
     return MGXInstruction(roialign_ins)
 
 

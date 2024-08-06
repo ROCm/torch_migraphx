@@ -31,6 +31,39 @@ def test_roi_align(input, boxes, output_size):
 
 
 @pytest.mark.parametrize(
+    "input, boxes, output_size", [(
+        [[
+        [[1., 2., 3.],
+       [4., 5., 6.],
+       [7., 8., 9.]],
+      [[21., 22., 23.],
+       [24., 25., 26.],
+       [27., 28., 29.]]
+      ]],  
+                                   ([[0, .5, .4, .8, .9]]), 
+                                   [2, 2])]
+    )
+# A debugging test.  The roi_align converter doesn't receive the same input we send here.
+# (getitem, getitem_1, 0.25, 7, 7, 0, True)
+def test_zap(input, boxes, output_size):
+    # assert(input[0] == len(boxes))
+    # inp = torch.randn(input)
+    inp = torch.tensor(input)
+    print(' dfddddd ', inp.shape)
+    roi = torch.tensor(boxes)
+    outputs = torch.tensor(output_size)
+    
+    roi_mod = torchvision.ops.RoIAlign(output_size=output_size, spatial_scale=1.0, sampling_ratio=-1, aligned=True)   
+    mgx_mod = convert_to_mgx(roi_mod, [inp, roi, outputs])
+    print(' hello ', mgx_mod(inp, roi))
+    print(' inputs ', inp, roi)
+    print(' vision ', roi_mod(inp.cuda(), roi.cuda()))
+    # raise RuntimeError("asdfsd ")
+
+    verify_outputs(roi_mod, mgx_mod, (inp, roi))
+    
+
+@pytest.mark.parametrize(
     "kernel_size, stride, padding, dilation, ceil_mode",
     [(2, 1, 0, 1, True), ((2, 4), 1, 0, 1, False), (5, 5, (1, 2), 1, True),
      pytest.param(2, 1, 0, 2, True, marks=pytest.mark.xfail)])
