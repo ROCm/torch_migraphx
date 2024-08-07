@@ -49,6 +49,22 @@ def test_pointwise_func_integral(oper, in_shape, other_shape):
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
 
 
+@pytest.mark.parametrize('oper', [
+    pytest.param(torch.bitwise_and, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+])
+@pytest.mark.parametrize('in_shape, other_shape', [
+    ((4, 7, 3), (1,)),
+    ((4, 7, 3), (1, 1, 3)),
+    ((4, 7, 3), (4, 7, 3)),
+])
+def test_pointwise_func_bool(oper, in_shape, other_shape):
+    inp = torch.rand(in_shape, device="cuda") < 0.5
+    other = torch.rand(other_shape, device="cuda") < 0.5
+    mod = FuncModule(oper, other)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
 @pytest.mark.parametrize('method', [
     'add',
     'sub',

@@ -2248,13 +2248,17 @@ def acc_ops_nan_to_num(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(acc_ops.bitwise_and, min_migraphx_ver="2.11.0")
-def acc_ops_bitwise_and(mgx_module, node, args, kwargs):
+def acc_ops_bitwise_and(mgx_module, node, _args, kwargs):
     inp, other = kwargs['input'], kwargs['other']
 
     if not any(isinstance(a, MGXInstruction) for a in (inp, other)):
         return inp & other
 
+    dtype = get_arg_dtype(inp)
     inp, other = broadcast_for_elemwise_op(mgx_module, node, inp, other)
 
+    if dtype == torch.bool:
+        return MGXInstruction(
+            mgx_module.add_instruction(migraphx.op('logical_and'), [inp, other]))
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('bitwise_and'), [inp, other]))
