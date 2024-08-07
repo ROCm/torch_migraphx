@@ -986,7 +986,7 @@ def batch_norm(
     )
 
 
-@register_acc_op_mapping(op_and_target==("call_function", torch.bitwise_and))
+@register_acc_op_mapping(op_and_target=("call_function", torch.bitwise_and))
 @register_acc_op
 def bitwise_and(*, input, other):
     return torch.bitwise_and(input=input, other=other)
