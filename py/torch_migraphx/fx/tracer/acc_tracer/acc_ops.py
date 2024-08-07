@@ -616,6 +616,12 @@ def linalg_norm(*, input, ord, dim, keepdim):
     return torch.linalg.norm(input=input, ord=ord, dim=dim, keepdim=keepdim)
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.linalg.vector_norm))
+@register_acc_op
+def linalg_vector_norm(*, input, ord, dim, keepdim):
+    return torch.linalg.vector_norm(input=input, ord=ord, dim=dim, keepdim=keepdim)
+
+
 @register_acc_op_mapping(
     op_and_target=("call_function", torch.cumsum),
     arg_replacement_tuples=[
@@ -1240,6 +1246,13 @@ def mul(*, input, other):
 @register_acc_op
 def abs(*, input):
     return torch.abs(input=input)
+
+
+@register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
+@register_acc_op_mapping(op_and_target=("call_function", torch.logical_not))
+@register_acc_op
+def logical_not(*, input):
+    return torch.logical_not(input=input)
 
 
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
@@ -2008,6 +2021,52 @@ def le(*, input, other):
 @register_acc_op
 def isinf(*, input):
     return torch.isinf(input=input)
+
+
+@register_acc_op_mapping(
+    op_and_target=("call_method", "any"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.any),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def any(*, input, dim=None, keepdim=False):
+    if dim is not None:
+        return torch.any(input, dim=dim, keepdim=keepdim)
+    return input.any()
+
+
+@register_acc_op_mapping(
+    op_and_target=("call_method", "all"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.all),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def all(*, input, dim=None, keepdim=False):
+    if dim is not None:
+        return torch.all(input, dim=dim, keepdim=keepdim)
+    return input.all()
 
 
 @register_acc_op_properties(AccOpProperty.pointwise, AccOpProperty.unary)
