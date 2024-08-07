@@ -21,7 +21,6 @@ from fx_test_utils import FuncModule, MethodModule, convert_to_mgx, verify_outpu
     pytest.param(
         torch.floor_divide,
         marks=pytest.mark.skip(reason="trunc_div converter not implemented")),
-    pytest.param(torch.bitwise_and, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
 ])
 def test_pointwise_func(oper):
     inps1 = [torch.randn(4, 7, 3), torch.randn(4, 7, 3)]
@@ -32,6 +31,22 @@ def test_pointwise_func(oper):
         mod = FuncModule(oper, inps[1])
         mgx_mod = convert_to_mgx(mod, [inps[0]])
         verify_outputs(mod, mgx_mod, inps[0], equal_nan=True)
+
+
+@pytest.mark.parametrize('oper', [
+    pytest.param(torch.bitwise_and, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+])
+@pytest.mark.parametrize('in_shape, other_shape', [
+    ((4, 7, 3), (1,)),
+    ((4, 7, 3), (1, 1, 3)),
+    ((4, 7, 3), (4, 7, 3)),
+])
+def test_pointwise_func_integral(oper, in_shape, other_shape):
+    inp = torch.randint(-20000, 20000, in_shape, dtype=torch.int32)
+    other = torch.randint(-20000, 20000, other_shape, dtype=torch.int32)
+    mod = FuncModule(oper, other)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
 
 
 @pytest.mark.parametrize('method', [
