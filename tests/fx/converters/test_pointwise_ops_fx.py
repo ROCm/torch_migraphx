@@ -3,7 +3,6 @@ import torch
 import operator
 from fx_test_utils import FuncModule, MethodModule, convert_to_mgx, verify_outputs
 
-
 @pytest.mark.parametrize('oper', [
     operator.add,
     torch.add,
@@ -85,7 +84,7 @@ def test_pointwise_not(oper, input):
     verify_outputs(mod, mgx_mod, inp)
 
 
-@pytest.mark.parametrize('oper', [torch.log, torch.log1p])
+@pytest.mark.parametrize('oper', [torch.log, torch.log1p, torch.log2])
 
 def test_log(oper):
     inp = torch.abs(torch.randn(2, 9, 11, 1))
