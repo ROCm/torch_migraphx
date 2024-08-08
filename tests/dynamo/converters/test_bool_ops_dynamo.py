@@ -32,6 +32,17 @@ def test_masked_fill(op_alias, value):
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
+@pytest.mark.parametrize('op_alias, value', [
+    (torch.ops.aten.fill.Scalar, 2),
+    (torch.ops.aten.fill.Tensor, torch.tensor(5)),
+])
+def test_fill(op_alias, value):
+    inp = torch.randn(4, 7, 3, 2, 1).cuda()
+    mod = FuncModule(op_alias, value).cuda()
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
 
 @pytest.mark.parametrize('op_alias', [
     torch.ops.aten.eq.Tensor,
