@@ -21,3 +21,19 @@ def test_argmax_argmin(op_alias, dim, keepdim):
     mod = FuncModule(op_alias, dim, keepdim)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('op_alias', [
+    torch.ops.aten.topk.default,
+])
+@pytest.mark.parametrize('k, dim, largest', [
+    (4, 0, True),
+    (10, -1, False),
+    (5, 2, False),
+])
+
+def test_topk(op_alias, k, dim, largest):
+    inp = torch.randn(10, 2, 12, 8, 14).cuda()
+    mod = FuncModule(op_alias, k, dim, largest)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
