@@ -33,7 +33,7 @@ def test_argmax_argmin(op_alias, dim, keepdim):
     (5, 2, False),
 ])
 
-def test_topk(op_alias, k, dim, largest, sorted):
+def test_topk(op_alias, k, dim, largest):
     inp = torch.randn(10, 2, 12, 8, 14).cuda()
     mod = FuncModule(op_alias, k, dim, largest)
     mgx_mod = convert_to_mgx(mod, [inp])
