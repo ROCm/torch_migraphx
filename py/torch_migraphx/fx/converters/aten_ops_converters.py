@@ -1182,3 +1182,12 @@ def aten_ops_nan_to_num(mgx_module, node, args, _kwargs):
     if len(args) >= 4:
         acc_kwargs["neginf"] = args[3]
     return acc_ops_converters.acc_ops_nan_to_num(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.bitwise_and.Scalar, min_migraphx_ver="2.11.0")
+@migraphx_converter(torch.ops.aten.bitwise_and.Tensor, min_migraphx_ver="2.11.0")
+def aten_ops_bitwise_and(mgx_module, node, args, _kwargs):
+    assert len(args) >= 2
+    inp, other = args[0], args[1]
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_bitwise_and(mgx_module, node, (), acc_kwargs)
