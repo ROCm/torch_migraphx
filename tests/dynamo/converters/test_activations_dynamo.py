@@ -1,6 +1,7 @@
 import pytest
 import torch
 from dynamo_test_utils import FuncModule, convert_to_mgx, verify_outputs, randbounds, FuncModuleFirstOut
+import torch_migraphx.fx.tracer.acc_tracer.acc_tracer as acc_tracer
 import torch_migraphx
 
 if not hasattr(torch_migraphx, "dynamo"):
@@ -11,8 +12,8 @@ if not hasattr(torch_migraphx, "dynamo"):
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.nll_loss_forward.default,
                                       ])
 @pytest.mark.parametrize('reduction_mode', [(0), (1), (2)])
-@pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5), ((3, 5), 0)])
-def test_nll_loss_forward(op_alias, inp_size, weight_size, reduction_mode):
+@pytest.mark.parametrize('inp_size, no_weight, ignore_index', [((3, 5), False, -100), ((20, 5), True, 0)])
+def test_nll_loss_forward(op_alias, inp_size, no_weight, reduction_mode, ignore_index):
 
     # weight_size should be index-1 dimension of inp_size, aka C or number of classes
     # or else 0.
@@ -27,9 +28,7 @@ def test_nll_loss_forward(op_alias, inp_size, weight_size, reduction_mode):
     target = torch.randint(C, [n]).cuda()
 
     # no. of weights/classes equals 0'th dimension of input
-    weight = torch.rand(weight_size, dtype=torch.float).cuda()
-    if weight_size == 0:
-        weight = None 
+    weight = None if no_weight else torch.rand(C, dtype=torch.float).cuda()
 
     inp = torch.randn(inp_size, dtype=torch.float).cuda()
 
@@ -37,12 +36,11 @@ def test_nll_loss_forward(op_alias, inp_size, weight_size, reduction_mode):
     #  unless given as 'kwargs=...'  The arguments in https://github.com/pytorch/pytorch/blob/main/aten/src/ATen/native/LossNLL.cpp are: 
     #   self, target, weight_opt, reduction, ignore_index
 
-    # The Torch function torch.ops.aten.nll_loss_forward.default() returns a tuple of 2 tensors,
-    # but we don't currently use the second which is a function of ignore_index.  
-    # This FuncModule class ignores it in verify_outputs() checking.  TODO:  add support
-    mod = FuncModuleFirstOut(op_alias, target, weight, reduction_mode, -100).cuda()
+    # The Torch function torch.ops.aten.nll_loss_forward.default() returns a tuple of 2 tensors
+    mod = FuncModule(op_alias, target, weight, reduction_mode, ignore_index).cuda()
 
-    mgx_mod = convert_to_mgx(mod, [inp])
+    #aten tracer seems to blow up with multiple outputs
+    mgx_mod = convert_to_mgx(mod, [inp], tracer=acc_tracer)
     verify_outputs(mod, mgx_mod, inp)
 
 

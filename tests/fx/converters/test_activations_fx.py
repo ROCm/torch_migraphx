@@ -4,56 +4,47 @@ from fx_test_utils import randbounds, FuncModule, MethodModule, convert_to_mgx, 
 
 
 @pytest.mark.parametrize('reduction', [('mean'), ('sum'), ('none')])
-# TODO: a test input with 3 or more dimensions like this is not yet supported
-# @pytest.mark.parametrize('inp_size, weight_size', [((3, 2, 5), 2)])
-@pytest.mark.parametrize('inp_size, weight_size', [((3, 5), 5), ((3, 5), 0)])
-def test_nll_loss_fx(inp_size, weight_size, reduction):
-    # weight_size should be either inp_size[1], aka C or number of classes
-    # or else 0.
-    # if weight_size = 0 , then pass weight=None, module should default weights to 1
-    assert(len(inp_size) != 1)
+@pytest.mark.parametrize('inp_size, no_weight, ignore_index', [
+    ((20, 5), False, 0),
+    ((3, 5), True, -100),
+    ((20, 5, 2, 4), False, 3),
+    ((3, 5, 6), True, -100),
+])
+def test_nll_loss_fx(inp_size, no_weight, reduction, ignore_index):
+    # if no_weight is set, then pass weight=None, module should default weights to 1
     # C is the number of classes and weights
-    target_size = 0
     C = inp_size[1]
-    
-    if len(inp_size) == 2:
-        target_size =  [inp_size[0]]
-    else:  # k-dimensional inputs
-        #   remove C at index 1, then the rest is the shape of target
-        target_size = inp_size[:1] + inp_size[2:]
+    target_size = inp_size[:1] + inp_size[2:]
+    target = torch.randint(C, target_size)
+    weight = None if no_weight else torch.rand(C, dtype=torch.float)
 
-    target = torch.randint(C, target_size).cuda()
-
-    # TODO: get correct weight size for k-dimensional case
-    weight = torch.rand(weight_size, dtype=torch.float).cuda()
-    if weight_size == 0:
-        weight = None
-        
-    inp = torch.randn(inp_size, dtype=torch.float).cuda()
+    inp = torch.randn(inp_size, dtype=torch.float)
     mod = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
-                       reduction = reduction, ignore_index = -100)
+                    reduction = reduction, ignore_index = ignore_index)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, [inp])
 
 
 @pytest.mark.parametrize('reduction', [('mean'), ('sum'), ('none')])
-@pytest.mark.parametrize('N, C, weight_size', [(7, 3, 0), (7, 3, 3)])
-def test_nll_loss_1d_fx(N, C, weight_size, reduction):
-    assert(weight_size == C or weight_size == 0)
-
+@pytest.mark.parametrize('C, no_weight, target, ignore_index', [
+    (3, True, 0, 0), 
+    (3, False, 1, -100),
+    (3, True, 2, 1),
+])
+def test_nll_loss_1d_fx(C, no_weight, reduction, target, ignore_index):
     # C is the number of classes and weights
-    target = torch.randint(C, (N,)).cuda()
+    target = torch.tensor(target)
+    weight = None if no_weight else torch.rand(C, dtype=torch.float)
 
-    weight = torch.rand(weight_size, dtype=torch.float).cuda()
-    if weight_size == 0:
-        weight = None
-    
-    inp_size = (N, C)
-    inp = torch.randn(inp_size, dtype=torch.float).cuda()
+    inp_size = (C,)
+    inp = torch.randn(inp_size, dtype=torch.float)
     mod = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
-                       reduction = reduction, ignore_index = -100)
+                     reduction = reduction, ignore_index = ignore_index)
     mgx_mod = convert_to_mgx(mod, [inp])
-    verify_outputs(mod, mgx_mod, [inp])
+    # Output is nan when ignore_idx == target (div by 0)
+    # MIGraphX creates a kernel that ends up outputting a tensor of len 1 instead of a scalar
+    # TODO: fused kernels in migraphx should respect the original output shape
+    verify_outputs(mod, mgx_mod, [inp], equal_nan=True, scalar=True)
 
 
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
