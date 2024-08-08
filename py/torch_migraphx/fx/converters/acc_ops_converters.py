@@ -831,6 +831,7 @@ def acc_ops_tile(mgx_module, node, args, kwargs):
 
     dims = kwargs["dims"]
     inp = kwargs["input"]
+    bool_output = inp.bool_output
 
     #TODO: Theoretically this is possible in the quantized domain as long
     # as scale axis is not modified (or scale need to also be tiled accordingly)
@@ -843,7 +844,7 @@ def acc_ops_tile(mgx_module, node, args, kwargs):
             inp = mgx_module.add_instruction(migraphx.op('concat', axis=i),
                                              [inp, orig])
 
-    return MGXInstruction(inp)
+    return MGXInstruction(inp, bool_output=bool_output)
 
 
 # TODO: Further investigation required for cases when the input dims
@@ -985,10 +986,9 @@ def acc_ops_avg_pool2d(mgx_module, node, args, kwargs):
 def acc_ops_flatten(mgx_module, node, args, kwargs):
 
     inp = kwargs['input']
-    qparams = inp.qparams
-    inp = inp.instr_ref
+    inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
 
-    in_shape = inp.shape().lens()
+    in_shape = inp_ref.shape().lens()
     start_dim = kwargs['start_dim'] if 'start_dim' in kwargs else 0
     end_dim = kwargs['end_dim'] if 'end_dim' in kwargs else -1
 
@@ -997,33 +997,38 @@ def acc_ops_flatten(mgx_module, node, args, kwargs):
         np.prod(in_shape[start_dim:end_dim + 1])
     ] + in_shape[end_dim + 1:]
 
-    std_input = mgx_module.add_instruction(migraphx.op('contiguous'), [inp])
+    std_input = mgx_module.add_instruction(migraphx.op('contiguous'),
+                                           [inp_ref])
 
     return MGXInstruction(mgx_module.add_instruction(
         migraphx.op('reshape', dims=out_shape), [std_input]),
-                          qparams=qparams)
+                          qparams=qparams,
+                          bool_output=bool_output)
 
 
 @migraphx_converter(acc_ops.squeeze)
 def acc_ops_squeeze(mgx_module, node, args, kwargs):
 
     dim = kwargs['dim'] if 'dim' in kwargs else None
-    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
+    inp = kwargs['input']
+    inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
     if dim is None:
-        out = mgx_module.add_instruction(migraphx.op('squeeze'), [inp])
+        out = mgx_module.add_instruction(migraphx.op('squeeze'), [inp_ref])
     else:
         out = mgx_module.add_instruction(migraphx.op('squeeze', axes=[dim]),
-                                         [inp])
+                                         [inp_ref])
 
-    return MGXInstruction(out, qparams=qparams)
+    return MGXInstruction(out, qparams=qparams, bool_output=bool_output)
 
 
 @migraphx_converter(acc_ops.unsqueeze)
 def acc_ops_unsqueeze(mgx_module, node, args, kwargs):
     inp = kwargs['input']
+    inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
     return MGXInstruction(mgx_module.add_instruction(
-        migraphx.op('unsqueeze', axes=[kwargs['dim']]), [inp.instr_ref]),
-                          qparams=inp.qparams)
+        migraphx.op('unsqueeze', axes=[kwargs['dim']]), [inp_ref]),
+                          qparams=qparams,
+                          bool_output=bool_output)
 
 
 @migraphx_converter(acc_ops.topk)
@@ -1106,22 +1111,26 @@ def acc_ops_embedding(mgx_module, node, args, kwargs):
 @migraphx_converter(acc_ops.reshape)
 def acc_ops_reshape(mgx_module, node, args, kwargs):
 
-    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
+    inp = kwargs['input']
+    inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
     out_shape = kwargs["shape"]
 
-    cont_inp = mgx_module.add_instruction(migraphx.op('contiguous'), [inp])
+    cont_inp = mgx_module.add_instruction(migraphx.op('contiguous'), [inp_ref])
     return MGXInstruction(mgx_module.add_instruction(
         migraphx.op('reshape', dims=list(out_shape)), [cont_inp]),
-                          qparams=qparams)
+                          qparams=qparams,
+                          bool_output=bool_output)
 
 
 @migraphx_converter(acc_ops.permute)
 def acc_ops_permute(mgx_module, node, args, kwargs):
-    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
+    inp = kwargs['input']
+    inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
     perm = normalize_permutation(kwargs['permutation'])
     return MGXInstruction(mgx_module.add_instruction(
-        migraphx.op('transpose', permutation=perm), [inp]),
-                          qparams=qparams)
+        migraphx.op('transpose', permutation=perm), [inp_ref]),
+                          qparams=qparams,
+                          bool_output=bool_output)
 
 
 @migraphx_converter(acc_ops.pad)
@@ -1160,19 +1169,22 @@ def acc_ops_pad(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.contiguous)
 def acc_ops_contiguous(mgx_module, node, args, kwargs):
-    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
+    inp = kwargs['input']
+    inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
     return MGXInstruction(mgx_module.add_instruction(migraphx.op('contiguous'),
-                                                     [inp]),
-                          qparams=qparams)
+                                                     [inp_ref]),
+                          qparams=qparams,
+                          bool_output=bool_output)
 
 
 @migraphx_converter(acc_ops.chunk)
 def acc_ops_chunk(mgx_module, node, args, kwargs):
 
-    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
+    inp = kwargs['input']
+    inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
     dim = kwargs['dim']
     chunks = kwargs['chunks']
-    inp_shape = inp.shape().lens()
+    inp_shape = inp_ref.shape().lens()
 
     if chunks > inp_shape[dim]:
         warnings.warn(
@@ -1192,8 +1204,9 @@ def acc_ops_chunk(mgx_module, node, args, kwargs):
         output.append(
             MGXInstruction(mgx_module.add_instruction(
                 migraphx.op('slice', axes=[dim], starts=[start], ends=[end]),
-                [inp]),
-                           qparams=qparams))
+                [inp_ref]),
+                           qparams=qparams,
+                           bool_output=bool_output))
 
     return output
 
@@ -1201,8 +1214,9 @@ def acc_ops_chunk(mgx_module, node, args, kwargs):
 @migraphx_converter(acc_ops.split)
 def acc_ops_split(mgx_module, node, args, kwargs):
 
-    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
-    inp_shape = inp.shape().lens()
+    inp = kwargs['input']
+    inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
+    inp_shape = inp_ref.shape().lens()
     dim = kwargs['dim']
     split_size = kwargs['split_size']
 
@@ -1214,8 +1228,9 @@ def acc_ops_split(mgx_module, node, args, kwargs):
         output.append(
             MGXInstruction(mgx_module.add_instruction(
                 migraphx.op('slice', axes=[dim], starts=[start], ends=[end]),
-                [inp]),
-                           qparams=qparams))
+                [inp_ref]),
+                           qparams=qparams,
+                           bool_output=bool_output))
 
     return output
 
@@ -1224,16 +1239,18 @@ def acc_ops_split(mgx_module, node, args, kwargs):
 # unintended behaviour when a broadcasted shape is the output
 # @migraphx_converter(acc_ops.expand)
 def acc_ops_expand_tensor(mgx_module, node, args, kwargs):
-    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
+    inp = kwargs['input']
+    inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
     out_shape = kwargs["sizes"]
-    in_shape = inp.shape().lens()
+    in_shape = inp_ref.shape().lens()
     offset = len(out_shape) - len(in_shape)
     out_shape = [
         s if s >= 0 else in_shape[i - offset] for i, s in enumerate(out_shape)
     ]
     return MGXInstruction(mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=list(out_shape)), [inp]),
-                          qparams=qparams)
+        migraphx.op('multibroadcast', out_lens=list(out_shape)), [inp_ref]),
+                          qparams=qparams,
+                          bool_output=bool_output)
 
 
 @migraphx_converter(acc_ops.where)
@@ -1303,12 +1320,14 @@ def acc_ops_cat(mgx_module, node, args, kwargs):
 
     assert all(not t.is_quantized() for t in kwargs['tensors'])
 
+    bool_output = all(t.bool_output for t in kwargs['tensors'])
+
     tensors = [t.instr_ref for t in kwargs['tensors']]
     cat_dim = kwargs['dim']
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('concat', axis=cat_dim),
-                                   tensors))
+    return MGXInstruction(mgx_module.add_instruction(
+        migraphx.op('concat', axis=cat_dim), tensors),
+                          bool_output=bool_output)
 
 
 @migraphx_converter(acc_ops.maximum)
@@ -1499,7 +1518,8 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
     if not isinstance(inp, MGXInstruction):
         return operator.getitem(inp, idx)
 
-    inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
+    qparams, bool_output = inp.qparams, inp.bool_output
+    inp = inp.instr_ref
 
     if not isinstance(idx, (tuple, list)):
         idx = (idx, )
@@ -1633,7 +1653,7 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
             out_mgx = mgx_module.add_instruction(
                 migraphx.op('transpose', permutation=new_perm), [out_mgx])
 
-    return MGXInstruction(out_mgx, qparams=qparams)
+    return MGXInstruction(out_mgx, qparams=qparams, bool_output=bool_output)
 
 
 @migraphx_converter(acc_ops.slice_scatter)
@@ -2027,6 +2047,7 @@ def acc_ops_as_strided(mgx_module, node, args, kwargs):
     stride = kwargs["stride"]
     offset = kwargs["storage_offset"]
     offset = 0 if offset is None else offset
+    bool_output = inp.bool_output
 
     inp_flat = acc_ops_flatten(mgx_module, node, (), {"input": inp})
     inp_flat, qparams = inp_flat.instr_ref, inp_flat.qparams
@@ -2047,7 +2068,8 @@ def acc_ops_as_strided(mgx_module, node, args, kwargs):
 
     flat_elems = MGXInstruction(mgx_module.add_instruction(
         migraphx.op('gather'), [inp_flat, indices_mgx]),
-                                qparams=qparams)
+                                qparams=qparams,
+                                bool_output=bool_output)
 
     return acc_ops_reshape(mgx_module, node, (), {
         "input": flat_elems,

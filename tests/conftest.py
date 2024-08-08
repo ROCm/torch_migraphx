@@ -9,7 +9,10 @@ def pytest_make_parametrize_id(config, val, argname):
         val = val.__name__
     elif isinstance(val, torch.nn.Module):
         val = val._get_name()
-    return f'{argname}={str(val)}'
+    val_str = str(val)
+    if len(val_str) > 50:
+        val_str = type(val)
+    return f'{argname}={val_str}'
 
 
 @pytest.fixture
