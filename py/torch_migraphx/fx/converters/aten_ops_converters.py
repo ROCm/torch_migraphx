@@ -133,6 +133,17 @@ def aten_ops_masked_fill(mgx_module, node, args, kwargs):
                                                   acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.fill.Scalar)
+@migraphx_converter(torch.ops.aten.fill.Tensor)
+def aten_ops_fill(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+
+    mask_mgx = MGXInstruction(mgx_module.add_literal(torch.tensor(True).numpy()))
+    acc_kwargs = {"input": args[0], "mask": mask_mgx, "value": args[1]}
+    return acc_ops_converters.acc_ops_masked_fill(mgx_module, node, (),
+                                                  acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.slice_scatter.default)
 def aten_ops_slice_scatter(mgx_module, node, args, kwargs):
     assert len(args) >= 2
