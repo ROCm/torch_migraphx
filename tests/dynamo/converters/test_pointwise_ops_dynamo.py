@@ -72,6 +72,34 @@ def test_binary_scalar(op_alias, in_shape, other):
 
 
 @pytest.mark.parametrize('op_alias', [
+    pytest.param(torch.ops.aten.bitwise_and.Scalar, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+])
+@pytest.mark.parametrize('in_shape, other', [
+    ((4, 7, 3), 4),
+    ((4, 7, 3), -2),
+])
+def test_binary_scalar_integral(op_alias, in_shape, other):
+    inp = torch.randint(-20000, 20000, in_shape, dtype=torch.int32).cuda()
+    mod = FuncModule(op_alias, other).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+@pytest.mark.parametrize('op_alias', [
+    pytest.param(torch.ops.aten.bitwise_and.Scalar, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+])
+@pytest.mark.parametrize('in_shape, other', [
+    ((4, 7, 3), True),
+    ((4, 7, 3), False),
+])
+def test_binary_scalar_bool(op_alias, in_shape, other):
+    inp = (torch.rand(in_shape, device="cuda") < 0.5).bool()
+    mod = FuncModule(op_alias, other).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+@pytest.mark.parametrize('op_alias', [
     torch.ops.aten.add.Tensor,
     torch.ops.aten.sub.Tensor,
     torch.ops.aten.rsub.Tensor,
@@ -85,6 +113,34 @@ def test_binary_scalar(op_alias, in_shape, other):
 def test_binary_tensor(op_alias, in_shape, other_shape):
     inp = torch.randn(in_shape).cuda()
     other = torch.randn(other_shape).cuda()
+    mod = FuncModule(op_alias, other).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+@pytest.mark.parametrize('op_alias', [
+    pytest.param(torch.ops.aten.bitwise_and.Tensor, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+])
+@pytest.mark.parametrize('in_shape, other_shape', [((4, 7, 3), (4, 7, 3)),
+                                                   ((4, 7, 3), (1,)),
+                                                   ((4, 7, 3), (1, 1, 3))])
+def test_binary_tensor_integral(op_alias, in_shape, other_shape):
+    inp = torch.randint(-20000, 20000, in_shape, dtype=torch.int32).cuda()
+    other = torch.randint(-20000, 20000, other_shape, dtype=torch.int32).cuda()
+    mod = FuncModule(op_alias, other).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+@pytest.mark.parametrize('op_alias', [
+    pytest.param(torch.ops.aten.bitwise_and.Tensor, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+])
+@pytest.mark.parametrize('in_shape, other_shape', [((4, 7, 3), (4, 7, 3)),
+                                                   ((4, 7, 3), (1,)),
+                                                   ((4, 7, 3), (1, 1, 3))])
+def test_binary_tensor_bool(op_alias, in_shape, other_shape):
+    inp = (torch.rand(in_shape, device="cuda") < 0.5).bool()
+    other = (torch.rand(other_shape, device="cuda") < 0.5).bool()
     mod = FuncModule(op_alias, other).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
