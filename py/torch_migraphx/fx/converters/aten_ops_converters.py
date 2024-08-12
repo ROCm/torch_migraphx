@@ -97,7 +97,7 @@ def aten_ops_squeeze(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_squeeze(mgx_module, node, (), acc_kwargs)
 
 @migraphx_converter(torch.ops.aten.log2.default)
-def aten_ops_squeeze(mgx_module, node, args, kwargs):
+def aten_ops_log2(mgx_module, node, args, kwargs):
     assert len(args) == 1
     acc_kwargs = {"input": args[0]}
     return acc_ops_converters.acc_ops_log2(mgx_module, node, (), acc_kwargs)
