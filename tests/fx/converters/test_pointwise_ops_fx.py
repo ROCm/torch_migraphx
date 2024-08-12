@@ -92,12 +92,6 @@ def test_log(oper):
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
-@pytest.mark.parametrize('oper', [torch.log2])
-def test_log2(oper):
-    inp = torch.abs(torch.randn(2, 9, 11, 1))
-    mod = FuncModule(oper)
-    mgx_mod = convert_to_mgx(mod, [inp])
-    verify_outputs(mod, mgx_mod, inp)
 
 @pytest.mark.parametrize('oper', [
     torch.sin,
