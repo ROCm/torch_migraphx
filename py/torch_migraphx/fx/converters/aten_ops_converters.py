@@ -127,6 +127,17 @@ def aten_ops_masked_fill(mgx_module, node, args, kwargs):
                                                   acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.fill.Scalar)
+@migraphx_converter(torch.ops.aten.fill.Tensor)
+def aten_ops_fill(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+
+    mask_mgx = MGXInstruction(mgx_module.add_literal(torch.tensor(True).numpy()))
+    acc_kwargs = {"input": args[0], "mask": mask_mgx, "value": args[1]}
+    return acc_ops_converters.acc_ops_masked_fill(mgx_module, node, (),
+                                                  acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.slice_scatter.default)
 def aten_ops_slice_scatter(mgx_module, node, args, kwargs):
     assert len(args) >= 2
@@ -1176,3 +1187,12 @@ def aten_ops_nan_to_num(mgx_module, node, args, _kwargs):
     if len(args) >= 4:
         acc_kwargs["neginf"] = args[3]
     return acc_ops_converters.acc_ops_nan_to_num(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.bitwise_and.Scalar, min_migraphx_ver="2.11.0")
+@migraphx_converter(torch.ops.aten.bitwise_and.Tensor, min_migraphx_ver="2.11.0")
+def aten_ops_bitwise_and(mgx_module, node, args, _kwargs):
+    assert len(args) >= 2
+    inp, other = args[0], args[1]
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_bitwise_and(mgx_module, node, (), acc_kwargs)
