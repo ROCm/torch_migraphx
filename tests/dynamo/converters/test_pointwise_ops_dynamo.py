@@ -192,3 +192,14 @@ def test_binary_compare(op_alias):
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+@pytest.mark.parametrize('op_alias',
+    [
+        torch.ops.aten.log2.default,
+    ]
+)
+def test_log2(op_alias):
+    inp = torch.abs(torch.randn(2, 9, 11, 1)).cuda()
+    mod = FuncModule(op_alias).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
