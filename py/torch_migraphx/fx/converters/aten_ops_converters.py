@@ -96,11 +96,26 @@ def aten_ops_squeeze(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": args[0], "dim": args[1]}
     return acc_ops_converters.acc_ops_squeeze(mgx_module, node, (), acc_kwargs)
 
+
 @migraphx_converter(torch.ops.aten.log2.default)
 def aten_ops_log2(mgx_module, node, args, kwargs):
     assert len(args) == 1
     acc_kwargs = {"input": args[0]}
     return acc_ops_converters.acc_ops_log2(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.topk.default)
+def aten_ops_topk(mgx_module, node, args, kwargs):
+    assert len(args) >= 2
+    acc_kwargs = {
+        "input": args[0], 
+        "k": args[1], 
+        "dim": args[2] if len(args) > 2 else -1,
+        "largest": args[3] if len(args) > 3 else True, 
+        "sorted": args[4] if len(args) > 4 else True,
+    }
+    return acc_ops_converters.acc_ops_topk(mgx_module, node, (), acc_kwargs)
+
 
 @migraphx_converter(torch.ops.aten.expand.default)
 def aten_ops_expand(mgx_module, node, args, kwargs):
