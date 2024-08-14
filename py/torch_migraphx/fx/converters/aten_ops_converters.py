@@ -97,6 +97,26 @@ def aten_ops_squeeze(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_squeeze(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.log2.default)
+def aten_ops_log2(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+    return acc_ops_converters.acc_ops_log2(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.topk.default)
+def aten_ops_topk(mgx_module, node, args, kwargs):
+    assert len(args) >= 2
+    acc_kwargs = {
+        "input": args[0], 
+        "k": args[1], 
+        "dim": args[2] if len(args) > 2 else -1,
+        "largest": args[3] if len(args) > 3 else True, 
+        "sorted": args[4] if len(args) > 4 else True,
+    }
+    return acc_ops_converters.acc_ops_topk(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.expand.default)
 def aten_ops_expand(mgx_module, node, args, kwargs):
     assert len(args) == 2
@@ -1182,3 +1202,12 @@ def aten_ops_nan_to_num(mgx_module, node, args, _kwargs):
     if len(args) >= 4:
         acc_kwargs["neginf"] = args[3]
     return acc_ops_converters.acc_ops_nan_to_num(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.bitwise_and.Scalar, min_migraphx_ver="2.11.0")
+@migraphx_converter(torch.ops.aten.bitwise_and.Tensor, min_migraphx_ver="2.11.0")
+def aten_ops_bitwise_and(mgx_module, node, args, _kwargs):
+    assert len(args) >= 2
+    inp, other = args[0], args[1]
+    acc_kwargs = {"input": inp, "other": other}
+    return acc_ops_converters.acc_ops_bitwise_and(mgx_module, node, (), acc_kwargs)

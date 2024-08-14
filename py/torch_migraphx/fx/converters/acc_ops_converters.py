@@ -35,7 +35,8 @@ import migraphx
 import torch
 import numpy as np
 
-from ..converter_registry import migraphx_converter
+from packaging import version
+from ..converter_registry import migraphx_converter, MIGRAPHX_VERSION
 from ..tracer.acc_tracer import acc_ops
 from torch.fx.node import Argument, Target
 from .utils import *
@@ -316,6 +317,27 @@ def acc_ops_fmod(mgx_module, node, args, kwargs):
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('fmod'), [inp, other]))
 
+
+
+@migraphx_converter(acc_ops.log2)
+def acc_ops_log2(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    assert not inp.is_quantized()
+
+    if version.parse(MIGRAPHX_VERSION) > version.parse("2.11.0"):
+        return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('log2'), [inp.instr_ref]))
+    else:     
+        ln2_value = torch.tensor(0.693147180559945309)
+        log_inp = MGXInstruction(
+            mgx_module.add_instruction(migraphx.op('log'), [inp.instr_ref]))
+    
+        ln2_instr = mgx_module.add_literal(ln2_value.numpy())
+        ln2_instr = mgx_module.add_instruction(
+            migraphx.op('multibroadcast', out_lens=log_inp.shape().lens()), [ln2_instr])
+    
+        return MGXInstruction(
+            mgx_module.add_instruction(migraphx.op('div'), [log_inp.instr_ref, ln2_instr]))
 
 @migraphx_converter(acc_ops.abs)
 def acc_ops_abs(mgx_module, node, args, kwargs):
@@ -2267,3 +2289,20 @@ def acc_ops_nan_to_num(mgx_module, node, args, kwargs):
     result = mgx_module.add_instruction(migraphx.op('where'), [neginf_mask, mb_neginf_val, result])
     result = mgx_module.add_instruction(migraphx.op('where'), [posinf_mask, mb_posinf_val, result])
     return MGXInstruction(result)
+
+
+@migraphx_converter(acc_ops.bitwise_and, min_migraphx_ver="2.11.0")
+def acc_ops_bitwise_and(mgx_module, node, _args, kwargs):
+    inp, other = kwargs['input'], kwargs['other']
+
+    if not any(isinstance(a, MGXInstruction) for a in (inp, other)):
+        return inp & other
+
+    dtype = get_arg_dtype(inp)
+    inp, other = broadcast_for_elemwise_op(mgx_module, node, inp, other)
+
+    if dtype == torch.bool:
+        return MGXInstruction(
+            mgx_module.add_instruction(migraphx.op('logical_and'), [inp, other]))
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('bitwise_and'), [inp, other]))

@@ -986,6 +986,12 @@ def batch_norm(
     )
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.bitwise_and))
+@register_acc_op
+def bitwise_and(*, input, other):
+    return torch.bitwise_and(input=input, other=other)
+
+
 @register_acc_op_mapping(op_and_target=("call_function",
                                         nn.functional.layer_norm))
 @register_acc_op
@@ -1360,6 +1366,10 @@ def div(*, input, other):
 def log(*, input):
     return torch.log(input=input)
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.log2))
+@register_acc_op
+def log2(*, input):
+    return torch.log2(input=input)
 
 @register_acc_op_properties(AccOpProperty.pointwise)
 @register_acc_op_mapping(op_and_target=("call_function", torch.pow))
