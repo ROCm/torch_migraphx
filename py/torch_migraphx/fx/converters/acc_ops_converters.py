@@ -568,11 +568,6 @@ def acc_ops_glu(mgx_module, node, args, kwargs):
     inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
     inp_shape = inp_ref.shape().lens()
 
-    #split_dim = dim if dim >=0  else -1
-    #split_size = inp_shape[split_dim] // 2
-
-    #assert inp_shape[dim] % 2 == 0, "Dim must be divisible by 2"
-
     mid_point = inp_shape[dim] //2
     first_half_start, first_half_end = 0, mid_point
     second_half_start, second_half_end = mid_point , inp_shape[dim]
