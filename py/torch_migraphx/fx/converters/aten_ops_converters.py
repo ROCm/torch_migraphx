@@ -435,6 +435,14 @@ def aten_ops_sigmoid(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_sigmoid(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.glu.default)
+def aten_ops_glu(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    acc_kwargs = {"input": args[0], "dim": args[1] if len(args) >= 2 else -1}
+
+    return acc_ops_converters.acc_ops_glu(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.gelu.default)
 def aten_ops_gelu(mgx_module, node, args, kwargs):
     assert len(args) == 1
