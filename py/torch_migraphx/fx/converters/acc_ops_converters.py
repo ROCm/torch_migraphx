@@ -870,17 +870,16 @@ def acc_ops_tile(mgx_module, node, args, kwargs):
 
 @migraphx_converter(acc_ops.repeat)
 def acc_ops_repeat(mgx_module, node, args, kwargs):
-    repeats = kwargs["repeats"]
+    
     inp = kwargs["input"]
+    repeats = kwargs["repeats"]
+    
     bool_output = inp.bool_output
 
-    # Ensure input is not quantized
     assert not inp.is_quantized()
 
-    # Convert input shape to a list
     inp_shape = list(inp.shape().lens()) if hasattr(inp.shape(), 'lens') else list(inp.shape())
 
-    # Create tile dimensions
     tile_dims = [repeats[i] if i < len(repeats) else 1 for i in range(len(inp_shape))]
 
     # Use the existing tile converter
