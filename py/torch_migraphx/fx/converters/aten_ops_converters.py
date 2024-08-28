@@ -650,6 +650,7 @@ def aten_ops_mul(mgx_module, node, args, kwargs):
 
 @migraphx_converter(torch.ops.aten.div.Scalar)
 @migraphx_converter(torch.ops.aten.div.Tensor)
+@migraphx_converter(torch.ops.aten.div.Tensor_mode)
 def aten_ops_div(mgx_module, node, args, kwargs):
     assert len(args) == 2
     inp, other = args[0], args[1]
