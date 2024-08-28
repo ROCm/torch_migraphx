@@ -1211,3 +1211,9 @@ def aten_ops_bitwise_and(mgx_module, node, args, _kwargs):
     inp, other = args[0], args[1]
     acc_kwargs = {"input": inp, "other": other}
     return acc_ops_converters.acc_ops_bitwise_and(mgx_module, node, (), acc_kwargs)
+
+@migraphx_converter(torch.ops.aten.erf.default)
+def aten_ops_log2(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+    return acc_ops_converters.acc_ops_erf(mgx_module, node, (), acc_kwargs)
