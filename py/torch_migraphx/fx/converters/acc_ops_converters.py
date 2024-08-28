@@ -882,13 +882,10 @@ def acc_ops_repeat(mgx_module, node, args, kwargs):
 
     tile_dims = [repeats[i] if i < len(repeats) else 1 for i in range(len(inp_shape))]
 
-    # Use the existing tile converter
     tile_kwargs = {"dims": tile_dims, "input": inp}
     tiled = acc_ops_tile(mgx_module, node, args, tile_kwargs)
 
     return MGXInstruction(tiled.instr_ref, bool_output=bool_output)
-
-
 
 
 # TODO: Further investigation required for cases when the input dims
