@@ -868,6 +868,29 @@ def acc_ops_tile(mgx_module, node, args, kwargs):
 
     return MGXInstruction(inp, bool_output=bool_output)
 
+@migraphx_converter(acc_ops.repeat)
+def acc_ops_repeat(mgx_module, node, args, kwargs):
+    repeats = kwargs["repeats"]
+    inp = kwargs["input"]
+    bool_output = inp.bool_output
+
+    # Ensure input is not quantized
+    assert not inp.is_quantized()
+
+    # Convert input shape to a list
+    inp_shape = list(inp.shape().lens()) if hasattr(inp.shape(), 'lens') else list(inp.shape())
+
+    # Create tile dimensions
+    tile_dims = [repeats[i] if i < len(repeats) else 1 for i in range(len(inp_shape))]
+
+    # Use the existing tile converter
+    tile_kwargs = {"dims": tile_dims, "input": inp}
+    tiled = acc_ops_tile(mgx_module, node, args, tile_kwargs)
+
+    return MGXInstruction(tiled.instr_ref, bool_output=bool_output)
+
+
+
 
 # TODO: Further investigation required for cases when the input dims
 # are not integer multiples of output dims. Torch uses overlapping
