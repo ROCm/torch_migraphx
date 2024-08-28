@@ -196,6 +196,7 @@ def test_binary_compare(op_alias):
 @pytest.mark.parametrize('op_alias',
     [
         torch.ops.aten.log2.default,
+        torch.ops.aten.log.default,
     ]
 )
 def test_log2(op_alias):
