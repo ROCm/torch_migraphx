@@ -254,3 +254,18 @@ def test_bool_shape_ops(op, kwargs):
 
     mgx_mod = convert_to_mgx(mod, [i1, i2])
     verify_outputs(mod, mgx_mod, [i1, i2])
+
+
+@pytest.mark.parametrize('size, repeat_dims', [
+    ((2, 3), (2, 4)),
+    ((1, 6), (4, 5)),
+    ((2, 1, 3), (2, 3, 1)),
+])
+def test_repeat(size, repeat_dims):
+    inp = torch.randn(size)
+    #mod_func = FuncModule(torch.repeat, *repeat_dims)
+    mod_method = MethodModule('repeat', *repeat_dims)
+
+    for mod in [mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
