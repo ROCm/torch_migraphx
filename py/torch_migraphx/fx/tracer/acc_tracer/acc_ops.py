@@ -1283,6 +1283,7 @@ def floor(*, input):
 def ceil(*, input):
     return torch.ceil(input=input)
 
+@register_acc_op_mapping(op_and_target=("call_function", operator.floordiv))
 @register_acc_op
 def floor_div(*, input, other):
     if isinstance(input, torch.Tensor) or isinstance(other, torch.Tensor):
@@ -1295,14 +1296,7 @@ def trunc_div(*, input, other):
     return torch.div(input, other, rounding_mode="trunc")
 
 @register_custom_acc_mapper_fn(
-    op_and_target=("call_function", operator.floordiv),
-    arg_replacement_tuples=[
-        ("input", "input"),
-        ("other", "other"),
-    ],
-)
-@register_custom_acc_mapper_fn(
-    op_and_target=("call_method", torch.floor_divide),
+    op_and_target=("call_function", torch.floor_divide),
     arg_replacement_tuples=[
         ("input", "input"),
         ("other", "other"),
