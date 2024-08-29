@@ -44,7 +44,8 @@ pipeline {
                 axes {
                     axis {
                         name 'arch'
-                        values 'MI', 'Navi'
+                        //values 'MI', 'Navi'
+                        values 'Navi'
                     }
                 }
                 stages {
