@@ -652,17 +652,22 @@ def aten_ops_mul(mgx_module, node, args, kwargs):
 @migraphx_converter(torch.ops.aten.div.Tensor)
 @migraphx_converter(torch.ops.aten.div.Tensor_mode)
 def aten_ops_div(mgx_module, node, args, kwargs):
-    assert len(args) >= 2
+    assert len(args) == 2
     inp, other = args[0], args[1]
 
     acc_kwargs = {"input": inp, "other": other}
     
-    if len(args) == 3:
-        if args["rounding_mode"] is not None:
-            assert args["rounding_mode"] == "floor" or args["rounding_mode"] == "trunc"
+    if "rounding_mode" in kwargs.keys():
+        acc_kwargs["rounding_mode"] = kwargs["rounding_mode"]
 
-        if args["rounding_mode"] == "floor":
+        if acc_kwargs["rounding_mode"] == "floor":
             return acc_ops_converters.acc_ops_floor_div(mgx_module, node, (), acc_kwargs)
+        elif acc_kwargs["rounding_mode"] == "trunc":
+            return acc_ops_converters.acc_ops_trunc_div(mgx_module, node, (), acc_kwargs)
+        elif acc_kwargs["rounding_mode"] is None:
+            pass
+        else:
+            pass # throw error here
         
     return acc_ops_converters.acc_ops_div(mgx_module, node, (), acc_kwargs)
 
