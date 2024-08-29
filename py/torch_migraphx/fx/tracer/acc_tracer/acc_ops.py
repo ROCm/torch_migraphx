@@ -2091,3 +2091,9 @@ def isnan(*, input):
 @register_acc_op
 def nan_to_num(*, input, nan=0.0, posinf=None, neginf=None):
     return torch.nan_to_num(input=input, nan=nan, posinf=posinf, neginf=neginf)
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.erf))
+@register_acc_op_mapping(op_and_target=("call_function", torch.special.erf))
+@register_acc_op
+def erf(*, input):
+    return torch.erf(input=input)
