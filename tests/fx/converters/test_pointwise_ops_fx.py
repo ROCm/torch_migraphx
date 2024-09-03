@@ -193,3 +193,10 @@ def test_binary_compare_func(oper):
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+@pytest.mark.parametrize('oper', [torch.erf])
+def test_erf(oper):
+    inp = torch.randn(2, 9, 11, 1)
+    mod = FuncModule(oper)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
