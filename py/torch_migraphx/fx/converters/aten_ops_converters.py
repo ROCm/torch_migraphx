@@ -667,7 +667,7 @@ def aten_ops_div(mgx_module, node, args, kwargs):
         elif acc_kwargs["rounding_mode"] is None:
             pass
         else:
-            pass # throw error here
+            raise AssertionError("Rounding Mode must in [floor, trunc]")
         
     return acc_ops_converters.acc_ops_div(mgx_module, node, (), acc_kwargs)
 
