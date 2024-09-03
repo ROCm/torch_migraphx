@@ -3,6 +3,7 @@ import torch_migraphx
 import torchvision.models as models
 from argparse import ArgumentParser
 import copy
+import os 
 
 from utils import benchmark_module, print_bm_results
 
@@ -11,13 +12,29 @@ parser.add_argument('-m', '--model', type=str, default='alexnet')
 parser.add_argument('-b', '--batch-size', type=int, default=64)
 parser.add_argument('--fp16', action='store_true', default=False)
 parser.add_argument('-i', '--iter', type=int, default=100)
+parser.add_argument('-f', '--nhwc', type=bool, default=False)
 
 if __name__ == '__main__':
     args = parser.parse_args()
     bs = args.batch_size
-    sample_inputs = [torch.randn(bs, 3, 224, 224).cuda()]
+
+    if args.nhwc == True:
+        os.environ['PYTORCH_MIOPEN_SUGGEST_NHWC'] = '1'
+        os.environ['MIGRAPHX_MLIR_USE_SPECIFIC_OPS'] = 'convolution,fused'
+    
+    input = torch.randn(bs, 3, 224, 224)
+    if args.nhwc == True:
+        input = input.to(device="cuda", memory_format=torch.channels_last)
+    else:
+        input = input.to(device="cuda")
+
+    sample_inputs = [input]
+
     model_name = args.model
     mod = getattr(models, model_name)().eval().cuda()
+
+    if args.nhwc == True:
+        model = mod.to(memory_format=torch.channels_last)
 
     if args.fp16:
         mod = mod.half()
