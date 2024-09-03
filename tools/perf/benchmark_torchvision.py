@@ -12,7 +12,7 @@ parser.add_argument('-m', '--model', type=str, default='alexnet')
 parser.add_argument('-b', '--batch-size', type=int, default=64)
 parser.add_argument('--fp16', action='store_true', default=False)
 parser.add_argument('-i', '--iter', type=int, default=100)
-parser.add_argument('-f', '--nhwc', type=bool, default=False)
+parser.add_argument('--nhwc', action='store_true', default=False)
 
 if __name__ == '__main__':
     args = parser.parse_args()
