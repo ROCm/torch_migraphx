@@ -2306,3 +2306,47 @@ def acc_ops_bitwise_and(mgx_module, node, _args, kwargs):
             mgx_module.add_instruction(migraphx.op('logical_and'), [inp, other]))
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('bitwise_and'), [inp, other]))
+
+@migraphx_converter(acc_ops.scaled_dot_product_attention)
+def scaled_dot_product_attention(mgx_module, node, args, kwargs):
+    query, key, value = kwargs['query'], kwargs['key'], kwargs['value']
+
+    # L, S = query.size(-2), key.size(-2)
+    L, S = query.shape().lens()[-2], key.shape().lens()[-2]
+
+    # scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
+    import math
+    scale_factor = 1 / math.sqrt(query.shape().lens()[-1])
+    scale_factor_mgx = mgx_module.add_literal(torch.tensor(scale_factor, dtype=torch_dtype_from_mgx(query.shape().type_string())).numpy())
+
+    # attn_bias = torch.zeros(L, S, dtype=query.dtype)
+    attn_bias = torch.zeros(L, S, dtype=torch_dtype_from_mgx(query.shape().type_string()))
+    attn_bias_mgx = mgx_module.add_literal(attn_bias.numpy())
+
+    # attn_weight = query @ key.transpose(-2, -1) * scale_factor
+    perm = list(range(len(key.shape().lens())))
+    perm[-2], perm[-1] = perm[-1], perm[-2]
+    perm_kwargs = {'input': key, 'permutation': perm}
+    key_T = acc_ops_permute(mgx_module, node, args, perm_kwargs)
+
+    matmul_kwargs = {'input': query, 'other': key_T}
+    attn_weight = acc_ops_matmul(mgx_module, node, args, matmul_kwargs) 
+
+    mul_kwargs = {'input': attn_weight, 'other': scale_factor}
+    attn_weight = acc_ops_mul(mgx_module, node, args, mul_kwargs)
+
+    # attn_weight += attn_bias
+    add_kwargs = {'input': attn_weight, 'other': attn_bias}
+    attn_weight = acc_ops_add(mgx_module, node, args, add_kwargs)
+
+    # attn_weight = torch.softmax(attn_weight, dim=-1)
+    softmax_kwargs = {'input': attn_weight, 'dim': -1}
+    attn_weight = acc_ops_softmax(mgx_module, node, args, softmax_kwargs)
+    
+    # attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+    # Not needed for inference
+
+    # return attn_weight @ value
+    matmul_kwargs = {'input': attn_weight, 'other': value}
+    return acc_ops_matmul(mgx_module, node, args, matmul_kwargs)
+

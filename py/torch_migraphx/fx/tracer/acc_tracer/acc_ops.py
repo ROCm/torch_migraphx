@@ -2091,3 +2091,26 @@ def isnan(*, input):
 @register_acc_op
 def nan_to_num(*, input, nan=0.0, posinf=None, neginf=None):
     return torch.nan_to_num(input=input, nan=nan, posinf=posinf, neginf=neginf)
+
+# @register_acc_op_mapping(op_and_target=("call_function", nn.functional.scaled_dot_product_attention))
+@register_acc_op_mapping(
+    op_and_target=("call_function", nn.functional.scaled_dot_product_attention),
+    arg_replacement_tuples=[
+        ("query", "query"),
+        ("key", "key"),
+        ("value", "value"),
+        ("attn_mask", "attn_mask", this_arg_is_optional),
+        ("dropout_p", "dropout_p", this_arg_is_optional),
+        ("is_causal", "is_causal", this_arg_is_optional),
+        ("scale", "scale", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def scaled_dot_product_attention(*, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
+    return nn.functional.scaled_dot_product_attention(query=query,
+                                                      key=key,
+                                                      value=value,
+                                                      attn_mask=attn_mask,
+                                                      dropout_p=dropout_p,
+                                                      is_causal=is_causal,
+                                                      scale=scale)
