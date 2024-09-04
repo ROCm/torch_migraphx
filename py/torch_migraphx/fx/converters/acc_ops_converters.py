@@ -2309,6 +2309,7 @@ def acc_ops_bitwise_and(mgx_module, node, _args, kwargs):
 
 @migraphx_converter(acc_ops.scaled_dot_product_attention)
 def scaled_dot_product_attention(mgx_module, node, args, kwargs):
+    print(kwargs)
     query, key, value = kwargs['query'], kwargs['key'], kwargs['value']
 
     # L, S = query.size(-2), key.size(-2)
@@ -2316,12 +2317,22 @@ def scaled_dot_product_attention(mgx_module, node, args, kwargs):
 
     # scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
     import math
-    scale_factor = 1 / math.sqrt(query.shape().lens()[-1])
-    scale_factor_mgx = mgx_module.add_literal(torch.tensor(scale_factor, dtype=torch_dtype_from_mgx(query.shape().type_string())).numpy())
-
+    scale_factor = 1 / math.sqrt(query.shape().lens()[-1]) if kwargs["scale"] is None else kwargs["scale"]
+    
     # attn_bias = torch.zeros(L, S, dtype=query.dtype)
     attn_bias = torch.zeros(L, S, dtype=torch_dtype_from_mgx(query.shape().type_string()))
-    attn_bias_mgx = mgx_module.add_literal(attn_bias.numpy())
+
+    # if is_causal:
+    #     assert attn_mask is None
+    #     temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+    #     attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+    #     attn_bias.to(query.dtype)
+
+    if kwargs["is_causal"] == True:
+        assert kwargs["attn_mask"] is None
+        temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+        attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+        attn_bias.to(torch_dtype_from_mgx(query.shape().type_string()))
 
     # attn_weight = query @ key.transpose(-2, -1) * scale_factor
     perm = list(range(len(key.shape().lens())))
