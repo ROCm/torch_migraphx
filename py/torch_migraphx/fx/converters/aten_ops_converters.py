@@ -1211,3 +1211,11 @@ def aten_ops_bitwise_and(mgx_module, node, args, _kwargs):
     inp, other = args[0], args[1]
     acc_kwargs = {"input": inp, "other": other}
     return acc_ops_converters.acc_ops_bitwise_and(mgx_module, node, (), acc_kwargs)
+
+@migraphx_converter(torch.ops.aten._scaled_dot_product_flash_attention.default)
+def aten_ops_lt(mgx_module, node, args, kwargs):
+    assert len(args) >= 3
+    query, key, value = args[0], args[1], args[2]
+
+    acc_kwargs = {"query": query, "key": key, "value": value}
+    return acc_ops_converters.acc_ops_scaled_dot_product_attentio(mgx_module, node, (), acc_kwargs)
