@@ -17,9 +17,9 @@ import random
                           ])
 def test_attn(op_alias, qkv_shape, attn_mask, is_causal, scale):
 
-    query = torch.randn(qkv_shape).cuda()
-    key = torch.randn(qkv_shape).cuda()
-    value = torch.randn(qkv_shape).cuda()
+    query = torch.randn(qkv_shape).to(torch.float16).cuda()
+    key = torch.randn(qkv_shape).to(torch.float16).cuda()
+    value = torch.randn(qkv_shape).to(torch.float16).cuda()
 
     L, S = query.size(-2), key.size(-2)
 
