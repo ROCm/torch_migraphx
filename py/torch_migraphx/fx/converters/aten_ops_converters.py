@@ -104,6 +104,14 @@ def aten_ops_log2(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_log2(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.log.default)
+def aten_ops_log(mgx_module, node, args, _kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+
+    return acc_ops_converters.acc_ops_log(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.topk.default)
 def aten_ops_topk(mgx_module, node, args, kwargs):
     assert len(args) >= 2
@@ -650,11 +658,25 @@ def aten_ops_mul(mgx_module, node, args, kwargs):
 
 @migraphx_converter(torch.ops.aten.div.Scalar)
 @migraphx_converter(torch.ops.aten.div.Tensor)
+@migraphx_converter(torch.ops.aten.div.Tensor_mode)
 def aten_ops_div(mgx_module, node, args, kwargs):
     assert len(args) == 2
     inp, other = args[0], args[1]
 
     acc_kwargs = {"input": inp, "other": other}
+    
+    if "rounding_mode" in kwargs.keys():
+        acc_kwargs["rounding_mode"] = kwargs["rounding_mode"]
+
+        if acc_kwargs["rounding_mode"] == "floor":
+            return acc_ops_converters.acc_ops_floor_div(mgx_module, node, (), acc_kwargs)
+        elif acc_kwargs["rounding_mode"] == "trunc":
+            return acc_ops_converters.acc_ops_trunc_div(mgx_module, node, (), acc_kwargs)
+        elif acc_kwargs["rounding_mode"] is None:
+            pass
+        else:
+            raise ValueError("Rounding Mode must in [floor, trunc]")
+        
     return acc_ops_converters.acc_ops_div(mgx_module, node, (), acc_kwargs)
 
 
@@ -1212,6 +1234,7 @@ def aten_ops_bitwise_and(mgx_module, node, args, _kwargs):
     acc_kwargs = {"input": inp, "other": other}
     return acc_ops_converters.acc_ops_bitwise_and(mgx_module, node, (), acc_kwargs)
 
+
 @migraphx_converter(torch.ops.aten._scaled_dot_product_flash_attention.default)
 def aten_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
     assert len(args) >= 3
@@ -1229,3 +1252,11 @@ def aten_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
     node.meta['tensor_meta'] = node.meta['tensor_meta'][0]
     
     return acc_ops_converters.acc_ops_scaled_dot_product_attention(mgx_module, node, (), acc_kwargs), None, None, None, None, None, None, None
+
+  
+@migraphx_converter(torch.ops.aten.erf.default)
+def aten_ops_erf(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+    return acc_ops_converters.acc_ops_erf(mgx_module, node, (), acc_kwargs)
+
