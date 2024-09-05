@@ -24,7 +24,9 @@ if __name__ == '__main__':
     bs = args.batch_size
 
     if args.nhwc == True:
+        # Enables NHWC for Pytorch 
         os.environ['PYTORCH_MIOPEN_SUGGEST_NHWC'] = '1'
+        # Force MIGraphX to use MLIR to generate Conv. kernels for NHWC
         os.environ['MIGRAPHX_MLIR_USE_SPECIFIC_OPS'] = 'convolution,fused'
     
     input = torch.randn(bs, 3, 224, 224)
