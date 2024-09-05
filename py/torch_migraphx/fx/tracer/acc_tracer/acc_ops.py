@@ -36,6 +36,7 @@ from typing import cast, Iterable, List, Sequence
 
 import torch.nn as nn
 from torch.fx.passes.shape_prop import _extract_tensor_metadata
+from packaging import version
 
 from . import acc_utils
 from .acc_normalizer import (
@@ -1282,27 +1283,49 @@ def floor(*, input):
 def ceil(*, input):
     return torch.ceil(input=input)
 
-
 @register_acc_op_mapping(op_and_target=("call_function", operator.floordiv))
 @register_acc_op
 def floor_div(*, input, other):
-    # This is temp fix because currently operator.floor_div for tensors would
-    # traslate into torch.floor_divide which would throw an error. After it's
-    # fixed we can stick to `input // other`.
     if isinstance(input, torch.Tensor) or isinstance(other, torch.Tensor):
         return torch.div(input, other, rounding_mode="floor")
     return input // other
 
-
-# torch.floor_divide rounds result toward zero, rather than -Inf.
-# https://github.com/pytorch/pytorch/issues/43874
-@register_acc_op_mapping(op_and_target=("call_function", torch.floor_divide))
 @register_acc_op_properties(AccOpProperty.pointwise)
 @register_acc_op
 def trunc_div(*, input, other):
     return torch.div(input, other, rounding_mode="trunc")
 
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.floor_divide),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("other", "other"),
+    ],
+)
+def div_floor_mapper(node: torch.fx.Node,
+               mod: torch.fx.GraphModule) -> torch.fx.Node:
+    with node.graph.inserting_before(node):
+        div_kwargs = dict(node.kwargs)
 
+        if version.parse(torch.__version__) < version.parse("1.13"):
+            div_node = node.graph.call_function(
+                trunc_div,
+                kwargs={
+                    "input": div_kwargs["input"],
+                    "other": div_kwargs["other"]
+                },
+            )
+        else:
+            div_node = node.graph.call_function(
+                floor_div,
+                kwargs={
+                    "input": div_kwargs["input"],
+                    "other": div_kwargs["other"]
+                },
+            )
+        div_node.meta = node.meta.copy()
+        return div_node
+    
 @register_custom_acc_mapper_fn(
     op_and_target=("call_function", torch.div),
     arg_replacement_tuples=[
@@ -2091,3 +2114,9 @@ def isnan(*, input):
 @register_acc_op
 def nan_to_num(*, input, nan=0.0, posinf=None, neginf=None):
     return torch.nan_to_num(input=input, nan=nan, posinf=posinf, neginf=neginf)
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.erf))
+@register_acc_op_mapping(op_and_target=("call_function", torch.special.erf))
+@register_acc_op
+def erf(*, input):
+    return torch.erf(input=input)

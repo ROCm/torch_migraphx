@@ -413,6 +413,12 @@ def acc_ops_floor_div(mgx_module, node, args, kwargs):
         mgx_module.add_instruction(migraphx.op('floor'), [div]))
 
 
+@migraphx_converter(acc_ops.trunc_div)
+def acc_ops_trunc_div(mgx_module, node, args, kwargs):
+    # TODO: Waiting for Trunc Op in MiGraphX
+    return acc_ops_floor_div(mgx_module, node, args, kwargs)
+    
+
 @migraphx_converter(acc_ops.log)
 def acc_ops_log(mgx_module, node, args, kwargs):
     inp = kwargs['input']
@@ -2306,3 +2312,10 @@ def acc_ops_bitwise_and(mgx_module, node, _args, kwargs):
             mgx_module.add_instruction(migraphx.op('logical_and'), [inp, other]))
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('bitwise_and'), [inp, other]))
+
+@migraphx_converter(acc_ops.erf)
+def acc_ops_erf(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    assert not inp.is_quantized()
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('erf'), [inp.instr_ref]))

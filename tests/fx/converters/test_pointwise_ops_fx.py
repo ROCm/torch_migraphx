@@ -14,12 +14,8 @@ from fx_test_utils import FuncModule, MethodModule, convert_to_mgx, verify_outpu
     operator.truediv,
     torch.fmod,
     torch.pow,
-    pytest.param(
-        operator.floordiv,
-        marks=pytest.mark.skip(reason="floor_div converter not implemented")),
-    pytest.param(
-        torch.floor_divide,
-        marks=pytest.mark.skip(reason="trunc_div converter not implemented")),
+    operator.floordiv,
+    torch.floor_divide,
 ])
 def test_pointwise_func(oper):
     inps1 = [torch.randn(4, 7, 3), torch.randn(4, 7, 3)]
@@ -28,6 +24,18 @@ def test_pointwise_func(oper):
 
     for inps in [inps1, inps2, inps3]:
         mod = FuncModule(oper, inps[1])
+        mgx_mod = convert_to_mgx(mod, [inps[0]])
+        verify_outputs(mod, mgx_mod, inps[0], equal_nan=True)
+
+@pytest.mark.parametrize('oper', [
+    torch.div,
+])
+def test_div_func(oper):
+    inps1 = [torch.randn(4, 7, 3), torch.randn(4, 7, 3), None]
+    inps2 = [torch.randn(4, 7, 3), 2, "floor"]
+
+    for inps in [inps1, inps2]:
+        mod = FuncModule(oper, inps[1], rounding_mode=inps[2])
         mgx_mod = convert_to_mgx(mod, [inps[0]])
         verify_outputs(mod, mgx_mod, inps[0], equal_nan=True)
 
@@ -183,5 +191,12 @@ def test_binary_compare_func(oper):
 
     mod = FuncModule(oper, other=other)
 
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+@pytest.mark.parametrize('oper', [torch.erf])
+def test_erf(oper):
+    inp = torch.randn(2, 9, 11, 1)
+    mod = FuncModule(oper)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
