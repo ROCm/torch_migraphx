@@ -2322,7 +2322,7 @@ def acc_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
     L, S = query.shape().lens()[-2], key.shape().lens()[-2]
 
     # scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
-    scale_factor = 1 / torch.sqrt(query.shape().lens()[-1]) if kwargs.get("scale") is None else kwargs["scale"]
+    scale_factor = 1 / torch.sqrt(torch.tensor(query.shape().lens()[-1])) if kwargs.get("scale") is None else kwargs["scale"]
     
     # attn_bias = torch.zeros(L, S, dtype=query.dtype)
     attn_bias = MGXInstruction(mgx_module.add_literal(torch.zeros(L, S, dtype=query.torch_type()).numpy()))
