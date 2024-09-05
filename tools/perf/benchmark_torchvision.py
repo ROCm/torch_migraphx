@@ -8,11 +8,16 @@ import os
 from utils import benchmark_module, print_bm_results
 
 parser = ArgumentParser(description='Model to benchmark')
-parser.add_argument('-m', '--model', type=str, default='alexnet')
-parser.add_argument('-b', '--batch-size', type=int, default=64)
-parser.add_argument('--fp16', action='store_true', default=False)
-parser.add_argument('-i', '--iter', type=int, default=100)
-parser.add_argument('--nhwc', action='store_true', default=False)
+parser.add_argument('-m', '--model', type=str, default='alexnet',
+                    help='Name of the model to benchmark. Default is "alexnet". Example: resnet50, vgg16, etc.')
+parser.add_argument('-b', '--batch-size', type=int, default=64,
+                    help='Batch size for each iteration during benchmarking. Default is 64.')
+parser.add_argument('--fp16', action='store_true', default=False,
+                    help='If set, use half-precision (FP16) for the model to improve performance on supported hardware. Default is False.')
+parser.add_argument('-i', '--iter', type=int, default=100,
+                    help='Number of iterations to run for benchmarking. Default is 100.')
+parser.add_argument('--nhwc', action='store_true', default=False,
+                    help='If set, use NHWC (channel-last) memory format instead of NCHW. Default is False.')
 
 if __name__ == '__main__':
     args = parser.parse_args()
