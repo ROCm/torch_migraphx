@@ -34,12 +34,7 @@ import operator
 def fix_tensor_meta(gm: torch.fx.GraphModule):
     for node in gm.graph.nodes:
         # This is only true for functions with multiple outputs
-        if node.op == "call_function" and not "tensor_meta" in node.meta:
-            if node.target == operator.getitem:
-                getitem_idx = node.args[1]
-                node.meta["tensor_meta"] = node.all_input_nodes[getitem_idx].meta["tensor_meta"]
-                continue
-
+        if node.op == "call_function" and not "tensor_meta" in node.meta and node.target != operator.getitem:
             max_idx = -1
             output_metas = {}
             # Grab the output tensor metadata from following getitem nodes
