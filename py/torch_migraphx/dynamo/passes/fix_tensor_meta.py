@@ -30,10 +30,16 @@
 import torch
 import operator
 
+
 def fix_tensor_meta(gm: torch.fx.GraphModule):
     for node in gm.graph.nodes:
         # This is only true for functions with multiple outputs
         if node.op == "call_function" and not "tensor_meta" in node.meta:
+            if node.target == operator.getitem:
+                getitem_idx = node.args[1]
+                node.meta["tensor_meta"] = node.all_input_nodes[getitem_idx].meta["tensor_meta"]
+                continue
+
             max_idx = -1
             output_metas = {}
             # Grab the output tensor metadata from following getitem nodes
@@ -42,12 +48,12 @@ def fix_tensor_meta(gm: torch.fx.GraphModule):
                 getitem_idx = user.args[1]
                 max_idx = getitem_idx if getitem_idx > max_idx else max_idx
                 output_metas[getitem_idx] = user.meta["tensor_meta"]
-            
+
             # Construct a list of tensor metadata in the correct order
-            new_metas = [None for i in range(max_idx+1)]
+            new_metas = [None for i in range(max_idx + 1)]
             for i, meta in output_metas.items():
                 new_metas[i] = meta
-            
+
             # Add the metadata for each output as a tuple. This is not supported
             # by the partitioner, so this transform should be done after
             # using the partitioner to split the graph for partitions that need
