@@ -216,7 +216,7 @@ def aten_ops_scatter_add(mgx_module, node, args, kwargs):
                                                      acc_kwargs)
 
 @migraphx_converter(torch.ops.aten.scatter_reduce.two)
-def aten_ops_scatter_add(mgx_module, node, args, kwargs):
+def aten_ops_scatter_reduce(mgx_module, node, args, kwargs):
     assert len(args) == 5
     acc_kwargs = {
         "input": args[0],
