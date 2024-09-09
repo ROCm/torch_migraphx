@@ -118,3 +118,21 @@ def test_scatter_add(op_alias, inp_size, src_size, index, dim):
     mod = FuncModule(op_alias, dim, idx, src)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.scatter_reduce.two])
+@pytest.mark.parametrize('inp_size, src_size, index, dim, reduce', [
+    ((4, ), (6, ), [0, 1, 3, 1, 2, 1], 0, "sum"),
+    ((3, 5), (2, 5), [[0, 1, 2, 0, 0]], 0, "prod"),
+    ((3, 5), (3, 2), [[0, 1], [4, 2]], 1, "amin"),
+    ((3, 5, 2), (3, 1, 2), [[[0, 1]], [[1, 0]], [[1, 1]]], -1, "amax"),
+])
+def test_scatter_reduce(op_alias, inp_size, src_size, index, dim, reduce):
+    inp = torch.randn(*inp_size).cuda()
+    src = torch.randn(*src_size).cuda()
+    idx = torch.tensor(index).cuda()
+
+    mod = FuncModule(op_alias, dim, idx, src, reduce)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
