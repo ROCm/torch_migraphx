@@ -226,6 +226,9 @@ def aten_ops_scatter_add(mgx_module, node, args, kwargs):
         "reduce": args[4],
         "include_self": True
     }
+    
+    if "include_self" in kwargs:
+        acc_kwargs["include_self"] = kwargs["include_self"]
 
     return acc_ops_converters.acc_ops_scatter_reduce(mgx_module, node, (),
                                                      acc_kwargs)
