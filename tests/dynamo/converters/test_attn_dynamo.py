@@ -4,7 +4,8 @@ from dynamo_test_utils import FuncModule, FuncModuleFirstOut, convert_to_mgx, ve
 import random
 
 @pytest.mark.parametrize('op_alias', [
-    torch.ops.aten._scaled_dot_product_flash_attention.default,
+    pytest.param(torch.ops.aten._scaled_dot_product_flash_attention.default, 
+                 marks=pytest.mark.skip_min_torch_ver("2.3"))
 ])
 @pytest.mark.parametrize('qkv_shape, is_causal, scale', 
                          [
