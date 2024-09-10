@@ -1472,7 +1472,8 @@ def acc_ops_mean(mgx_module, node, args, kwargs):
 def acc_ops_std(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     dim = kwargs['dim']
-    keep_dim = kwargs['keepdim']
+    keepdim = kwargs['keepdim']
+    correction = kwargs['correction']
 
     assert not inp.is_quantized()
 
@@ -1487,11 +1488,11 @@ def acc_ops_std(mgx_module, node, args, kwargs):
     pow_kwargs = {'input': mean_sub, 'exponent': 2}
     mean_sub_pow = acc_ops_pow(mgx_module, node, args, pow_kwargs)
 
-    sum_kwargs = {'input': mean_sub_pow, 'dim': dim, 'keepdim': keep_dim}
+    sum_kwargs = {'input': mean_sub_pow, 'dim': dim, 'keepdim': keepdim}
     sum_N = acc_ops_sum(mgx_module, node, args, sum_kwargs)
 
     # variance = sum_N / (N - 1)
-    selected_dims = np.prod([mean_sub_pow.shape().lens()[i] for i in dim]) - 1
+    selected_dims = np.prod([mean_sub_pow.shape().lens()[i] for i in dim]) - correction
     div_kwargs = {'input': sum_N, 'other': selected_dims}
     variance = acc_ops_div(mgx_module, node, args, div_kwargs)
 

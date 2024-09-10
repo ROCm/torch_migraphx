@@ -915,6 +915,18 @@ def aten_ops_mean(mgx_module, node, args, kwargs):
 
     return acc_ops_converters.acc_ops_mean(mgx_module, node, (), acc_kwargs)
 
+@migraphx_converter(torch.ops.aten.std.correction)
+def aten_ops_std(mgx_module, node, args, kwargs):
+    assert len(args) >= 2
+
+    acc_kwargs = {
+        "input": args[0],
+        "dim": args[1],
+        "correction": kwargs["correction"] if kwargs.get("correction") is not None else 1,
+        "keepdim": kwargs["keepdim"] if kwargs.get("keepdim") is not None else False
+    }
+
+    return acc_ops_converters.acc_ops_std(mgx_module, node, (), acc_kwargs)
 
 @migraphx_converter(torch.ops.aten._adaptive_avg_pool2d.default)
 def aten_ops_adaptive_avg_pool2d(mgx_module, node, args, kwargs):
