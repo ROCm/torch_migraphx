@@ -91,9 +91,14 @@ def aten_ops_unsqueeze(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(torch.ops.aten.squeeze.dim)
+@migraphx_converter(torch.ops.aten.squeeze.default)
 def aten_ops_squeeze(mgx_module, node, args, kwargs):
-    assert len(args) == 2
-    acc_kwargs = {"input": args[0], "dim": args[1]}
+    assert len(args) >= 1
+    acc_kwargs = {"input": args[0]}
+
+    if len(args) == 2:
+        acc_kwargs["dim"] = args[1]
+        
     return acc_ops_converters.acc_ops_squeeze(mgx_module, node, (), acc_kwargs)
 
 
