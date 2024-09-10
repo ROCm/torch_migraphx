@@ -17,7 +17,6 @@ def test_mean(dim, keepdim):
 @pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False), (3, False),
                                           ([-1, -2], True)])
 def test_std(dim, keepdim):
-    
     inp = torch.randn(32, 43, 11, 2, 12)
     mod_func = FuncModule(torch.std, dim=dim, keepdim=keepdim)
     mod_method = MethodModule('std', dim=dim, keepdim=keepdim)
