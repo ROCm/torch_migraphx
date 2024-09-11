@@ -1468,6 +1468,37 @@ def acc_ops_mean(mgx_module, node, args, kwargs):
 
     return MGXInstruction(mean, qparams=qparams)
 
+@migraphx_converter(acc_ops.std)
+def acc_ops_std(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    dim = kwargs['dim']
+    keepdim = kwargs['keepdim']
+    correction = kwargs['correction']
+
+    assert not inp.is_quantized()
+
+    # mean = torch.mean(input, dim=dim, keepdim=True)
+    mean_kwargs = {'input': inp, 'dim': dim, 'keepdim': True}
+    mean = acc_ops_mean(mgx_module, node, args, mean_kwargs)
+
+    # sum_N = torch.sum((input - mean) ** 2, dim=dim, keepdim=keepdim)
+    sub_kwargs = {'input': inp, 'other': mean}
+    mean_sub = acc_ops_sub(mgx_module, node, args, sub_kwargs)
+
+    pow_kwargs = {'input': mean_sub, 'exponent': 2}
+    mean_sub_pow = acc_ops_pow(mgx_module, node, args, pow_kwargs)
+
+    sum_kwargs = {'input': mean_sub_pow, 'dim': dim, 'keepdim': keepdim}
+    sum_N = acc_ops_sum(mgx_module, node, args, sum_kwargs)
+
+    # variance = sum_N / (N - 1)
+    selected_dims = np.prod([mean_sub_pow.shape().lens()[i] for i in dim]) - correction
+    div_kwargs = {'input': sum_N, 'other': selected_dims}
+    variance = acc_ops_div(mgx_module, node, args, div_kwargs)
+
+    # std_dev = torch.sqrt(variance)
+    sqrt_kwargs = {'input': variance}
+    return acc_ops_sqrt(mgx_module, node, args, sqrt_kwargs)
 
 @migraphx_converter(acc_ops.sum)
 def acc_ops_sum(mgx_module, node, args, kwargs):
