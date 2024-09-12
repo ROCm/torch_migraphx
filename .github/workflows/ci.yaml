@@ -51,7 +51,7 @@ jobs:
     
     build_image:
       name: Build Image
-      runs-on: ROCM-Ubuntu
+      runs-on: ubuntu-latest
       needs: check_image
       if: ${{ needs.check_image.outputs.imageexists != 'true' }}
       steps:
