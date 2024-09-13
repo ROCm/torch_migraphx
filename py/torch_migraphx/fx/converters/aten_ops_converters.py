@@ -1295,3 +1295,10 @@ def aten_ops_erf(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": args[0]}
     return acc_ops_converters.acc_ops_erf(mgx_module, node, (), acc_kwargs)
 
+
+@migraphx_converter(torch.ops.aten.gather.default)
+def aten_ops_erf(mgx_module, node, args, kwargs):
+    assert len(args) == 3
+    acc_kwargs = {"input": args[0], "dim": args[1], "index": args[2]}
+    return acc_ops_converters.acc_ops_gather(mgx_module, node, (), acc_kwargs)
+
