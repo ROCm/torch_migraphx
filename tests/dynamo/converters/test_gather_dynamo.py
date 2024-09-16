@@ -18,7 +18,7 @@ def test_gather(input_dim, dim):
     index_shape[dim] = np.random.randint(1, dim_size)  
     index = torch.randint(0, dim_size, index_shape).cuda()
 
-    mod = FuncModule(torch.gather, dim=dim, index=index).cuda()
+    mod = FuncModule(torch.ops.aten.gather.default, dim=dim, index=index).cuda()
 
     mgx_mod = convert_to_mgx(mod, [input])
     verify_outputs(mod, mgx_mod, input)

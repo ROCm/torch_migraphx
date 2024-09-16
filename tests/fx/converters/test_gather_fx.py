@@ -4,12 +4,12 @@ import numpy as np
 from fx_test_utils import FuncModule, convert_to_mgx, verify_outputs
 
 @pytest.mark.parametrize("input_dim, dim", [((3, 3), 0), 
-                                                       ((3, 3), 1), 
-                                                       ((3, 3), -1), 
-                                                       ((3, 3), -2),
-                                                       ((10, 5), -2), 
-                                                       ((2, 3, 4, 5, 6), -3),
-                                                       ((2, 3, 4, 5, 6), -4)])
+                                            ((3, 3), 1), 
+                                            ((3, 3), -1), 
+                                            ((3, 3), -2),
+                                            ((10, 5), -2), 
+                                            ((2, 3, 4, 5, 6), -3),
+                                            ((2, 3, 4, 5, 6), -4)])
 def test_gather(input_dim, dim):
     input = torch.rand(input_dim)
 
