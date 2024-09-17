@@ -34,6 +34,7 @@ import logging
 import migraphx
 import torch
 import numpy as np
+import itertools
 
 from packaging import version
 from ..converter_registry import migraphx_converter, MIGRAPHX_VERSION
@@ -1135,6 +1136,29 @@ def acc_ops_embedding(mgx_module, node, args, kwargs):
         mgx_module.add_instruction(migraphx.op('gather', axis=0),
                                    [weight.instr_ref, inp.instr_ref]))
 
+@migraphx_converter(acc_ops.gather)
+def acc_ops_gather(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    dim = kwargs['dim']
+    index = kwargs['index']
+
+    assert not inp.is_quantized() and not index.is_quantized()
+    
+    index_lens = index.shape().lens()
+    if dim < 0:
+        dim = len(index_lens) + dim
+    
+    dims = [torch.arange(0, i) for i in index_lens]
+    base_coords = torch.tensor(list(itertools.product(*dims)))
+    flattened_indexes = acc_ops_flatten(mgx_module, node, (), {"input": index})
+    unsqueeze_flatten_indexes = acc_ops_unsqueeze(mgx_module, node, (), {"input": flattened_indexes, "dim": -1})
+    d1 =  MGXInstruction(mgx_module.add_literal(base_coords[:, :dim].numpy()))
+    d2 =  MGXInstruction(mgx_module.add_literal(base_coords[:, dim+1:].numpy()))
+    coords = acc_ops_cat(mgx_module, node, (), {"tensors": [d1, unsqueeze_flatten_indexes, d2], "dim": 1})
+    new_shape = tuple(list(index_lens) + [len(index_lens)])
+    coords = acc_ops_reshape(mgx_module, node, (), {"input": coords, "shape": new_shape})
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('gathernd'), [inp.instr_ref, coords.instr_ref]))
+                             
 
 @migraphx_converter(acc_ops.reshape)
 def acc_ops_reshape(mgx_module, node, args, kwargs):
