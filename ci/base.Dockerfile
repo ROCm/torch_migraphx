@@ -14,8 +14,8 @@ RUN git clone --single-branch --branch ${MIGRAPHX_BRANCH} --recursive https://gi
     && cd build && make install
 
 
-# Install Dependencies: pybind-global
-RUN pip3 install pybind11-global
+# Install Dependencies: pybind-global, transformers
+RUN pip3 install pybind11-global transformers==4.41.2
 
 ENV LD_LIBRARY_PATH=${ROCM_PATH}/lib
 ENV PYTHONPATH=${ROCM_PATH}/lib

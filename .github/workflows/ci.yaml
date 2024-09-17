@@ -80,7 +80,6 @@ jobs:
         - name: pytest
           shell: bash -c "docker run -i -v=$GITHUB_WORKSPACE:/data -w /data $DOCKER_IMAGE:$DOCKER_TAG bash < {0}"
           run: |
-            pip install transformers==4.41.2
             cd py
             export TORCH_CMAKE_PATH=$(python -c "import torch; print(torch.utils.cmake_prefix_path)")
             python -m pip install .
