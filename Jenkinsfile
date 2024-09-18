@@ -13,6 +13,8 @@ def get_nodes(arch){
         return "migraphx && gfx90a"
     } else if(arch == 'Navi') {
         return "migraphx && gfx1101"
+    } else {
+        return "migraphx"
     }
 }
 
@@ -25,19 +27,17 @@ def runTests() {
         checkout scm
 
         gitStatusWrapper(credentialsId: "${env.status_wrapper_creds}", gitHubContext: "Jenkins - pytest-${arch}", account: 'ROCmSoftwarePlatform', repo: 'torch_migraphx') {
-            sh """
-            docker build -t tm_ci:${env.BUILD_ID} --build-arg MIGRAPHX_BRANCH=${MIGRAPHX_BRANCH} .
-            docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=/home/jenkins:/home/jenkins tm_ci:${env.BUILD_ID} bash -c "pip install transformers==4.41.2 ; cd /workspace/torch_migraphx/tests/ ; pytest"
-            """
+            sh '''
+            docker_tag=$(echo -n ./ci/base.Dockerfile | sha256sum | awk '{print $1}')
+            docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=`pwd`:/workspace/torch_migraphx rocm/torch-migraphx-ci-ubuntu:$docker_tag bash -c \
+            'cd /workspace/torch_migraphx/py ; export TORCH_CMAKE_PATH=$(python -c "import torch; print(torch.utils.cmake_prefix_path)") ; python -m pip install . ; cd /workspace/torch_migraphx/tests/ ; pytest'
+            '''
         }
     }
 }
 
 pipeline {
     agent { label 'build-only' }
-    environment {
-        MIGRAPHX_BRANCH = 'rocm-6.1.0'
-    }
     stages {
         stage('matrix') {
             matrix {
@@ -45,7 +45,7 @@ pipeline {
                     axis {
                         name 'arch'
                         //values 'MI', 'Navi'
-                        values 'Navi'
+                        values 'Any'
                     }
                 }
                 stages {

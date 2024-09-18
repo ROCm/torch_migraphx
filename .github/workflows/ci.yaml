@@ -1,0 +1,87 @@
+name: torch_migraphx
+
+on: 
+    pull_request:
+    push:
+        branches: 
+            - master
+
+env:
+    DOCKER_USER: ${{secrets.DOCKERHUB_USERID}}
+    DOCKER_TOKEN: ${{secrets.DOCKERHUB_TOKEN}}
+    DOCKER_IMAGE: "rocm/torch-migraphx-ci-ubuntu"
+
+jobs:
+    cancel:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Cancel Previous Runs
+              uses: styfle/cancel-workflow-action@0.11.0
+              with:
+                access_token: ${{ github.token }}
+    
+    check_image:
+        name: Check if image exists in registry
+        runs-on: ubuntu-latest
+        outputs:
+            imageexists:  ${{ steps.check_image.outputs.imageexists }}
+            imagetag:  ${{ steps.image_hash.outputs.imagetag }}
+        
+        steps:
+            - name: Checkout Code
+              uses: actions/checkout@v4.1.1
+            
+            - name: Create Image Tag
+              id: image_hash
+              run: |
+                echo "imagetag=$(echo -n ./ci/base.Dockerfile | sha256sum | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+            - name: Check if image exists
+              id: check_image
+              env:
+                DOCKER_TAG: ${{ steps.image_hash.outputs.imagetag }}
+              run: |
+                if [[ "$(docker manifest inspect $DOCKER_IMAGE:$DOCKER_TAG 2> /dev/null)" != "" ]]; then
+                  echo "imageexists=true" >> $GITHUB_OUTPUT
+                  echo "Image already exists, skip building available"
+                else
+                  echo "imageexists=false" >> $GITHUB_OUTPUT
+                  echo "Tag does not exist, build and publishing required"
+                fi
+    
+    build_image:
+      name: Build Image
+      runs-on: ROCM-Ubuntu
+      needs: check_image
+      if: ${{ needs.check_image.outputs.imageexists != 'true' }}
+      steps:
+        - uses: actions/checkout@v4.1.1
+
+        - name: Build and publish
+          env:
+            DOCKER_TAG: ${{ needs.check_image.outputs.imagetag }}
+          run: |
+            echo $DOCKER_TOKEN | docker login -u $DOCKER_USER --password-stdin
+
+            docker pull $DOCKER_IMAGE:latest || true
+            docker build . --file ./ci/base.Dockerfile --cache-from $DOCKER_IMAGE:latest --tag $DOCKER_IMAGE:$DOCKER_TAG --tag $DOCKER_IMAGE:latest;
+            docker push $DOCKER_IMAGE:$DOCKER_TAG;
+            docker push $DOCKER_IMAGE:latest;
+    
+    # run_tests:
+    #   runs-on: ROCM-Ubuntu
+    #   needs: [ build_image, check_image ]
+    #   env:
+    #     DOCKER_TAG: ${{ needs.check_image.outputs.imagetag }}
+    #   if: ${{ !cancelled() && (needs.build_image.result == 'success' || needs.build_image.result == 'skipped') }}
+    #   steps: 
+    #     - uses: actions/checkout@v4.1.1
+
+    #     - name: pytest
+    #       shell: bash -c "docker run -i --device=/dev/kfd --device=/dev/dri --group-add=video -v=$GITHUB_WORKSPACE:/data -w /data $DOCKER_IMAGE:$DOCKER_TAG bash < {0}"
+    #       run: |
+    #         cd py
+    #         export TORCH_CMAKE_PATH=$(python -c "import torch; print(torch.utils.cmake_prefix_path)")
+    #         python -m pip install .
+    #         cd ../tests
+    #         pytest
