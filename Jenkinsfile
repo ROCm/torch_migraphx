@@ -26,8 +26,8 @@ def runTests() {
 
         gitStatusWrapper(credentialsId: "${env.status_wrapper_creds}", gitHubContext: "Jenkins - pytest-${arch}", account: 'ROCmSoftwarePlatform', repo: 'torch_migraphx') {
             sh """
-            ./ci/build_ci_image.sh ${env.BUILD_ID}
-            docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=/home/jenkins:/home/jenkins tm_ci:${env.BUILD_ID} bash -c "pip install transformers==4.41.2 ; cd /workspace/torch_migraphx/tests/ ; pytest"
+            docker_tag=$(echo -n ./ci/base.Dockerfile | sha256sum | awk '{print $1}')
+            docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v==`pwd`:/workspace/torch_migraphx rocm/torch-migraphx-ci-ubuntu:docker_tag bash -c "cd /workspace/torch_migraphx/tests/ ; pytest"
             """
         }
     }
