@@ -35,7 +35,6 @@ def runTests() {
 
 pipeline {
     agent { label 'build-only' }
-    environment {}
     stages {
         stage('matrix') {
             matrix {
