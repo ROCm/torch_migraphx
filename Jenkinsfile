@@ -12,7 +12,9 @@ def get_nodes(arch){
     if(arch == 'MI'){
         return "migraphx && gfx90a"
     } else if(arch == 'Navi') {
-        return "gfx1100 || gfx1101 || gfx1101"
+        return "migraphx && gfx1101"
+    } else {
+        return "migraphx"
     }
 }
 
@@ -43,7 +45,7 @@ pipeline {
                     axis {
                         name 'arch'
                         //values 'MI', 'Navi'
-                        values 'Navi'
+                        values 'Any'
                     }
                 }
                 stages {
