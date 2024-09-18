@@ -12,7 +12,7 @@ def get_nodes(arch){
     if(arch == 'MI'){
         return "migraphx && gfx90a"
     } else if(arch == 'Navi') {
-        return "gfx1101"
+        return "gfx1100 || gfx1101 || gfx1101"
     }
 }
 
