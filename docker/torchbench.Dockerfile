@@ -20,7 +20,7 @@ RUN pip3 install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.
 
 # Install pip reqs
 RUN pip3 install --upgrade pip
-RUN pip3 install matplotlib==3.8.4 pandas==2.2.2 tabulate==0.9.0 gitpython pyyaml
+RUN pip3 install matplotlib==3.8.4 pandas==2.2.2 tabulate==0.9.0 gitpython pyyaml numpy==1.22.4 pybind11-global
 
 # Installing torchaudio
 RUN curl -o torchaudio.txt https://raw.githubusercontent.com/pytorch/pytorch/${PYTORCH_BRANCH}/.github/ci_commit_pins/audio.txt &&\
@@ -56,9 +56,6 @@ RUN curl -o torchbench.txt https://raw.githubusercontent.com/pytorch/pytorch/${P
   cd benchmark &&\
   git checkout "$torchbench_hash" &&\
   python3 install.py
-
-# Upgrade numpy so pandas doesnt complain
-RUN pip3 install --upgrade numpy==1.22.4 pybind11-global
 
 ENV PYTHONPATH=${WORKSPACE_DIR}/benchmark:/opt/rocm/lib:${PYTHONPATH}
 ENV LD_LIBRARY_PATH=/opt/rocm/lib
