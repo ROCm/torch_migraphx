@@ -7,7 +7,6 @@ on:
                 required: true
             torch_branch:
                 required: true
-    pull_request:
 
 env: 
     BASE_DOCKER: ${{ inputs.base_docker }}
