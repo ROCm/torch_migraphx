@@ -196,10 +196,35 @@ def test_binary_compare(op_alias):
 @pytest.mark.parametrize('op_alias',
     [
         torch.ops.aten.log2.default,
+        torch.ops.aten.log.default,
     ]
 )
-def test_log2(op_alias):
+def test_log(op_alias):
     inp = torch.abs(torch.randn(2, 9, 11, 1)).cuda()
+    mod = FuncModule(op_alias).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('op_alias', [
+    torch.ops.aten.div.Tensor_mode
+])
+@pytest.mark.parametrize('in_shape, other_shape, rounding_mode', [((4, 7, 3), (4, 7, 3), None),
+                                                   ((4, 7, 3), (1), "floor")])
+def test_div_func_tensor(op_alias, in_shape, other_shape, rounding_mode):
+    inp = torch.randn(in_shape).cuda()
+    other = torch.randn(other_shape).cuda()
+    mod = FuncModule(op_alias, other, rounding_mode=rounding_mode).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+@pytest.mark.parametrize('op_alias',
+    [
+        torch.ops.aten.erf.default,
+    ]
+)
+def test_erf(op_alias):
+    inp = torch.randn(2, 9, 11, 1).cuda()
     mod = FuncModule(op_alias).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)

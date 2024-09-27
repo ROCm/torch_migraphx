@@ -25,6 +25,11 @@ def migraphx_version():
     return migraphx.__version__ if migraphx.__version__ != "dev" else "2.10"
 
 
+@pytest.fixture()
+def torch_version():
+    return torch.__version__
+
+
 @pytest.fixture(autouse=True)
 def skip_min_migraphx_version(request, migraphx_version):
     if request.node.get_closest_marker('skip_min_migraphx_ver'):
@@ -34,4 +39,15 @@ def skip_min_migraphx_version(request, migraphx_version):
         if version.parse(migraphx_version) < version.parse(min_ver):
             pytest.skip(
                 f"Skipping because found MIgraphX version {migraphx_version} < {min_ver}"
+            )
+
+
+@pytest.fixture(autouse=True)
+def skip_min_torch_version(request, torch_version):
+    if request.node.get_closest_marker('skip_min_torch_ver'):
+        min_ver = request.node.get_closest_marker(
+            'skip_min_torch_ver').args[0]
+        if version.parse(torch_version) < version.parse(min_ver):
+            pytest.skip(
+                f"Skipping because found Torch version {torch_version} < {min_ver}"
             )

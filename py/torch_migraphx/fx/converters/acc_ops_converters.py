@@ -34,6 +34,7 @@ import logging
 import migraphx
 import torch
 import numpy as np
+import itertools
 
 from packaging import version
 from ..converter_registry import migraphx_converter, MIGRAPHX_VERSION
@@ -412,6 +413,12 @@ def acc_ops_floor_div(mgx_module, node, args, kwargs):
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('floor'), [div]))
 
+
+@migraphx_converter(acc_ops.trunc_div)
+def acc_ops_trunc_div(mgx_module, node, args, kwargs):
+    # TODO: Waiting for Trunc Op in MiGraphX
+    return acc_ops_floor_div(mgx_module, node, args, kwargs)
+    
 
 @migraphx_converter(acc_ops.log)
 def acc_ops_log(mgx_module, node, args, kwargs):
@@ -1129,6 +1136,29 @@ def acc_ops_embedding(mgx_module, node, args, kwargs):
         mgx_module.add_instruction(migraphx.op('gather', axis=0),
                                    [weight.instr_ref, inp.instr_ref]))
 
+@migraphx_converter(acc_ops.gather)
+def acc_ops_gather(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    dim = kwargs['dim']
+    index = kwargs['index']
+
+    assert not inp.is_quantized() and not index.is_quantized()
+    
+    index_lens = index.shape().lens()
+    if dim < 0:
+        dim = len(index_lens) + dim
+    
+    dims = [torch.arange(0, i) for i in index_lens]
+    base_coords = torch.tensor(list(itertools.product(*dims)))
+    flattened_indexes = acc_ops_flatten(mgx_module, node, (), {"input": index})
+    unsqueeze_flatten_indexes = acc_ops_unsqueeze(mgx_module, node, (), {"input": flattened_indexes, "dim": -1})
+    d1 =  MGXInstruction(mgx_module.add_literal(base_coords[:, :dim].numpy()))
+    d2 =  MGXInstruction(mgx_module.add_literal(base_coords[:, dim+1:].numpy()))
+    coords = acc_ops_cat(mgx_module, node, (), {"tensors": [d1, unsqueeze_flatten_indexes, d2], "dim": 1})
+    new_shape = tuple(list(index_lens) + [len(index_lens)])
+    coords = acc_ops_reshape(mgx_module, node, (), {"input": coords, "shape": new_shape})
+    return MGXInstruction(mgx_module.add_instruction(migraphx.op('gathernd'), [inp.instr_ref, coords.instr_ref]))
+                             
 
 @migraphx_converter(acc_ops.reshape)
 def acc_ops_reshape(mgx_module, node, args, kwargs):
@@ -1462,6 +1492,37 @@ def acc_ops_mean(mgx_module, node, args, kwargs):
 
     return MGXInstruction(mean, qparams=qparams)
 
+@migraphx_converter(acc_ops.std)
+def acc_ops_std(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    dim = kwargs['dim']
+    keepdim = kwargs['keepdim']
+    correction = kwargs['correction']
+
+    assert not inp.is_quantized()
+
+    # mean = torch.mean(input, dim=dim, keepdim=True)
+    mean_kwargs = {'input': inp, 'dim': dim, 'keepdim': True}
+    mean = acc_ops_mean(mgx_module, node, args, mean_kwargs)
+
+    # sum_N = torch.sum((input - mean) ** 2, dim=dim, keepdim=keepdim)
+    sub_kwargs = {'input': inp, 'other': mean}
+    mean_sub = acc_ops_sub(mgx_module, node, args, sub_kwargs)
+
+    pow_kwargs = {'input': mean_sub, 'exponent': 2}
+    mean_sub_pow = acc_ops_pow(mgx_module, node, args, pow_kwargs)
+
+    sum_kwargs = {'input': mean_sub_pow, 'dim': dim, 'keepdim': keepdim}
+    sum_N = acc_ops_sum(mgx_module, node, args, sum_kwargs)
+
+    # variance = sum_N / (N - 1)
+    selected_dims = np.prod([mean_sub_pow.shape().lens()[i] for i in dim]) - correction
+    div_kwargs = {'input': sum_N, 'other': selected_dims}
+    variance = acc_ops_div(mgx_module, node, args, div_kwargs)
+
+    # std_dev = torch.sqrt(variance)
+    sqrt_kwargs = {'input': variance}
+    return acc_ops_sqrt(mgx_module, node, args, sqrt_kwargs)
 
 @migraphx_converter(acc_ops.sum)
 def acc_ops_sum(mgx_module, node, args, kwargs):
@@ -2306,3 +2367,84 @@ def acc_ops_bitwise_and(mgx_module, node, _args, kwargs):
             mgx_module.add_instruction(migraphx.op('logical_and'), [inp, other]))
     return MGXInstruction(
         mgx_module.add_instruction(migraphx.op('bitwise_and'), [inp, other]))
+
+
+@migraphx_converter(acc_ops.scaled_dot_product_attention)
+def acc_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
+    query, key, value = kwargs['query'], kwargs['key'], kwargs['value']
+
+    # L, S = query.size(-2), key.size(-2)
+    L, S = query.shape().lens()[-2], key.shape().lens()[-2]
+
+    # scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
+    scale_factor = 1 / torch.sqrt(torch.tensor(query.shape().lens()[-1])) if kwargs.get("scale") is None else kwargs["scale"]
+    
+    # attn_bias = torch.zeros(L, S, dtype=query.dtype)
+    attn_bias = MGXInstruction(mgx_module.add_literal(torch.zeros(L, S, dtype=query.torch_type()).numpy()))
+
+    # if is_causal:
+    #     assert attn_mask is None
+    #     temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+    #     attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+    #     attn_bias.to(query.dtype)
+
+    if kwargs.get("is_causal"):
+        assert kwargs.get("attn_mask") is None
+        temp_mask = MGXInstruction(mgx_module.add_literal(torch.ones(L, S, dtype=torch.bool).tril(diagonal=0).numpy()))
+        logical_not_kwargs = {'input': temp_mask}
+        logical_not_temp_mask = acc_ops_logical_not(mgx_module, node, args, logical_not_kwargs)
+        masked_fill_kwargs = {'input': attn_bias, 'mask': logical_not_temp_mask, 'value': float("-inf")}
+        attn_bias = acc_ops_masked_fill(mgx_module, node, args, masked_fill_kwargs)
+        attn_bias.instr_ref = convert_arg(mgx_module, attn_bias.instr_ref, query.torch_type())
+    
+    # if attn_mask is not None:
+    #     if attn_mask.dtype == torch.bool:
+    #         attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+    #     else:
+    #         attn_bias += attn_mask
+
+    if kwargs.get("attn_mask"):
+        if kwargs["attn_mask"].torch_type() == torch.bool:
+            logical_not_kwargs = {'input': kwargs["attn_mask"]}
+            logical_not_attn_mask = acc_ops_logical_not(mgx_module, node, args, logical_not_kwargs)
+            masked_fill_kwargs = {'input': attn_bias, 'mask': logical_not_attn_mask, 'value': float("-inf")}
+            attn_bias = acc_ops_masked_fill(mgx_module, node, args, masked_fill_kwargs)
+        else:
+            add_kwargs = {'input': attn_bias, 'other': kwargs["attn_mask"]}
+            attn_bias = acc_ops_add(mgx_module, node, args, add_kwargs)
+
+    # attn_weight = query @ key.transpose(-2, -1) * scale_factor
+    perm = list(range(len(key.shape().lens())))
+    perm[-2], perm[-1] = perm[-1], perm[-2]
+    perm_kwargs = {'input': key, 'permutation': perm}
+    key_T = acc_ops_permute(mgx_module, node, args, perm_kwargs)
+
+    matmul_kwargs = {'input': query, 'other': key_T}
+    attn_weight = acc_ops_matmul(mgx_module, node, args, matmul_kwargs) 
+
+    mul_kwargs = {'input': attn_weight, 'other': scale_factor}
+    attn_weight = acc_ops_mul(mgx_module, node, args, mul_kwargs)
+
+    # attn_weight += attn_bias
+    add_kwargs = {'input': attn_weight, 'other': attn_bias}
+    attn_weight = acc_ops_add(mgx_module, node, args, add_kwargs)
+
+    # attn_weight = torch.softmax(attn_weight, dim=-1)
+    softmax_kwargs = {'input': attn_weight, 'dim': -1}
+    attn_weight = acc_ops_softmax(mgx_module, node, args, softmax_kwargs)
+    
+    # attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+    # Not needed for inference
+
+    # return attn_weight @ value
+    matmul_kwargs = {'input': attn_weight, 'other': value}
+    return acc_ops_matmul(mgx_module, node, args, matmul_kwargs)
+
+
+@migraphx_converter(acc_ops.erf)
+def acc_ops_erf(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    assert not inp.is_quantized()
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('erf'), [inp.instr_ref]))
+
