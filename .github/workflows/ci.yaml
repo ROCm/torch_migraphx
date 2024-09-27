@@ -34,7 +34,7 @@ jobs:
             - name: Create Image Tag
               id: image_hash
               run: |
-                echo "imagetag=$(echo -n ./ci/base.Dockerfile | sha256sum | awk '{print $1}')" >> $GITHUB_OUTPUT
+                echo "imagetag=$(sha256sum ./ci/base.Dockerfile | awk '{print $1}')" >> $GITHUB_OUTPUT
 
             - name: Check if image exists
               id: check_image
