@@ -14,6 +14,16 @@ def test_mean(dim, keepdim):
         mgx_mod = convert_to_mgx(mod, [inp])
         verify_outputs(mod, mgx_mod, inp)
 
+@pytest.mark.parametrize('dim, correction, keepdim', [(0, 1, True), (-1, 2, False), (3, 0, False),
+                                          ([-1, -2], 1, True)])
+def test_std(dim, correction, keepdim):
+    inp = torch.randn(32, 43, 11, 2, 12)
+    mod_func = FuncModule(torch.std, dim=dim, correction=correction, keepdim=keepdim)
+    mod_method = MethodModule('std', dim=dim, correction=correction, keepdim=keepdim)
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
 
 @pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False), (3, False),
                                           (-2, True)])
@@ -96,6 +106,38 @@ def test_cumsum(dim):
     inp = torch.randn(32, 43, 11, 2, 12)
     mod_func = FuncModule(torch.cumsum, dim=dim)
     mod_method = MethodModule('cumsum', dim=dim)
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.skip_min_migraphx_ver("2.11.0")
+@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False), (None, None)])
+def test_any(dim, keepdim):
+    inp = torch.randn(32, 43, 11, 2, 12) < 0
+    if dim is not None:
+        mod_func = FuncModule(torch.any, dim=dim, keepdim=keepdim)
+        mod_method = MethodModule('any', dim=dim, keepdim=keepdim)
+    else:
+        mod_func = FuncModule(torch.any)
+        mod_method = MethodModule('any')
+
+    for mod in [mod_func, mod_method]:
+        mgx_mod = convert_to_mgx(mod, [inp])
+        verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.skip_min_migraphx_ver("2.11.0")
+@pytest.mark.parametrize('dim, keepdim', [(0, True), (-1, False), (None, None)])
+def test_all(dim, keepdim):
+    inp = torch.randn(32, 43, 11, 2, 12) < 0
+    if dim is not None:
+        mod_func = FuncModule(torch.all, dim=dim, keepdim=keepdim)
+        mod_method = MethodModule('all', dim=dim, keepdim=keepdim)
+    else:
+        mod_func = FuncModule(torch.all)
+        mod_method = MethodModule('all')
 
     for mod in [mod_func, mod_method]:
         mgx_mod = convert_to_mgx(mod, [inp])

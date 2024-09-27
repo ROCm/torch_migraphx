@@ -1,0 +1,39 @@
+name: torchbench_docker
+
+on: 
+    workflow_dispatch:
+        inputs:
+            base_docker:
+                default: 'rocm/pytorch:rocm6.2_ubuntu22.04_py3.10_pytorch_release_2.3.0'
+            torch_branch:
+                default: '2.3.0'
+
+env: 
+    BASE_DOCKER: ${{ inputs.base_docker }}
+    TORCH_BRANCH: ${{ inputs.torch_branch }}
+    DOCKER_USER: ${{secrets.DOCKERHUB_USERID}}
+    DOCKER_TOKEN: ${{secrets.DOCKERHUB_TOKEN}}
+    DOCKER_IMAGE: "rocm/migraphx-torchbench-base"
+
+jobs:
+    cancel:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Cancel Previous Runs
+              uses: styfle/cancel-workflow-action@0.11.0
+              with:
+                access_token: ${{ github.token }}
+
+    build_image:
+        name: Build Image
+        runs-on: ROCM-Ubuntu
+        steps:
+            - uses: actions/checkout@v4.1.1
+
+            - name: Build and publish
+              run: |
+                echo $DOCKER_TOKEN | docker login -u $DOCKER_USER --password-stdin
+                docker build . --file ./docker/torchbench.Dockerfile --build-arg BASE_DOCKER="$BASE_DOCKER" --build-arg PYTORCH_BRANCH="$TORCH_BRANCH"  --tag $DOCKER_IMAGE:$TORCH_BRANCH --tag $DOCKER_IMAGE:latest;
+                docker push $DOCKER_IMAGE:$TORCH_BRANCH;
+                docker push $DOCKER_IMAGE:latest;
+                

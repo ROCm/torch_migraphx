@@ -3,7 +3,6 @@ import torch
 import operator
 from fx_test_utils import FuncModule, MethodModule, convert_to_mgx, verify_outputs
 
-
 @pytest.mark.parametrize('oper', [
     operator.add,
     torch.add,
@@ -15,12 +14,8 @@ from fx_test_utils import FuncModule, MethodModule, convert_to_mgx, verify_outpu
     operator.truediv,
     torch.fmod,
     torch.pow,
-    pytest.param(
-        operator.floordiv,
-        marks=pytest.mark.skip(reason="floor_div converter not implemented")),
-    pytest.param(
-        torch.floor_divide,
-        marks=pytest.mark.skip(reason="trunc_div converter not implemented")),
+    operator.floordiv,
+    torch.floor_divide,
 ])
 def test_pointwise_func(oper):
     inps1 = [torch.randn(4, 7, 3), torch.randn(4, 7, 3)]
@@ -31,6 +26,50 @@ def test_pointwise_func(oper):
         mod = FuncModule(oper, inps[1])
         mgx_mod = convert_to_mgx(mod, [inps[0]])
         verify_outputs(mod, mgx_mod, inps[0], equal_nan=True)
+
+@pytest.mark.parametrize('oper', [
+    torch.div,
+])
+def test_div_func(oper):
+    inps1 = [torch.randn(4, 7, 3), torch.randn(4, 7, 3), None]
+    inps2 = [torch.randn(4, 7, 3), 2, "floor"]
+
+    for inps in [inps1, inps2]:
+        mod = FuncModule(oper, inps[1], rounding_mode=inps[2])
+        mgx_mod = convert_to_mgx(mod, [inps[0]])
+        verify_outputs(mod, mgx_mod, inps[0], equal_nan=True)
+
+
+@pytest.mark.parametrize('oper', [
+    pytest.param(torch.bitwise_and, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+])
+@pytest.mark.parametrize('in_shape, other_shape', [
+    ((4, 7, 3), (1,)),
+    ((4, 7, 3), (1, 1, 3)),
+    ((4, 7, 3), (4, 7, 3)),
+])
+def test_pointwise_func_integral(oper, in_shape, other_shape):
+    inp = torch.randint(-20000, 20000, in_shape, dtype=torch.int32)
+    other = torch.randint(-20000, 20000, other_shape, dtype=torch.int32)
+    mod = FuncModule(oper, other)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
+
+
+@pytest.mark.parametrize('oper', [
+    pytest.param(torch.bitwise_and, marks=pytest.mark.skip_min_migraphx_ver("2.11.0")),
+])
+@pytest.mark.parametrize('in_shape, other_shape', [
+    ((4, 7, 3), (1,)),
+    ((4, 7, 3), (1, 1, 3)),
+    ((4, 7, 3), (4, 7, 3)),
+])
+def test_pointwise_func_bool(oper, in_shape, other_shape):
+    inp = torch.rand(in_shape, device="cuda") < 0.5
+    other = torch.rand(other_shape, device="cuda") < 0.5
+    mod = FuncModule(oper, other)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp, equal_nan=True)
 
 
 @pytest.mark.parametrize('method', [
@@ -72,7 +111,21 @@ def test_unary_func(oper):
     verify_outputs(mod, mgx_mod, inp, equal_nan=True)
 
 
-@pytest.mark.parametrize('oper', [torch.log, torch.log1p])
+@pytest.mark.parametrize('oper', [torch.logical_not,])
+@pytest.mark.parametrize('input', [
+    [1, 0],
+    [True, False],
+    [1., 0.],
+])
+def test_pointwise_not(oper, input):
+    inp = torch.Tensor(input)
+    mod = FuncModule(oper)
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('oper', [torch.log, torch.log1p, torch.log2,])
+
 def test_log(oper):
     inp = torch.abs(torch.randn(2, 9, 11, 1))
     mod = FuncModule(oper)
@@ -138,5 +191,12 @@ def test_binary_compare_func(oper):
 
     mod = FuncModule(oper, other=other)
 
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+@pytest.mark.parametrize('oper', [torch.erf])
+def test_erf(oper):
+    inp = torch.randn(2, 9, 11, 1)
+    mod = FuncModule(oper)
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
