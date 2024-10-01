@@ -1152,9 +1152,13 @@ def acc_ops_gather(mgx_module, node, args, kwargs):
     base_coords = torch.tensor(list(itertools.product(*dims)))
     flattened_indexes = acc_ops_flatten(mgx_module, node, (), {"input": index})
     unsqueeze_flatten_indexes = acc_ops_unsqueeze(mgx_module, node, (), {"input": flattened_indexes, "dim": -1})
-    d1 =  MGXInstruction(mgx_module.add_literal(base_coords[:, :dim].numpy()))
-    d2 =  MGXInstruction(mgx_module.add_literal(base_coords[:, dim+1:].numpy()))
-    coords = acc_ops_cat(mgx_module, node, (), {"tensors": [d1, unsqueeze_flatten_indexes, d2], "dim": 1})
+    cat_tensors = []
+    if base_coords[:, :dim].numel() > 0:
+        cat_tensors.append(MGXInstruction(mgx_module.add_literal(base_coords[:, :dim].numpy())))
+    cat_tensors.append(unsqueeze_flatten_indexes)
+    if base_coords[:, dim+1:].numel() > 0:
+        cat_tensors.append(MGXInstruction(mgx_module.add_literal(base_coords[:, dim+1:].numpy())))
+    coords = acc_ops_cat(mgx_module, node, (), {"tensors": cat_tensors, "dim": 1})
     new_shape = tuple(list(index_lens) + [len(index_lens)])
     coords = acc_ops_reshape(mgx_module, node, (), {"input": coords, "shape": new_shape})
     return MGXInstruction(mgx_module.add_instruction(migraphx.op('gathernd'), [inp.instr_ref, coords.instr_ref]))
