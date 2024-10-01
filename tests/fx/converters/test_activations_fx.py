@@ -3,50 +3,6 @@ import torch
 from fx_test_utils import randbounds, FuncModule, MethodModule, convert_to_mgx, verify_outputs
 
 
-@pytest.mark.parametrize('reduction', [('mean'), ('sum'), ('none')])
-@pytest.mark.parametrize('inp_size, no_weight, ignore_index', [
-    ((20, 5), False, 0),
-    ((3, 5), True, -100),
-    ((20, 5, 2, 4), False, 3),
-    ((3, 5, 6), True, -100),
-])
-def test_nll_loss_fx(inp_size, no_weight, reduction, ignore_index):
-    # if no_weight is set, then pass weight=None, module should default weights to 1
-    # C is the number of classes and weights
-    C = inp_size[1]
-    target_size = inp_size[:1] + inp_size[2:]
-    target = torch.randint(C, target_size)
-    weight = None if no_weight else torch.rand(C, dtype=torch.float)
-
-    inp = torch.randn(inp_size, dtype=torch.float)
-    mod = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
-                    reduction = reduction, ignore_index = ignore_index)
-    mgx_mod = convert_to_mgx(mod, [inp])
-    verify_outputs(mod, mgx_mod, [inp])
-
-
-@pytest.mark.parametrize('reduction', [('mean'), ('sum'), ('none')])
-@pytest.mark.parametrize('C, no_weight, target, ignore_index', [
-    (3, True, 0, 0), 
-    (3, False, 1, -100),
-    (3, True, 2, 1),
-])
-def test_nll_loss_1d_fx(C, no_weight, reduction, target, ignore_index):
-    # C is the number of classes and weights
-    target = torch.tensor(target)
-    weight = None if no_weight else torch.rand(C, dtype=torch.float)
-
-    inp_size = (C,)
-    inp = torch.randn(inp_size, dtype=torch.float)
-    mod = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
-                     reduction = reduction, ignore_index = ignore_index)
-    mgx_mod = convert_to_mgx(mod, [inp])
-    # Output is nan when ignore_idx == target (div by 0)
-    # MIGraphX creates a kernel that ends up outputting a tensor of len 1 instead of a scalar
-    # TODO: fused kernels in migraphx should respect the original output shape
-    verify_outputs(mod, mgx_mod, [inp], equal_nan=True, scalar=True)
-
-
 @pytest.mark.parametrize('inp_size', [(4, 2, 7), (128, 2048),
                                       (1, 3, 6, 128, 128)])
 def test_clamp(inp_size):
