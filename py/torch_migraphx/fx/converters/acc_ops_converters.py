@@ -120,24 +120,26 @@ def acc_ops_linear(mgx_module, node, args, kwargs):
 def acc_ops_nll_loss(mgx_module, node, args, kwargs):
 
     inp = kwargs['input']
-    inp_instr_ref = inp.instr_ref
+    inp_ref = inp.instr_ref
     target = kwargs['target']
     target_ref = target.instr_ref
     ignore_idx = kwargs["ignore_index"]
 
-    ndims = len(inp_instr_ref.shape().lens())
-    dtype = get_arg_dtype(inp_instr_ref)
+    inp_lens = inp_ref.shape().lens()
+    dtype = get_arg_dtype(inp_ref)
 
-    if ndims == 1:
+    if len(inp_lens) == 1:
         # The single dimension is C.  Insert a 0'th dimension
-        inp_instr_ref =  mgx_module.add_instruction(
-            migraphx.op('unsqueeze', axes=[0]), [inp_instr_ref])
+        inp_ref =  mgx_module.add_instruction(
+            migraphx.op('unsqueeze', axes=[0]), [inp_ref])
+        inp_lens = inp_ref.shape().lens()
         target_ref = mgx_module.add_instruction(
             migraphx.op('unsqueeze', axes=[0]), [target_ref])
     
-    C = inp_instr_ref.shape().lens()[1]
+    C = inp_lens[1]
     # weight should be a vector of 1's if not given
-    weight = mgx_module.add_literal(torch.ones(C, dtype=dtype).numpy()) if kwargs.get('weight') is None else kwargs['weight'].instr_ref
+    weight = mgx_module.add_literal(
+        torch.ones(C, dtype=dtype).numpy()) if kwargs.get('weight') is None else kwargs['weight'].instr_ref
     
     # Set weight to 0 for ignore_index if the ignore index is valid
     if 0 <= ignore_idx < C:
@@ -145,85 +147,54 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
         zero_mgx = mgx_module.add_literal(torch.tensor([0], dtype=dtype).numpy())
         weight = mgx_module.add_instruction(migraphx.op('scatter_none', axis=0), [weight, ignore_idx_mgx, zero_mgx])
 
-    # negative of input
-    neg_ins = mgx_module.add_instruction(migraphx.op('neg'), [inp_instr_ref])
-
     # Prepare to select weight for each target
     # unsqueeze the weight and broadcast to match input shape 
     # Insert 1 dimension (batch) before the C value and 
     # k dimensions, if any, after.
-    axis_list = [0] + [*range(2, ndims)]
+    axis_list = [0] + list(range(2, len(inp_lens)))
     weight_unsquoze = mgx_module.add_instruction(
             migraphx.op('unsqueeze', axes=axis_list), [weight])
     weight_bcst = mgx_module.add_instruction(
-            migraphx.op('multibroadcast', out_lens=inp_instr_ref.shape().lens()), [weight_unsquoze])
-
-    # Use target indexes to select weights, one for each class
-    target_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]), [target_ref])
-    target_rank = target_unsq.shape().ndim()
-
-    # Create base coordinate tensors
-    # In the 2-Dim case (Input Shape {N,C}) we could simply create a arange vector for the N dimension
-    # and append it to the target vector to generate a matrix of coordinates
-    # For the K-dim case (Input Shape {N, C, k1, ..., kN}), we treat all k1 ... kN as additional batch
-    # dims and must create a arange vector for each one which is broadcasted over the other batch dims
-    # Appending this with the target vector creates the required coordinates to be selected from inp
-    coordinate_index_lits = []
-    for ax in range(target_rank - 1):
-        batch_dim_indices = mgx_module.add_literal(torch.arange(target_unsq.shape().lens()[ax]).numpy())
-        unsq_dims = list(range(target_rank))
-        unsq_dims = unsq_dims[:ax] + unsq_dims[ax + 1:]
-
-        batch_dim_indices_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=unsq_dims), [batch_dim_indices])
-        batch_dim_indices_bc = mgx_module.add_instruction(
-            migraphx.op('multibroadcast', out_lens=target_unsq.shape().lens()),
-            [batch_dim_indices_unsq])
-        coordinate_index_lits.append(batch_dim_indices_bc)
-
-    # Add the target indices to the base coordinates
-    coordinate_index_lits.append(target_unsq)
-    gathernd_indices = mgx_module.add_instruction(migraphx.op('concat', axis=-1), coordinate_index_lits)
-
-    # Move the C dim to the end so that the coordinates can be applied as computed above
-    perm = [0] + list(range(2, ndims)) + [1]
-    weight_bcst_t = mgx_module.add_instruction(migraphx.op('transpose', permutation=perm), [weight_bcst])
-    neg_ins_t = mgx_module.add_instruction(migraphx.op('transpose', permutation=perm), [neg_ins])
-
-    weight_to_use = mgx_module.add_instruction(migraphx.op('gathernd'), [weight_bcst_t, gathernd_indices])
-    x_to_use = mgx_module.add_instruction(migraphx.op('gathernd'), [neg_ins_t, gathernd_indices])
-
-    # W * X, the weighted input values
-    multiply_ins =  mgx_module.add_instruction(migraphx.op('mul'), [weight_to_use, x_to_use])
+            migraphx.op('multibroadcast', out_lens=inp_lens), [weight_unsquoze])
+    
+    # use torch.gather converter to gather the correct elements from the input tensor
+    target_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[1]), [target_ref])
+    
+    inp_gather_kwargs = {"input": MGXInstruction(inp_ref), "dim": 1, "index": MGXInstruction(target_unsq)}
+    gathered_inp = acc_ops_gather(mgx_module, node, (), inp_gather_kwargs).instr_ref
+    
+    weight_gather_kwargs = {"input": MGXInstruction(weight_bcst), "dim": 1, "index": MGXInstruction(target_unsq)}
+    gathered_weights = acc_ops_gather(mgx_module, node, (), weight_gather_kwargs).instr_ref
+    
+    neg_inp = mgx_module.add_instruction(migraphx.op('neg'), [gathered_inp])
+    weighted_inp = mgx_module.add_instruction(migraphx.op('mul'), [gathered_weights, neg_inp])
 
     # reduction type.  'none' must be specified; an empty value of Python None defaults to 'mean'
     if kwargs.get('reduction') == 'none':
         # Don't reduce; return a 1-d vector
-        loss =  mgx_module.add_instruction(migraphx.op('squeeze'), [multiply_ins])
+        loss =  mgx_module.add_instruction(migraphx.op('squeeze'), [weighted_inp])
         weight_sum = mgx_module.add_literal(torch.tensor(0, dtype=dtype).numpy())
     else:
-        #
-        #    sum- or mean-reduction case.  Sum W * X, divide by sum of weights, and return a scalar
-        #
-
+        # sum- or mean-reduction case.  Sum W * X, divide by sum of weights, and return a scalar
         # Reduce, i.e. take the sum of all values 
-        reduce_ins =  mgx_module.add_instruction(migraphx.op('reduce_sum', axes=list(range(multiply_ins.shape().ndim()))), [multiply_ins])
+        reduce_ins =  mgx_module.add_instruction(
+            migraphx.op('reduce_sum', axes=list(range(weighted_inp.shape().ndim()))), [weighted_inp])
         # squeeze the number of dimensions down to none (i.e. scalar)
-        squeezed_reduce_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [reduce_ins])
+        reduce_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [reduce_ins])
         
-        # Calculate the sum of weights.
-        sum_ins = mgx_module.add_instruction(migraphx.op('reduce_sum', 
-                axes=list(range(weight_to_use.shape().ndim()))), [weight_to_use])
+        # Calculate the sum of weights
+        weight_sum = mgx_module.add_instruction(migraphx.op('reduce_sum', 
+                axes=list(range(gathered_weights.shape().ndim()))), [gathered_weights])
 
         # squeeze the sum of weights to scalar
-        weight_sum =  mgx_module.add_instruction(migraphx.op('squeeze'), [sum_ins])
+        weight_sum =  mgx_module.add_instruction(migraphx.op('squeeze'), [weight_sum])
         
         if kwargs.get('reduction') == 'sum':
-            loss = squeezed_reduce_ins
-        #
+            loss = reduce_ins
+            
         # the default reduction type is 'mean'
-        #
         else:
-            loss = mgx_module.add_instruction(migraphx.op('div'), [squeezed_reduce_ins, weight_sum])
+            loss = mgx_module.add_instruction(migraphx.op('div'), [reduce_ins, weight_sum])
 
     if "weight_sum" in kwargs:
         return MGXInstruction(loss), MGXInstruction(weight_sum)
