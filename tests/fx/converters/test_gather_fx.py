@@ -3,6 +3,15 @@ import torch
 import numpy as np
 from fx_test_utils import FuncModule, convert_to_mgx, verify_outputs
 
+class GatherModule(torch.nn.Module):
+
+    def __init__(self, dim):
+        super(GatherModule, self).__init__()
+        self.dim = dim
+
+    def forward(self, x, idx):
+        return torch.gather(x, self.dim, idx)
+
 @pytest.mark.parametrize("input_dim, dim", [((3, 3), 0), 
                                             ((3, 3), 1), 
                                             ((3, 3), -1), 
@@ -18,7 +27,7 @@ def test_gather(input_dim, dim):
     index_shape[dim] = np.random.randint(1, dim_size)  
     index = torch.randint(0, dim_size, index_shape)
 
-    mod = FuncModule(torch.gather, dim=dim, index=index).cuda()
+    mod = GatherModule(dim)
 
-    mgx_mod = convert_to_mgx(mod, [input])
-    verify_outputs(mod, mgx_mod, input)
+    mgx_mod = convert_to_mgx(mod, [input, index])
+    verify_outputs(mod, mgx_mod, [input, index])
