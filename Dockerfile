@@ -10,8 +10,8 @@ COPY . /workspace/torch_migraphx
 # Install rbuild
 RUN pip install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz
 # install migraphx from source
-RUN git clone --single-branch --branch ${MIGRAPHX_BRANCH} --recursive https://github.com/ROCm/AMDMIGraphX.git \
-    && cd AMDMIGraphX \
+RUN git clone https://github.com/ROCm/AMDMIGraphX.git \
+    && cd AMDMIGraphX && git checkout ${MIGRAPHX_BRANCH} \
     && rbuild build -d depend -DBUILD_TESTING=Off -DCMAKE_INSTALL_PREFIX=/opt/rocm/ --cxx=/opt/rocm/llvm/bin/clang++ -DGPU_TARGETS=${GPU_ARCH} \
     && cd build && make install
 
