@@ -19,6 +19,16 @@ def test_reduce_ops_sum_mean(op_alias, dim, keepdim):
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
+@pytest.mark.parametrize('op_alias', [
+    torch.ops.aten.std.correction
+])
+@pytest.mark.parametrize('dim, correction, keepdim', [(0, 1, True), (-1, 2, False),
+                                          ([2, 3], 0, False), (2, 1, True)])
+def test_reduce_ops_std(op_alias, dim, correction, keepdim):
+    inp = torch.randn(32, 43, 11, 2, 12).cuda()
+    mod = FuncModule(op_alias, dim, correction=correction, keepdim=keepdim).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
 
 @pytest.mark.parametrize('op_alias', [
     torch.ops.aten.max.dim,

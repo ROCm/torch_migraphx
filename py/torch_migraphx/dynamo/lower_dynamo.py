@@ -39,6 +39,7 @@ from torch_migraphx.fx.passes.pass_utils import validate_inference
 
 from .passes.pass_manager import run_aten_passes
 from .passes.partition import partition, get_partition_inputs
+from .passes.fix_tensor_meta import fix_tensor_meta
 from .utils import print_graph_info
 
 
@@ -69,6 +70,7 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
         if not isinstance(mod, torch.fx.GraphModule):
             continue
         
+        mod = fix_tensor_meta(mod)
         partition_inputs = get_partition_inputs(optim_gm, mod, example_inputs)
         if verbose:
             print_graph_info(name, mod, partition_inputs)
