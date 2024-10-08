@@ -50,7 +50,7 @@ def pre_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
         remove_empty_slices,
         const_fold,
     ]
-    pre_partition_pass_mgr = MGXPassManager.build_from_passlist(passes)
+    pre_partition_pass_mgr = MGXPassManager(passes)
     return pre_partition_pass_mgr(gm)
 
 
@@ -58,5 +58,5 @@ def post_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
     passes = [
         fix_tensor_meta,
     ]
-    post_partition_pass_mgr = MGXPassManager.build_from_passlist(passes)
+    post_partition_pass_mgr = MGXPassManager(passes)
     return post_partition_pass_mgr(gm)
