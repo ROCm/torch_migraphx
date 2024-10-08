@@ -37,9 +37,8 @@ from torch_migraphx.fx.mgx_module import MGXModule
 from torch_migraphx.fx.fx2mgx import MGXInterpreter
 from torch_migraphx.fx.passes.pass_utils import validate_inference
 
-from .passes.pass_manager import run_aten_passes
+from .passes.pass_manager import pre_partition_pass, post_partition_pass
 from .passes.partition import partition, get_partition_inputs
-from .passes.fix_tensor_meta import fix_tensor_meta
 from .utils import print_graph_info
 
 
@@ -62,15 +61,15 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
     if verbose:
         print_graph_info('Traced Model', gm, example_inputs)
 
-    optim_gm = run_aten_passes(gm, example_inputs, verbose=verbose)
-    del gm
+    optim_gm = pre_partition_pass(gm)
+    patitioned_gm = partition(optim_gm, verbose=verbose)
 
-    for name, mod in optim_gm.named_children():
+    for name, mod in patitioned_gm.named_children():
         # Const folded params can show up as "child objects"
         if not isinstance(mod, torch.fx.GraphModule):
             continue
-        
-        mod = fix_tensor_meta(mod)
+
+        mod = post_partition_pass(mod)
         partition_inputs = get_partition_inputs(optim_gm, mod, example_inputs)
         if verbose:
             print_graph_info(name, mod, partition_inputs)

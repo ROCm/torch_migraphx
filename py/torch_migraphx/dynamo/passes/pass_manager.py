@@ -26,26 +26,37 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
-
-from typing import Sequence
-
 import torch
-from .partition import partition
+from torch.fx.passes.pass_manager import PassManager
+
 from .remove_ops import remove_const_ops, remove_view_ops
 from .const_fold import const_fold
 from .promote_types import promote_inputs
 from .remove_empty_slice import remove_empty_slices
+from .fix_tensor_meta import fix_tensor_meta
 
 
-# TODO: Use torch fx `pass manager to run the below passes
-def run_aten_passes(gm: torch.fx.GraphModule,
-                    inputs: Sequence[torch.Tensor],
-                    verbose: bool = False):
-    gm = remove_const_ops(gm)
-    gm = remove_view_ops(gm)
-    gm = promote_inputs(gm)
-    gm = remove_empty_slices(gm)
-    gm = const_fold(gm)
-    gm = partition(gm, verbose=verbose)
+class MGXPassManager(PassManager):
 
-    return gm
+    def __init__(self, passes=None, constraints=None):
+        super().__init__(passes, constraints)
+
+
+def pre_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
+    passes = [
+        remove_const_ops,
+        remove_view_ops,
+        promote_inputs,
+        remove_empty_slices,
+        const_fold,
+    ]
+    pre_partition_pass_mgr = MGXPassManager.build_from_passlist(passes)
+    return pre_partition_pass_mgr(gm)
+
+
+def post_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
+    passes = [
+        fix_tensor_meta,
+    ]
+    post_partition_pass_mgr = MGXPassManager.build_from_passlist(passes)
+    return post_partition_pass_mgr(gm)
