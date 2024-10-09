@@ -263,7 +263,6 @@ def test_bool_shape_ops(op, kwargs):
 ])
 def test_repeat(size, repeat_dims):
     inp = torch.randn(size)
-    #mod_func = FuncModule(torch.repeat, *repeat_dims)
     mod_method = MethodModule('repeat', *repeat_dims)
 
     for mod in [mod_method]:

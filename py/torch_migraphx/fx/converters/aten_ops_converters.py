@@ -98,9 +98,9 @@ def aten_ops_squeeze(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(torch.ops.aten.repeat.default)
-def aten_ops_squeeze(mgx_module, node, args, kwargs):
+def aten_ops_repeat(mgx_module, node, args, kwargs):
     assert len(args) == 2
-    acc_kwargs = {"input": args[0], "dim": args[1]}
+    acc_kwargs = {"input": args[0], "repeats": args[1]}
     return acc_ops_converters.acc_ops_repeat(mgx_module, node, (), acc_kwargs)
 
 
