@@ -38,6 +38,7 @@ INFO outputs:
  - Parsed MIGraphX program
 
 DEBUG outputs:
+
  - Node info for each node in pytorch graph
 
 
@@ -51,6 +52,7 @@ INFO outputs:
  - Node support summary (ie. supported, unsupported nodes)
 
 DEBUG outputs:
+
  - Input shapes and pytorch graph
  - Parsed MIGraphX program that is to be compiled
  - Compiled MIGraphX program
@@ -61,10 +63,12 @@ DEBUG outputs:
 Log level for dynamo lowering.
 
 INFO outputs:
+
  - Name of each subgraph that is being lowered
  - Input shapes and pytorch graph
 
 DEBUG outputs:
+
  - Parsed MIGraphX program that is to be compiled
  - Compiled MIGraphX program
 
@@ -74,9 +78,11 @@ DEBUG outputs:
 Log level for dynamo pre lowering dynamo passes
 
 INFO outputs:
+
  - Graph info before and after pre-partitioning, partitioning and post-partitioning passes
 
 DEBUG outputs:
+
  - Graph info for each sub pass
 
 
