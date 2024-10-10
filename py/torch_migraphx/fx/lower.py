@@ -50,7 +50,7 @@ from .mgx_module import MGXModule
 from .utils import LowerPrecision, SuppressPrints, SetLogLevel, get_graph_info
 
 _LOGGER = logging.getLogger(__name__)
-LOWERER_LOGLEVEL = os.environ.get('TORCH_MIGRAPHX_LOG_LOWER', None)
+LOWERER_LOGLEVEL = os.environ.get('TORCH_MIGRAPHX_LOG_FX_LOWER', None)
 if LOWERER_LOGLEVEL:
     _LOGGER.setLevel(LOWERER_LOGLEVEL)
 Input = Sequence[Any]
