@@ -44,7 +44,7 @@ from .passes.partition import partition, get_partition_inputs
 from .utils import get_input_info, get_graph_info, SetLogLevel
 
 _LOGGER = logging.getLogger(__name__)
-DYNAMO_LOGLEVEL = os.environ.get('TORCH_MIGRAPHX_LOG_DYNAMO_LOWERING', None)
+DYNAMO_LOGLEVEL = os.environ.get('TORCH_MIGRAPHX_LOG_DYNAMO_LOWER', None)
 if DYNAMO_LOGLEVEL:
     _LOGGER.setLevel(DYNAMO_LOGLEVEL)
 
