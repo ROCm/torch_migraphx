@@ -35,6 +35,12 @@ def test_squeeze(op_alias, dim):
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.squeeze.default])
+def test_squeeze_default(op_alias):
+    inp = torch.randn(24, 1, 1, 8).cuda()
+    mod = FuncModule(op_alias).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
 
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.expand.default])
 @pytest.mark.parametrize('out_shape', [(2, 4, 4), (1, 2, 3, 4),

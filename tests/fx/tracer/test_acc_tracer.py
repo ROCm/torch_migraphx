@@ -1135,6 +1135,8 @@ def test_tanh():
 def test_log():
     _make_acc_op_function_test(acc_ops.log, torch.log)
 
+def test_log2():
+    _make_acc_op_function_test(acc_ops.log2, torch.log2)
 
 # def test_sqrt():
 #     _make_acc_op_function_test(acc_ops.sqrt, torch.sqrt)
