@@ -395,6 +395,10 @@ def aten_ops_roi_align(mgx_module, node, args, _kwargs):
     acc_kwargs["spatial_scale"] = args[3] if len(args) >= 4 else None
     acc_kwargs["sampling_ratio"] = args[4] if len(args) >= 5 else None
     acc_kwargs["aligned"] = args[5] if len(args) >= 6 else None
+    
+    
+    print( ' vvvvv passing ', acc_kwargs['output_size'],   type(acc_kwargs['output_size']))
+    
     return acc_ops_converters.acc_ops_roi_align(mgx_module, node, (), acc_kwargs)
 
 

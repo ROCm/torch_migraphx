@@ -207,8 +207,15 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
 def acc_ops_roi_align(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     inp_instr_ref = inp.instr_ref
+    asdf = MGXInstruction(inp_instr_ref)   # debug code!
+    print(' LLLLL ', kwargs)
+    # return asdf
+  
     boxes_ref = kwargs['boxes'].instr_ref
     output_size = kwargs['output_size']
+    
+    # TODO:  doesn't match when Aligned=True
+    transformation_mode = 'half_pixel' if kwargs['aligned'] else 'output_half_pixel'
     
     spatial_scale = kwargs['spatial_scale'] if kwargs['spatial_scale'] is not None else 1.0
     
@@ -225,6 +232,9 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
             migraphx.op('gather', axis=1), [boxes_ref, zero_indices])
         batch_indices2 =  mgx_module.add_instruction(
             migraphx.op('squeeze', axes=0), [batch_indices])
+        batch_indices3 = mgx_module.add_instruction( migraphx.op('convert', target_type=migraphx.shape.type_t.int32_type),
+            [batch_indices2])
+        print(' GGGGG ', batch_indices3.shape().type())
         
         batch_indices = batch_indices2
     elif boxes_ref.shape().lens()[1] == 4:
@@ -238,13 +248,12 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
     #TODO: if we return inp_instr_ref here, we see that inputs are corrupted
 
     roialign_ins = mgx_module.add_instruction(
-        migraphx.op('roialign', coordinate_transformation_mode="half_pixel",
+        migraphx.op('roialign', coordinate_transformation_mode=transformation_mode,
                     output_height=output_size[0],
                     output_width=output_size[1],
                     spatial_scale = spatial_scale),
-                    [inp_instr_ref, boxes2, batch_indices])
+                    [inp_instr_ref, boxes2, batch_indices3])
     
-    return MGXInstruction(inp_instr_ref)   # debug code!
     return MGXInstruction(roialign_ins)
 
 

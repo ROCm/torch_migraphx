@@ -101,7 +101,7 @@ class MGXModule(torch.nn.Module):
             if self.quantize_fp16:
                 migraphx.quantize_fp16(self.program)
 
-            self.program.compile(migraphx.get_target('gpu'),
+            self.program.compile(migraphx.get_target('ref'),
                                  offload_copy=False,
                                  exhaustive_tune=self.exhaustive_tune)
 
@@ -133,6 +133,8 @@ class MGXModule(torch.nn.Module):
                     f"Input {inp_name} not on gpu device. Copying to device before execution, "
                     "however, this will add extra overhead if running a performance benckmark."
                 )
+                # This call was observed to have an error:  two different inputs
+                # were mapped to the same address
                 inp_val = inp_val.cuda()
 
             self.mgx_buffers[inp_name] = mgx_argument_from_ptr(

@@ -19,8 +19,8 @@ from fx_test_utils import convert_to_mgx, verify_outputs
     )
 def test_roi_align(input, boxes, output_size):
     assert(input[0] == len(boxes))
-    inp = torch.randn(input)
-    roi = torch.tensor(boxes)
+    inp = torch.randn(input).cuda()
+    roi = torch.tensor(boxes).cuda()
     outputs = torch.tensor(output_size)
     
     # non-default spatial_scale and sampling_ratio not supported
@@ -33,14 +33,14 @@ def test_roi_align(input, boxes, output_size):
 @pytest.mark.parametrize(
     "input, boxes, output_size", [(
         [[
-        [[1., 2., 3.],
-       [4., 5., 6.],
-       [7., 8., 9.]],
-      [[21., 22., 23.],
-       [24., 25., 26.],
-       [27., 28., 29.]]
-      ]],  
-                                   ([[0, .5, .4, .8, .9]]), 
+        [[1., 2., 3., 4.],
+       [1., 2., 3., 4.],
+       [1., 2., 3., 4.],
+       [1., 2., 3., 4.]
+       ]
+  
+      ]],  # y, x, y, x
+                                   ([[0, 1.2, 1.3, 1.41, 1.5]]), # roi_start =(.3, .4)
                                    [2, 2])]
     )
 # A debugging test.  The roi_align converter doesn't receive the same input we send here.
@@ -48,19 +48,22 @@ def test_roi_align(input, boxes, output_size):
 def test_zap(input, boxes, output_size):
     # assert(input[0] == len(boxes))
     # inp = torch.randn(input)
-    inp = torch.tensor(input)
-    print(' dfddddd ', inp.shape)
-    roi = torch.tensor(boxes)
+    
+    # Note:  calling cuda() here is a workaround to a bug in which a cuda call is made during
+    # convert_to_mgx for non-cuda inputs, but the two inputs overwrite each other.
+    inp = torch.tensor(input).cuda()
+    roi = torch.tensor(boxes).cuda()
     outputs = torch.tensor(output_size)
     
     roi_mod = torchvision.ops.RoIAlign(output_size=output_size, spatial_scale=1.0, sampling_ratio=-1, aligned=True)   
     mgx_mod = convert_to_mgx(roi_mod, [inp, roi, outputs])
-    print(' hello ', mgx_mod(inp, roi))
-    print(' inputs ', inp, roi)
-    print(' vision ', roi_mod(inp.cuda(), roi.cuda()))
-    # raise RuntimeError("asdfsd ")
+    
+    test_mgx_result = mgx_mod(inp, roi)
+    # print(' mgx version ', test_mgx_result)
+    # print(' vision version ', roi_mod(inp, roi))
 
     verify_outputs(roi_mod, mgx_mod, (inp, roi))
+    # raise RuntimeError("asdfsd ")
     
 
 @pytest.mark.parametrize(
@@ -93,6 +96,7 @@ def test_avgpool2d(kernel_size, stride, padding, ceil_mode, count_include_pad):
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+    raise RuntimeError("asdfsd ")
 
 
 @pytest.mark.parametrize('out_shape', [(25, 25), (10, 5),
