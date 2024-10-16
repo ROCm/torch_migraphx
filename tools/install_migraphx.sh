@@ -21,4 +21,4 @@ cd AMDMIGraphX
 rbuild build -d depend -DBUILD_TESTING=Off -DCMAKE_INSTALL_PREFIX=/opt/rocm/ --cxx=/opt/rocm/llvm/bin/clang++ -DGPU_TARGETS=$GPU_ARCH
 
 cd build
-make install
+make -j88 install
