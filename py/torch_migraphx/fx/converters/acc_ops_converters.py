@@ -207,17 +207,12 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
 def acc_ops_roi_align(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     inp_instr_ref = inp.instr_ref
-    asdf = MGXInstruction(inp_instr_ref)   # debug code!
-    print(' LLLLL ', kwargs)
-    # return asdf
-  
     boxes_ref = kwargs['boxes'].instr_ref
     output_size = kwargs['output_size']
     
-    # TODO:  doesn't match when Aligned=True
-    transformation_mode = 'half_pixel' if kwargs['aligned'] else 'output_half_pixel'
-    
+    transformation_mode = 'half_pixel' if kwargs['aligned'] else 'output_half_pixel'    
     spatial_scale = kwargs['spatial_scale'] if kwargs['spatial_scale'] is not None else 1.0
+    sampling_ratio = kwargs['sampling_ratio'] if kwargs['sampling_ratio'] is not None else -1
     
     # "boxes" and "roi" both refer to the same region of interest boxes.
     if boxes_ref.shape().lens()[1] == 5:
@@ -228,31 +223,29 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
             migraphx.op('gather', axis=1), [boxes_ref, roi_indices])
         zero_indices = mgx_module.add_literal(
                 torch.tensor([0,], dtype=torch.int64).numpy())
-        batch_indices = mgx_module.add_instruction(
+        batch_indices_1 = mgx_module.add_instruction(
             migraphx.op('gather', axis=1), [boxes_ref, zero_indices])
         batch_indices2 =  mgx_module.add_instruction(
-            migraphx.op('squeeze', axes=0), [batch_indices])
-        batch_indices3 = mgx_module.add_instruction( migraphx.op('convert', target_type=migraphx.shape.type_t.int32_type),
+            migraphx.op('squeeze', axes=0), [batch_indices_1])
+        batch_indices = mgx_module.add_instruction( migraphx.op('convert', target_type=migraphx.shape.type_t.int32_type),
             [batch_indices2])
-        print(' GGGGG ', batch_indices3.shape().type())
         
-        batch_indices = batch_indices2
+        # batch_indices = batch_indices2
     elif boxes_ref.shape().lens()[1] == 4:
-        batch_indices=range(boxes_ref.shape().lens()[0])
-        raise RuntimeError('List[Tensor[..] boxes input for roi_align() not currently supported')
+        # batch_indices3=range(boxes_ref.shape().lens()[0])
+        # boxes2 = boxes_ref
+        # This isn't supported because torchvision roi_align.default() doesn't support it
+        raise RuntimeError('List[Tensor[L, 4] boxes input for roi_align() not currently supported')
     else:
-        raise RuntimeError('boxes input must be Tensor[K, 5] or List[Tensor[L, 4]]')
-    
-    # TODO: if argument 'Aligned' is False, use the old roi algorithm.  How to do that in MIGraphX?
-    
-    #TODO: if we return inp_instr_ref here, we see that inputs are corrupted
+        raise RuntimeError('boxes input must be Tensor[K, 5]')
 
     roialign_ins = mgx_module.add_instruction(
         migraphx.op('roialign', coordinate_transformation_mode=transformation_mode,
                     output_height=output_size[0],
                     output_width=output_size[1],
-                    spatial_scale = spatial_scale),
-                    [inp_instr_ref, boxes2, batch_indices3])
+                    spatial_scale = spatial_scale,
+                    sampling_ratio = sampling_ratio),
+                    [inp_instr_ref, boxes2, batch_indices])
     
     return MGXInstruction(roialign_ins)
 

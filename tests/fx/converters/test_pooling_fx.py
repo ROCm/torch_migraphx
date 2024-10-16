@@ -4,10 +4,12 @@ import torchvision
 
 from fx_test_utils import convert_to_mgx, verify_outputs
 
+@pytest.mark.parametrize("spatial_scale, sampling_ratio", [(1.5, 3), (0.5, 2)])
+@pytest.mark.parametrize("aligned", [(True), (False)])
 @pytest.mark.parametrize(
-    # TODO: add support for input as List[Tensor[L, 4]]
-    # "input, boxes, output_size", [((1, 2, 256, 256),  ([[0, 1.1, 1.2,  0.6, 2.6]]), [2, 2])]    
     "input, boxes, output_size", [((1, 2, 3, 3),  ([[0, 1.1, 1.2,  0.6, 2.6]]), [2, 2]),
+                                  # boxes as List[Tensor[L, 4]] is not supported
+                                  #   ((2, 2, 3, 3),  ([(1.1, 1.2,  0.6, 2.6), (1.13, 1.23,  0.63, 2.63)]), [2, 2]),
                                   ((2, 2, 3, 3),  ([[1, 1.1, 1.2,  0.6, 2.6], [0, 1.13, 1.23,  0.63, 2.63]]), [2, 2]),
                                   ((4, 2, 256, 256),  
                                    ([[0, 10.6, 11.2,  21.1, 22.6], 
@@ -17,54 +19,17 @@ from fx_test_utils import convert_to_mgx, verify_outputs
                                      ]), 
                                    [7, 7])]
     )
-def test_roi_align(input, boxes, output_size):
+def test_roi_align(input, boxes, output_size, spatial_scale, sampling_ratio, aligned):
     assert(input[0] == len(boxes))
     inp = torch.randn(input).cuda()
     roi = torch.tensor(boxes).cuda()
     outputs = torch.tensor(output_size)
     
-    # non-default spatial_scale and sampling_ratio not supported
-    roi_mod = torchvision.ops.RoIAlign(output_size=output_size, spatial_scale=1.0, sampling_ratio=-1, aligned=False)
+    roi_mod = torchvision.ops.RoIAlign(output_size=output_size, spatial_scale=spatial_scale, sampling_ratio=sampling_ratio, aligned=aligned)
   
     mgx_mod = convert_to_mgx(roi_mod, [inp, roi, outputs])
     verify_outputs(roi_mod, mgx_mod, (inp, roi))
 
-
-@pytest.mark.parametrize(
-    "input, boxes, output_size", [(
-        [[
-        [[1., 2., 3., 4.],
-       [1., 2., 3., 4.],
-       [1., 2., 3., 4.],
-       [1., 2., 3., 4.]
-       ]
-  
-      ]],  # y, x, y, x
-                                   ([[0, 1.2, 1.3, 1.41, 1.5]]), # roi_start =(.3, .4)
-                                   [2, 2])]
-    )
-# A debugging test.  The roi_align converter doesn't receive the same input we send here.
-# (getitem, getitem_1, 0.25, 7, 7, 0, True)
-def test_zap(input, boxes, output_size):
-    # assert(input[0] == len(boxes))
-    # inp = torch.randn(input)
-    
-    # Note:  calling cuda() here is a workaround to a bug in which a cuda call is made during
-    # convert_to_mgx for non-cuda inputs, but the two inputs overwrite each other.
-    inp = torch.tensor(input).cuda()
-    roi = torch.tensor(boxes).cuda()
-    outputs = torch.tensor(output_size)
-    
-    roi_mod = torchvision.ops.RoIAlign(output_size=output_size, spatial_scale=1.0, sampling_ratio=-1, aligned=True)   
-    mgx_mod = convert_to_mgx(roi_mod, [inp, roi, outputs])
-    
-    test_mgx_result = mgx_mod(inp, roi)
-    # print(' mgx version ', test_mgx_result)
-    # print(' vision version ', roi_mod(inp, roi))
-
-    verify_outputs(roi_mod, mgx_mod, (inp, roi))
-    # raise RuntimeError("asdfsd ")
-    
 
 @pytest.mark.parametrize(
     "kernel_size, stride, padding, dilation, ceil_mode",
