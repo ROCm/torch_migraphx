@@ -208,3 +208,19 @@ def test_lift_ops(op_alias):
     mod = FuncModule(op_alias)
     mgx_mod = convert_to_mgx(mod, [inp], tracer=acc_tracer)
     verify_outputs(mod, mgx_mod, inp)
+
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.repeat.default])
+@pytest.mark.parametrize('size, repeat_dims', [
+    ((2, 3), [2, 4]),
+    ((1, 6), [4, 5]),
+    ((2, 1, 3), [2, 3, 1]),
+])
+
+
+def test_repeat(op_alias, size, repeat_dims):
+    inp = torch.randn(size).cuda()
+    mod = FuncModule(op_alias, repeat_dims).cuda()
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
