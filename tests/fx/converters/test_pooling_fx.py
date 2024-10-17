@@ -19,7 +19,7 @@ from fx_test_utils import convert_to_mgx, verify_outputs
                                      ]), 
                                    [7, 7])]
     )
-def test_roi_align(input, boxes, output_size, spatial_scale, sampling_ratio, aligned):
+def test_roi_align_f(input, boxes, output_size, spatial_scale, sampling_ratio, aligned):
     assert(input[0] == len(boxes))
     inp = torch.randn(input).cuda()
     roi = torch.tensor(boxes).cuda()
