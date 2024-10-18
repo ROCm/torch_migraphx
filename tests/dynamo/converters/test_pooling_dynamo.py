@@ -7,7 +7,8 @@ import torch_migraphx
 if not hasattr(torch_migraphx, "dynamo"):
     pytest.skip(allow_module_level=True)
 
-# TODO:  roi_align test
+# TODO:  roi_align test parameters are commented out for troubleshooting;
+# restore when it's working.
 
 @pytest.mark.parametrize('op_alias', [torch.ops.torchvision.roi_align.default])
 @pytest.mark.parametrize("spatial_scale, sampling_ratio", [
