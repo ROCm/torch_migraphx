@@ -209,7 +209,7 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
     inp_instr_ref = inp.instr_ref
     boxes_ref = kwargs['boxes'].instr_ref
     output_size = kwargs['output_size']
-    
+
     transformation_mode = 'half_pixel' if kwargs['aligned'] else 'output_half_pixel'    
     spatial_scale = kwargs['spatial_scale'] if kwargs['spatial_scale'] is not None else 1.0
     sampling_ratio = kwargs['sampling_ratio'] if kwargs['sampling_ratio'] is not None else -1
@@ -239,7 +239,7 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
     else:
         raise RuntimeError('boxes input must be Tensor[K, 5]')
 
-    roialign_ins = mgx_module.add_instruction(
+    temp_instr = mgx_module.add_instruction(
         migraphx.op('roialign', coordinate_transformation_mode=transformation_mode,
                     output_height=output_size[0],
                     output_width=output_size[1],
@@ -247,7 +247,14 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
                     sampling_ratio = sampling_ratio),
                     [inp_instr_ref, boxes2, batch_indices])
     
-    return MGXInstruction(roialign_ins)
+    # return MGXInstruction(roialign_ins)
+
+    # It's not clear why this returns the right results in the wrong shape, but fix it:
+    lens = temp_instr.shape().lens()
+    result =  mgx_module.add_instruction(
+        migraphx.op('reshape', dims=[lens[0], lens[1], lens[3], lens[2]]), [temp_instr])
+
+    return MGXInstruction(result)
 
 
 @migraphx_converter(acc_ops.hardtanh)

@@ -385,19 +385,19 @@ def aten_ops_clamp(mgx_module, node, args, _kwargs):
 
 @migraphx_converter(torch.ops.torchvision.roi_align.default)
 def aten_ops_roi_align(mgx_module, node, args, _kwargs):
-    print('  UUUUUUUUUUUUUUUUUUUUUUU  you hit aten ops ', len(args), args)
-    assert len(args) >= 3
+    assert len(args) >= 2
     acc_kwargs = {
         "input": args[0],
-        "boxes": args[1],
-        "output_size": args[2]
+        "boxes": args[1]
     }    
-    acc_kwargs["spatial_scale"] = args[3] if len(args) >= 4 else None
-    acc_kwargs["sampling_ratio"] = args[4] if len(args) >= 5 else None
-    acc_kwargs["aligned"] = args[5] if len(args) >= 6 else None
+    acc_kwargs["spatial_scale"] = args[2] if len(args) >= 3 else 1.0
+    # todo:  output height and width are optional.  What happens if it's left empty?
     
-    
-    print( ' vvvvv passing ', acc_kwargs['output_size'],   type(acc_kwargs['output_size']))
+    # height and width in torchvision.roi_align.default args list are passed
+    # as an array output_size
+    acc_kwargs["output_size"] = [args[3], args[4]] if len(args) >= 5 else None
+    acc_kwargs["sampling_ratio"] = args[5] if len(args) >= 6 else None
+    acc_kwargs["aligned"] = args[6] if len(args) >= 7 else None
     
     return acc_ops_converters.acc_ops_roi_align(mgx_module, node, (), acc_kwargs)
 

@@ -17,7 +17,7 @@ if not hasattr(torch_migraphx, "dynamo"):
                                     #  , (False)
                                      ])
 @pytest.mark.parametrize(
-    "input, boxes, output_size", [((1, 2, 3, 3),  ([[0, 1.1, 1.2,  0.6, 2.6]]), [2, 3])
+    "input, boxes, output_size", [((1, 2, 3, 4),  ([[0, 1.1, 1.2,  0.6, 2.6]]), [2, 3])
                                   #,
                                   # boxes as List[Tensor[L, 4]] is not supported
                                   # #############  ((2, 2, 3, 3),  ([(1.1, 1.2,  0.6, 2.6), (1.13, 1.23,  0.63, 2.63)]), [2, 2]),
@@ -35,14 +35,23 @@ def test_roialign_d(op_alias, input, boxes, output_size, spatial_scale, sampling
     assert(input[0] == len(boxes))
     inp = torch.randn(input).cuda()
     roi = torch.tensor(boxes).cuda()
+    print(' aaaaa roi for test_roialign_d is : ', roi)
+    
+    # todo:  verify_outputs seems to return the same error whether or not
+    # outputs is passed to it
     outputs = torch.tensor(output_size)
     # Declaration: torchvision::roi_align(Tensor input, Tensor rois, float spatial_scale, SymInt pooled_height, 
     # # ymInt pooled_width, int sampling_ratio, bool aligned) -> Tensor
-    mod = MultiInFuncModule(op_alias, spatial_scale, output_size[0], output_size[1], 
-                     sampling_ratio, aligned)
+    mod = MultiInFuncModule(op_alias, spatial_scale, output_size[0], output_size[1], sampling_ratio, aligned)
 
     mgx_mod = convert_to_mgx(mod, [inp, roi])
-    # verify_outputs(mod, mgx_mod, inp, roi, outputs)
+    print(' fffff ')
+    mgx_ = mgx_mod(inp, roi)
+    print(" FFFFF migraphx version is ", mgx_)
+    
+    mod_ = mod(inp, roi)
+    print(' GGGGG torchvision version is ', type(mod_), mod_)
+    verify_outputs(mod, mgx_mod, inp, roi, outputs)
 
 
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.avg_pool2d.default])
