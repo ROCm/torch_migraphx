@@ -202,6 +202,61 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
     return MGXInstruction(loss)
     
 
+# @migraphx_converter(torchvision.ops.roi_align.roi_align)
+@migraphx_converter(acc_ops.roi_align)
+def acc_ops_roi_align(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    inp_instr_ref = inp.instr_ref
+    boxes_ref = kwargs['boxes'].instr_ref
+    output_size = kwargs['output_size']
+
+    transformation_mode = 'half_pixel' if kwargs['aligned'] else 'output_half_pixel'    
+    spatial_scale = kwargs['spatial_scale'] if kwargs['spatial_scale'] is not None else 1.0
+    sampling_ratio = kwargs['sampling_ratio'] if kwargs['sampling_ratio'] is not None else -1
+    
+    # "boxes" and "roi" both refer to the same region of interest boxes.
+    if boxes_ref.shape().lens()[1] == 5:
+        roi_indices = mgx_module.add_literal(
+                torch.tensor([1, 2, 3, 4], dtype=torch.int64).numpy())
+        # split off the 0'th column of boxes
+        boxes2 = mgx_module.add_instruction(
+            migraphx.op('gather', axis=1), [boxes_ref, roi_indices])
+        zero_indices = mgx_module.add_literal(
+                torch.tensor([0,], dtype=torch.int64).numpy())
+        batch_indices_1 = mgx_module.add_instruction(
+            migraphx.op('gather', axis=1), [boxes_ref, zero_indices])
+        batch_indices2 =  mgx_module.add_instruction(
+            migraphx.op('squeeze', axes=0), [batch_indices_1])
+        batch_indices = mgx_module.add_instruction( migraphx.op('convert', target_type=migraphx.shape.type_t.int32_type),
+            [batch_indices2])
+        
+        # batch_indices = batch_indices2
+    elif boxes_ref.shape().lens()[1] == 4:
+        # batch_indices3=range(boxes_ref.shape().lens()[0])
+        # boxes2 = boxes_ref
+        # This isn't supported because torchvision roi_align.default() doesn't support it
+        raise RuntimeError('List[Tensor[L, 4] boxes input for roi_align() not currently supported')
+    else:
+        raise RuntimeError('boxes input must be Tensor[K, 5]')
+
+    temp_instr = mgx_module.add_instruction(
+        migraphx.op('roialign', coordinate_transformation_mode=transformation_mode,
+                    output_height=output_size[0],
+                    output_width=output_size[1],
+                    spatial_scale = spatial_scale,
+                    sampling_ratio = sampling_ratio),
+                    [inp_instr_ref, boxes2, batch_indices])
+    
+    # return MGXInstruction(roialign_ins)
+
+    # It's not clear why this returns the right results in the wrong shape, but fix it:
+    lens = temp_instr.shape().lens()
+    result =  mgx_module.add_instruction(
+        migraphx.op('reshape', dims=[lens[0], lens[1], lens[3], lens[2]]), [temp_instr])
+
+    return MGXInstruction(result)
+
+
 @migraphx_converter(acc_ops.hardtanh)
 @migraphx_converter(acc_ops.clamp)
 def acc_ops_clamp(mgx_module, node, args, kwargs):
