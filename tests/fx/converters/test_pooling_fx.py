@@ -20,7 +20,7 @@ from fx_test_utils import convert_to_mgx, verify_outputs
                                      ]), 
                                    [7, 6])]
     )
-def test_roi_align_f(input, boxes, output_size, spatial_scale, sampling_ratio, aligned):
+def test_roialign(input, boxes, output_size, spatial_scale, sampling_ratio, aligned):
     assert(input[0] == len(boxes))
     inp = torch.randn(input).cuda()
     roi = torch.tensor(boxes).cuda()
@@ -30,62 +30,6 @@ def test_roi_align_f(input, boxes, output_size, spatial_scale, sampling_ratio, a
   
     mgx_mod = convert_to_mgx(roi_mod, [inp, roi, outputs])
     verify_outputs(roi_mod, mgx_mod, (inp, roi))
-
-
-
-
-@pytest.mark.parametrize("spatial_scale, sampling_ratio", [
-    # (1.5, 3), 
-    (0.5, 2)
-    ])
-@pytest.mark.parametrize("aligned", [
-    (True)
-    # , 
-    # (False)
-    ])
-@pytest.mark.parametrize(
-    "input, boxes, output_size", [
-                               ((1, 2, 3, 4),  ([[0, 1.1, 1.2,  0.6, 2.6]]), [2, 3]),
-
-                               # boxes as List[Tensor[L, 4]] is not supported
-                                  #   ((2, 2, 3, 3),  ([(1.1, 1.2,  0.6, 2.6), (1.13, 1.23,  0.63, 2.63)]), [2, 2]),
-                                  
-                                #   ((2, 2, 3, 2),  ([[1, 1.1, 1.2,  0.6, 2.6], [0, 1.13, 1.23,  0.63, 2.63]]), [2, 2]),
-                                #   ((4, 2, 256, 256),  
-                                #    ([[0, 10.6, 11.2,  21.1, 22.6], 
-                                #      [2, 10.63, 11.23,  21.63, 22.63],
-                                #      [3, 10.64, 11.23,  21.67, 22.63],
-                                #      [1, 10.65, 11.23,  21.68, 22.63],
-                                #      ]), 
-                                #    [3, 2])
-                                  ]
-    )
-def test_zap_f(input, boxes, output_size, spatial_scale, sampling_ratio, aligned):
-    assert(input[0] == len(boxes))
-    inp = torch.randn(input).cuda()
-    # x = np.array(np.arange(1*2*3*4), dtype='f')
-    # inp = torch.tensor(np.reshape(x, [1, 2, 3, 4])).cuda()
-
-    print(' xxxxx ', inp)
-    
-    
-    roi = torch.tensor(boxes).cuda()
-    outputs = torch.tensor(output_size)
-    
-    roi_mod = torchvision.ops.RoIAlign(output_size=output_size, spatial_scale=spatial_scale, sampling_ratio=sampling_ratio, aligned=aligned)
-  
-    mgx_mod = convert_to_mgx(roi_mod, [inp, roi, outputs])
-    print(" yyyyyy ")
-    mgx_ = mgx_mod(inp, roi)
-    print(" fffff migraphx version is ", mgx_)
-    
-    mod_ = roi_mod(inp, roi)
-    print(' ggggg torchvision version is ', type(mod_), mod_)
-    
-    verify_outputs(roi_mod, mgx_mod, (inp, roi))
-    # raise(' hello')
-
-
 
 
 @pytest.mark.parametrize(

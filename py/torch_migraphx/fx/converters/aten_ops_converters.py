@@ -392,7 +392,7 @@ def aten_ops_roi_align(mgx_module, node, args, _kwargs):
     }    
     acc_kwargs["spatial_scale"] = args[2] if len(args) >= 3 else 1.0
     # todo:  output height and width are optional.  What happens if it's left empty?
-    
+
     # height and width in torchvision.roi_align.default args list are passed
     # as an array output_size
     acc_kwargs["output_size"] = [args[3], args[4]] if len(args) >= 5 else None

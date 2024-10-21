@@ -200,9 +200,10 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
         return MGXInstruction(loss), MGXInstruction(weight_sum)
     
     return MGXInstruction(loss)
-    
 
-# @migraphx_converter(torchvision.ops.roi_align.roi_align)
+
+# ROI_Align converter invokes MigraphX op of the same name.  See comment below on the
+# idiosyncratic use of the batch dimension for this op.
 @migraphx_converter(acc_ops.roi_align)
 def acc_ops_roi_align(mgx_module, node, args, kwargs):
     inp = kwargs['input']
@@ -214,7 +215,11 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
     spatial_scale = kwargs['spatial_scale'] if kwargs['spatial_scale'] is not None else 1.0
     sampling_ratio = kwargs['sampling_ratio'] if kwargs['sampling_ratio'] is not None else -1
     
-    # "boxes" and "roi" both refer to the same region of interest boxes.
+    # "boxes" and "roi" both refer to the same region of interest boxes.  Each box has
+    # associated with it an index that tells which layer (in the batch dimension) it
+    # is to be applied to.  A box is _not_ applied equally to each batch layer, unless
+    # duplicate boxes are explicitly provided.  This makes the term "batch" rather
+    # misleading for this operation.
     if boxes_ref.shape().lens()[1] == 5:
         roi_indices = mgx_module.add_literal(
                 torch.tensor([1, 2, 3, 4], dtype=torch.int64).numpy())
@@ -229,12 +234,10 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
             migraphx.op('squeeze', axes=0), [batch_indices_1])
         batch_indices = mgx_module.add_instruction( migraphx.op('convert', target_type=migraphx.shape.type_t.int32_type),
             [batch_indices2])
-        
-        # batch_indices = batch_indices2
     elif boxes_ref.shape().lens()[1] == 4:
         # batch_indices3=range(boxes_ref.shape().lens()[0])
         # boxes2 = boxes_ref
-        # This isn't supported because torchvision roi_align.default() doesn't support it
+        # This isn't supported at this time because torchvision roi_align.default() doesn't support it
         raise RuntimeError('List[Tensor[L, 4] boxes input for roi_align() not currently supported')
     else:
         raise RuntimeError('boxes input must be Tensor[K, 5]')
@@ -247,9 +250,8 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
                     sampling_ratio = sampling_ratio),
                     [inp_instr_ref, boxes2, batch_indices])
     
-    # return MGXInstruction(roialign_ins)
-
-    # It's not clear why this returns the right results in the wrong shape, but fix it:
+    # It's not clear why this returns the right results in the wrong shape, but
+    # it now must be reshaped:
     lens = temp_instr.shape().lens()
     result =  mgx_module.add_instruction(
         migraphx.op('reshape', dims=[lens[0], lens[1], lens[3], lens[2]]), [temp_instr])
