@@ -2,7 +2,6 @@ import pytest
 import torch
 from dynamo_test_utils import FuncModule, MultiInFuncModule, FuncModuleFirstOut, convert_to_mgx, verify_outputs
 import torch_migraphx
-# import torchvision
 
 if not hasattr(torch_migraphx, "dynamo"):
     pytest.skip(allow_module_level=True)

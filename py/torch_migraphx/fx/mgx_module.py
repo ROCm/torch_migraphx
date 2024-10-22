@@ -132,13 +132,11 @@ class MGXModule(torch.nn.Module):
                     f"Input {inp_name} not on gpu device. Copying to device before execution, "
                     "however, this will add extra overhead if running a performance benckmark."
                 )
-                # This call was observed to have an error:  two different inputs
-                # were mapped to the same address
                 inp_val = inp_val.cuda()
 
             self.mgx_buffers[inp_name] = mgx_argument_from_ptr(
                 inp_val.data_ptr(), mgx_shape)
-        
+
         curr_stream = torch.cuda.current_stream()
         outs = self.program.run_async(self.mgx_buffers,
                                       curr_stream.cuda_stream, HIPSTREAMTYPE)
