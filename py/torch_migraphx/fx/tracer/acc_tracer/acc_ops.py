@@ -387,9 +387,9 @@ def clamp(*, input, min=None, max=None):
 )
 @register_acc_op
 def roi_align(*, input, boxes, output_size,
-              spatial_scale = None,
-              sampling_ratio = None,
-              aligned = None):
+              spatial_scale = 1.0,
+              sampling_ratio = -1,
+              aligned = False):
     return torchvision.ops.roi_align(input=input, boxes=boxes, output_size = output_size, 
                                      spatial_scale = spatial_scale, 
                                      sampling_ratio = sampling_ratio, aligned = aligned)

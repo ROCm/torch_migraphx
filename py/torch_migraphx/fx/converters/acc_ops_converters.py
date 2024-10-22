@@ -212,8 +212,8 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
     output_size = kwargs['output_size']
 
     transformation_mode = 'half_pixel' if kwargs['aligned'] else 'output_half_pixel'    
-    spatial_scale = kwargs['spatial_scale'] if kwargs['spatial_scale'] is not None else 1.0
-    sampling_ratio = kwargs['sampling_ratio'] if kwargs['sampling_ratio'] is not None else -1
+    spatial_scale = kwargs['spatial_scale']
+    sampling_ratio = kwargs['sampling_ratio']
     
     # "boxes" and "roi" both refer to the same region of interest boxes.  Each box has
     # associated with it an index that tells which layer (in the batch dimension) it

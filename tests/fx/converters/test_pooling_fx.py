@@ -62,7 +62,6 @@ def test_avgpool2d(kernel_size, stride, padding, ceil_mode, count_include_pad):
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
-    raise RuntimeError("asdfsd ")
 
 
 @pytest.mark.parametrize('out_shape', [(25, 25), (10, 5),
