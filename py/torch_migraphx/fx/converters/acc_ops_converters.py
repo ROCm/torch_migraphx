@@ -235,10 +235,12 @@ def acc_ops_roi_align(mgx_module, node, args, kwargs):
         batch_indices = mgx_module.add_instruction( migraphx.op('convert', target_type=migraphx.shape.type_t.int32_type),
             [batch_indices2])
     elif boxes_ref.shape().lens()[1] == 4:
-        # batch_indices3=range(boxes_ref.shape().lens()[0])
+        # TODO:  Add support for boxes input in form List[Tensor[L, 4]].  We will
+        # need to create a default index list (0, 1, 2...) something like this:
+        # batch_indices=range(boxes_ref.shape().lens()[0])
         # boxes2 = boxes_ref
-        # This isn't supported at this time because torchvision roi_align.default() doesn't support it
-        raise RuntimeError('List[Tensor[L, 4] boxes input for roi_align() not currently supported')
+        # This input format is not allowed by aten package's roi_align.
+        raise RuntimeError('List[Tensor[L, 4]] boxes input for roi_align() not currently supported')
     else:
         raise RuntimeError('boxes input must be Tensor[K, 5]')
 
