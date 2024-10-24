@@ -1,10 +1,12 @@
 import pytest
 import torch
-from dynamo_test_utils import FuncModule, MultiInFuncModule, FuncModuleFirstOut, convert_to_mgx, verify_outputs
+from dynamo_test_utils import FuncModule, FuncModuleFirstOut, convert_to_mgx, verify_outputs
 import torch_migraphx
 
 if not hasattr(torch_migraphx, "dynamo"):
     pytest.skip(allow_module_level=True)
+
+
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.avg_pool2d.default])
 @pytest.mark.parametrize(
     "kernel_size, stride, padding, ceil_mode, count_include_pad", [

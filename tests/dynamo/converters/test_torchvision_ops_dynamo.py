@@ -1,13 +1,8 @@
 
 import pytest
 import torch
-from dynamo_test_utils import FuncModule, MultiInFuncModule, FuncModuleFirstOut, convert_to_mgx, verify_outputs
-import torch_migraphx
+from dynamo_test_utils import  MultiInFuncModule, convert_to_mgx, verify_outputs
 import sys
-try:
-    import torchvision
-except ImportError:
-    pass
 
 @pytest.mark.skipif('torchvision' not in sys.modules,
                     reason="requires the torchvision library")

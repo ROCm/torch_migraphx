@@ -1,9 +1,7 @@
 import pytest
 import torch
-import torchvision
-import numpy as np
-
 from fx_test_utils import convert_to_mgx, verify_outputs
+
 
 @pytest.mark.parametrize(
     "kernel_size, stride, padding, dilation, ceil_mode",
