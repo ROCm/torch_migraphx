@@ -100,6 +100,7 @@ class MGXModule(torch.nn.Module):
         if not self.program.is_compiled():
             if self.quantize_fp16:
                 migraphx.quantize_fp16(self.program)
+
             self.program.compile(migraphx.get_target('gpu'),
                                  offload_copy=False,
                                  exhaustive_tune=self.exhaustive_tune)
