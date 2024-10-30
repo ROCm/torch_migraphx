@@ -878,7 +878,7 @@ def acc_ops_repeat(mgx_module, node, args, kwargs):
 
     assert not inp.is_quantized()
 
-    inp_shape = list(inp.shape().lens()) if hasattr(inp.shape(), 'lens') else list(inp.shape())
+    inp_shape = inp.shape().lens()
 
     tile_dims = [repeats[i] if i < len(repeats) else 1 for i in range(len(inp_shape))]
 
