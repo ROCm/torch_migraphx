@@ -38,6 +38,22 @@ def test_softmax(inp_size, dim):
     verify_outputs(mod, mgx_mod, inp)
 
 
+@pytest.mark.parametrize('inp_size, dim', [((4, 8), -1),
+                                           ((8, 4), 0),
+                                           ((2, 6, 12), 1),
+                                           ((6, 8), None),
+                                           ((10 ,16, 32, 64), 2)])
+def test_glu(inp_size, dim):
+    inp = torch.randn(inp_size)
+    if dim is None:
+        mod = FuncModule(torch.nn.functional.glu)
+    else:    
+        mod = FuncModule(torch.nn.functional.glu, dim=dim)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
+
+
 @pytest.mark.parametrize('inp_size, dim', [((11, 3, 9), 1),
                                            ((32, 12, 100), -1)])
 def test_log_softmax(inp_size, dim):

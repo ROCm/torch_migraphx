@@ -596,6 +596,29 @@ def acc_ops_elu(mgx_module, node, args, kwargs):
                                    [inp.instr_ref]))
 
 
+@migraphx_converter(acc_ops.glu)
+def acc_ops_glu(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    dim = kwargs['dim'] if 'dim' in kwargs else -1
+    
+    inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
+    inp_shape = inp_ref.shape().lens()
+
+    mid_point = inp_shape[dim] //2
+    first_half_start, first_half_end = 0, mid_point
+    second_half_start, second_half_end = mid_point , inp_shape[dim]
+
+    first_half = mgx_module.add_instruction(migraphx.op('slice', axes=[dim], starts=[first_half_start], ends=[first_half_end]), [inp_ref])
+    
+    second_half = mgx_module.add_instruction(migraphx.op('slice', axes=[dim], starts=[second_half_start], ends=[second_half_end]), [inp_ref])
+    
+    sigmoid_second_half = mgx_module.add_instruction(migraphx.op('sigmoid'), [second_half])
+    
+    glu_out = mgx_module.add_instruction(migraphx.op('mul'), [first_half, sigmoid_second_half])
+
+    return MGXInstruction(glu_out, qparams=qparams, bool_output=bool_output)
+
+
 @migraphx_converter(acc_ops.selu)
 def acc_ops_selu(mgx_module, node, args, kwargs):
 

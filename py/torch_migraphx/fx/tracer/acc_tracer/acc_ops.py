@@ -587,6 +587,15 @@ def gelu(*, input):
     return torch.nn.functional.gelu(input=input)
 
 
+@register_acc_op_mapping(
+    op_and_target=("call_function", torch.nn.functional.glu),
+    arg_replacement_tuples=[("input", "input"), ("dim", "dim")],
+)
+@register_acc_op
+def glu(*, input, dim=-1):
+    return torch.nn.functional.glu(input=input, dim=dim)
+
+
 @register_acc_op_mapping(op_and_target=("call_function",
                                         nn.functional.hardtanh), )
 @register_acc_op
