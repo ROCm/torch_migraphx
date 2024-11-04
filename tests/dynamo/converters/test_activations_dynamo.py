@@ -41,12 +41,11 @@ def test_clamp_tensor(op_alias, inp_size, inp_type):
                                            ((10 ,16, 32, 64), 2)])
 def test_glu_dynamo(inp_size, dim):  
     inp = torch.randn(inp_size).cuda()
-
     if dim is None:
         mod = FuncModule(torch.ops.aten.glu.default).cuda()
     else:
         mod = FuncModule(torch.ops.aten.glu.default, dim=dim).cuda()
-        
+
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 

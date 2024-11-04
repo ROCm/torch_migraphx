@@ -44,9 +44,7 @@ def test_softmax(inp_size, dim):
                                            ((6, 8), None),
                                            ((10 ,16, 32, 64), 2)])
 def test_glu(inp_size, dim):
-    
     inp = torch.randn(inp_size)
-
     if dim is None:
         mod = FuncModule(torch.nn.functional.glu)
     else:    
@@ -54,7 +52,6 @@ def test_glu(inp_size, dim):
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
-
 
 
 @pytest.mark.parametrize('inp_size, dim', [((11, 3, 9), 1),
