@@ -880,6 +880,13 @@ def acc_ops_repeat(mgx_module, node, args, kwargs):
 
     inp_shape = inp.shape().lens()
 
+    unsqueeze_count = len(repeats) - len(inp_shape)
+    
+    for i in range(unsqueeze_count):
+        inp = acc_ops_unsqueeze(mgx_module, node, args, {"input": inp, "dim": 0})
+    
+    inp_shape = inp.shape().lens()
+
     tile_dims = [repeats[i] if i < len(repeats) else 1 for i in range(len(inp_shape))]
 
     tile_kwargs = {"dims": tile_dims, "input": inp}
