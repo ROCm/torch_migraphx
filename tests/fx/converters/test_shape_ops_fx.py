@@ -260,6 +260,7 @@ def test_bool_shape_ops(op, kwargs):
     ((2, 3), (2, 4)),
     ((1, 6), (4, 5)),
     ((2, 1, 3), (2, 3, 1)),
+    ((2,1,3), (2, 1, 1, 2)),
 ])
 def test_repeat(size, repeat_dims):
     inp = torch.randn(size)
