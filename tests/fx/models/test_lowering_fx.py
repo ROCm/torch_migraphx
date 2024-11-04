@@ -27,7 +27,7 @@ DEFAULT_RTOL, DEFAULT_ATOL = 3e-3, 1e-2
             weights=models.Inception_V3_Weights.IMAGENET1K_V1), DEFAULT_RTOL,
          DEFAULT_ATOL),
     ])
-def test_vision_model(model, rtol, atol, default_torch_seed):
+def test_vision_model_fx(model, rtol, atol, default_torch_seed):
     model = model.eval()
     sample_inputs = [torch.randn(4, 3, 244, 244)]
     torch_out = model(*sample_inputs)
