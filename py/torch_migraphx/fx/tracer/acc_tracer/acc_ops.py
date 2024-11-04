@@ -36,6 +36,7 @@ from typing import cast, Iterable, List, Sequence
 
 import torch.nn as nn
 from torch.fx.passes.shape_prop import _extract_tensor_metadata
+from packaging import version
 
 from . import acc_utils
 from .acc_normalizer import (
@@ -89,6 +90,34 @@ def mean(*, input, dim=None, keepdim=False, dtype=None):
 )
 def mean_mapper(node, mod):
     return reduce_op_mapper(node, mod, mean)
+
+@register_acc_op
+def std(*, input, dim=None, correction=1, keepdim=False):
+    if dim is not None:
+        return torch.std(input, dim=dim, correction=correction, keepdim=keepdim)
+    else:
+        return input.std(correction=correction, keep_dim=keepdim)
+    
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_method", "std"),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("correction", "correction", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.std),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("dim", "dim", this_arg_is_optional),
+        ("correction", "correction", this_arg_is_optional),
+        ("keepdim", "keepdim", this_arg_is_optional),
+    ],
+)
+def std_mapper(node, mod):
+    return reduce_op_mapper(node, mod, std)
 
 
 @register_acc_op
@@ -1107,6 +1136,16 @@ def embedding(
                                          scale_grad_by_freq=scale_grad_by_freq,
                                          sparse=sparse)
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.gather))
+@register_acc_op
+def gather(
+    *,
+    input,
+    dim,
+    index
+):
+    return torch.gather(input, dim, index)
+
 
 @register_acc_op_mapping(op_and_target=("call_function", torch.cat))
 @register_acc_op
@@ -1294,27 +1333,49 @@ def floor(*, input):
 def ceil(*, input):
     return torch.ceil(input=input)
 
-
 @register_acc_op_mapping(op_and_target=("call_function", operator.floordiv))
 @register_acc_op
 def floor_div(*, input, other):
-    # This is temp fix because currently operator.floor_div for tensors would
-    # traslate into torch.floor_divide which would throw an error. After it's
-    # fixed we can stick to `input // other`.
     if isinstance(input, torch.Tensor) or isinstance(other, torch.Tensor):
         return torch.div(input, other, rounding_mode="floor")
     return input // other
 
-
-# torch.floor_divide rounds result toward zero, rather than -Inf.
-# https://github.com/pytorch/pytorch/issues/43874
-@register_acc_op_mapping(op_and_target=("call_function", torch.floor_divide))
 @register_acc_op_properties(AccOpProperty.pointwise)
 @register_acc_op
 def trunc_div(*, input, other):
     return torch.div(input, other, rounding_mode="trunc")
 
+@register_custom_acc_mapper_fn(
+    op_and_target=("call_function", torch.floor_divide),
+    arg_replacement_tuples=[
+        ("input", "input"),
+        ("other", "other"),
+    ],
+)
+def div_floor_mapper(node: torch.fx.Node,
+               mod: torch.fx.GraphModule) -> torch.fx.Node:
+    with node.graph.inserting_before(node):
+        div_kwargs = dict(node.kwargs)
 
+        if version.parse(torch.__version__) < version.parse("1.13"):
+            div_node = node.graph.call_function(
+                trunc_div,
+                kwargs={
+                    "input": div_kwargs["input"],
+                    "other": div_kwargs["other"]
+                },
+            )
+        else:
+            div_node = node.graph.call_function(
+                floor_div,
+                kwargs={
+                    "input": div_kwargs["input"],
+                    "other": div_kwargs["other"]
+                },
+            )
+        div_node.meta = node.meta.copy()
+        return div_node
+    
 @register_custom_acc_mapper_fn(
     op_and_target=("call_function", torch.div),
     arg_replacement_tuples=[
@@ -2103,3 +2164,35 @@ def isnan(*, input):
 @register_acc_op
 def nan_to_num(*, input, nan=0.0, posinf=None, neginf=None):
     return torch.nan_to_num(input=input, nan=nan, posinf=posinf, neginf=neginf)
+
+
+# @register_acc_op_mapping(op_and_target=("call_function", nn.functional.scaled_dot_product_attention))
+@register_acc_op_mapping(
+    op_and_target=("call_function", nn.functional.scaled_dot_product_attention),
+    arg_replacement_tuples=[
+        ("query", "query"),
+        ("key", "key"),
+        ("value", "value"),
+        ("attn_mask", "attn_mask", this_arg_is_optional),
+        ("dropout_p", "dropout_p", this_arg_is_optional),
+        ("is_causal", "is_causal", this_arg_is_optional),
+        ("scale", "scale", this_arg_is_optional),
+    ],
+)
+@register_acc_op
+def scaled_dot_product_attention(*, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
+    return nn.functional.scaled_dot_product_attention(query=query,
+                                                      key=key,
+                                                      value=value,
+                                                      attn_mask=attn_mask,
+                                                      dropout_p=dropout_p,
+                                                      is_causal=is_causal,
+                                                      scale=scale)
+
+
+@register_acc_op_mapping(op_and_target=("call_function", torch.erf))
+@register_acc_op_mapping(op_and_target=("call_function", torch.special.erf))
+@register_acc_op
+def erf(*, input):
+    return torch.erf(input=input)
+

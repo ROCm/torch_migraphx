@@ -26,37 +26,32 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
+
 import torch
-from torch.fx.passes.pass_manager import PassManager
-
-from .remove_ops import remove_const_ops, remove_view_ops
-from .const_fold import const_fold
-from .promote_types import promote_inputs
-from .remove_empty_slice import remove_empty_slices
-from .fix_tensor_meta import fix_tensor_meta
+import operator
 
 
-class MGXPassManager(PassManager):
+def fix_tensor_meta(gm: torch.fx.GraphModule):
+    for node in gm.graph.nodes:
+        # This is only true for functions with multiple outputs
+        if node.op == "call_function" and not "tensor_meta" in node.meta and node.target != operator.getitem:
+            max_idx = -1
+            output_metas = {}
+            # Grab the output tensor metadata from following getitem nodes
+            for user, _ in node.users.items():
+                assert user.target == operator.getitem
+                getitem_idx = user.args[1]
+                max_idx = getitem_idx if getitem_idx > max_idx else max_idx
+                output_metas[getitem_idx] = user.meta["tensor_meta"]
 
-    def __init__(self, passes=None, constraints=None):
-        super().__init__(passes, constraints)
+            # Construct a list of tensor metadata in the correct order
+            new_metas = [None for i in range(max_idx + 1)]
+            for i, meta in output_metas.items():
+                new_metas[i] = meta
 
-
-def pre_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
-    passes = [
-        remove_const_ops,
-        remove_view_ops,
-        promote_inputs,
-        remove_empty_slices,
-        const_fold,
-    ]
-    pre_partition_pass_mgr = MGXPassManager(passes)
-    return pre_partition_pass_mgr(gm)
-
-
-def post_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
-    passes = [
-        fix_tensor_meta,
-    ]
-    post_partition_pass_mgr = MGXPassManager(passes)
-    return post_partition_pass_mgr(gm)
+            # Add the metadata for each output as a tuple. This is not supported
+            # by the partitioner, so this transform should be done after
+            # using the partitioner to split the graph for partitions that need
+            # to be lowered to migraphx
+            node.meta["tensor_meta"] = tuple(new_metas)
+    return gm

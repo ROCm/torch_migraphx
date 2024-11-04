@@ -91,9 +91,14 @@ def aten_ops_unsqueeze(mgx_module, node, args, kwargs):
 
 
 @migraphx_converter(torch.ops.aten.squeeze.dim)
+@migraphx_converter(torch.ops.aten.squeeze.default)
 def aten_ops_squeeze(mgx_module, node, args, kwargs):
-    assert len(args) == 2
-    acc_kwargs = {"input": args[0], "dim": args[1]}
+    assert len(args) >= 1
+    acc_kwargs = {"input": args[0]}
+
+    if len(args) == 2:
+        acc_kwargs["dim"] = args[1]
+        
     return acc_ops_converters.acc_ops_squeeze(mgx_module, node, (), acc_kwargs)
 
 
@@ -109,6 +114,14 @@ def aten_ops_log2(mgx_module, node, args, kwargs):
     assert len(args) == 1
     acc_kwargs = {"input": args[0]}
     return acc_ops_converters.acc_ops_log2(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.log.default)
+def aten_ops_log(mgx_module, node, args, _kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+
+    return acc_ops_converters.acc_ops_log(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.topk.default)
@@ -210,6 +223,24 @@ def aten_ops_scatter_add(mgx_module, node, args, kwargs):
         "reduce": "sum",
         "include_self": True
     }
+
+    return acc_ops_converters.acc_ops_scatter_reduce(mgx_module, node, (),
+                                                     acc_kwargs)
+
+@migraphx_converter(torch.ops.aten.scatter_reduce.two)
+def aten_ops_scatter_reduce(mgx_module, node, args, kwargs):
+    assert len(args) == 5
+    acc_kwargs = {
+        "input": args[0],
+        "dim": args[1],
+        "index": args[2],
+        "src": args[3],
+        "reduce": args[4],
+        "include_self": True
+    }
+    
+    if "include_self" in kwargs:
+        acc_kwargs["include_self"] = kwargs["include_self"]
 
     return acc_ops_converters.acc_ops_scatter_reduce(mgx_module, node, (),
                                                      acc_kwargs)
@@ -364,14 +395,8 @@ def aten_ops_clamp(mgx_module, node, args, _kwargs):
 def aten_ops_nll_loss_forward(mgx_module, node, args, _kwargs):
     assert len(args) == 5
 
-    #TODO: find where this enum comversion is defined in library code
-    reduction = None
-    if args[3] == 0:
-        reduction = 'none'
-    elif args[3] == 1:
-        reduction = 'mean'
-    elif args[3] == 2:
-        reduction = 'sum'
+    reduction_dict = {torch.nn.functional._Reduction.get_enum(k):k for k in ["none", "sum", "mean"]}
+    reduction = reduction_dict[args[3]]
 
     target_lens = args[1].instr_ref.shape().lens()
     ignore_index = args[4]
@@ -382,18 +407,14 @@ def aten_ops_nll_loss_forward(mgx_module, node, args, _kwargs):
         "weight": args[2],
         "reduction": reduction,
         "ignore_index": ignore_index,
-        "reduction_size": True
+        "weight_sum": True
     }
-    # TODO:  to support the reduction_size attrib, insert MIGraphX instructions
-    # to count the number of times the value instruction_size appears in the
-    # targets array, and subtract that number from targets
-    to_ignore = 0
-    targets = args[1].instr_ref.shape().elements() - to_ignore
-    
-    weights_inst  = mgx_module.add_literal(torch.tensor((targets), dtype=torch.int64).numpy())
+    # Use "weight_sum" parameter to flag acc converter to return a tuple. Ideally, it would
+    # be nice to have the computation for that here, but that would mean a lot of repeated
+    # computations
     
     # The acc op returns one tensor, while the aten op returns two tensors
-    return acc_ops_converters.acc_ops_nll_loss(mgx_module, node, (), acc_kwargs), MGXInstruction(weights_inst)
+    return acc_ops_converters.acc_ops_nll_loss(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.relu.default)
@@ -657,11 +678,25 @@ def aten_ops_mul(mgx_module, node, args, kwargs):
 
 @migraphx_converter(torch.ops.aten.div.Scalar)
 @migraphx_converter(torch.ops.aten.div.Tensor)
+@migraphx_converter(torch.ops.aten.div.Tensor_mode)
 def aten_ops_div(mgx_module, node, args, kwargs):
     assert len(args) == 2
     inp, other = args[0], args[1]
 
     acc_kwargs = {"input": inp, "other": other}
+    
+    if "rounding_mode" in kwargs.keys():
+        acc_kwargs["rounding_mode"] = kwargs["rounding_mode"]
+
+        if acc_kwargs["rounding_mode"] == "floor":
+            return acc_ops_converters.acc_ops_floor_div(mgx_module, node, (), acc_kwargs)
+        elif acc_kwargs["rounding_mode"] == "trunc":
+            return acc_ops_converters.acc_ops_trunc_div(mgx_module, node, (), acc_kwargs)
+        elif acc_kwargs["rounding_mode"] is None:
+            pass
+        else:
+            raise ValueError("Rounding Mode must in [floor, trunc]")
+        
     return acc_ops_converters.acc_ops_div(mgx_module, node, (), acc_kwargs)
 
 
@@ -877,6 +912,18 @@ def aten_ops_mean(mgx_module, node, args, kwargs):
 
     return acc_ops_converters.acc_ops_mean(mgx_module, node, (), acc_kwargs)
 
+@migraphx_converter(torch.ops.aten.std.correction)
+def aten_ops_std(mgx_module, node, args, kwargs):
+    assert len(args) >= 2
+
+    acc_kwargs = {
+        "input": args[0],
+        "dim": args[1],
+        "correction": kwargs["correction"] if kwargs.get("correction") is not None else 1,
+        "keepdim": kwargs["keepdim"] if kwargs.get("keepdim") is not None else False
+    }
+
+    return acc_ops_converters.acc_ops_std(mgx_module, node, (), acc_kwargs)
 
 @migraphx_converter(torch.ops.aten._adaptive_avg_pool2d.default)
 def aten_ops_adaptive_avg_pool2d(mgx_module, node, args, kwargs):
@@ -1218,3 +1265,37 @@ def aten_ops_bitwise_and(mgx_module, node, args, _kwargs):
     inp, other = args[0], args[1]
     acc_kwargs = {"input": inp, "other": other}
     return acc_ops_converters.acc_ops_bitwise_and(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten._scaled_dot_product_flash_attention.default)
+def aten_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
+    assert len(args) >= 3
+    query, key, value = args[0], args[1], args[2]
+    acc_kwargs = {"query": query, "key": key, "value": value}
+
+    if len(args) >= 4:
+        acc_kwargs["dropout_p"] = args[3]
+    if len(args) >= 5:
+        acc_kwargs["is_causal"] = args[4]
+
+    if "scale" in kwargs:
+        acc_kwargs["scale"] = kwargs["scale"]
+
+    node.meta['tensor_meta'] = node.meta['tensor_meta'][0]
+    
+    return acc_ops_converters.acc_ops_scaled_dot_product_attention(mgx_module, node, (), acc_kwargs), None, None, None, None, None, None, None
+
+  
+@migraphx_converter(torch.ops.aten.erf.default)
+def aten_ops_erf(mgx_module, node, args, kwargs):
+    assert len(args) == 1
+    acc_kwargs = {"input": args[0]}
+    return acc_ops_converters.acc_ops_erf(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.gather.default)
+def aten_ops_gather(mgx_module, node, args, kwargs):
+    assert len(args) == 3
+    acc_kwargs = {"input": args[0], "dim": args[1], "index": args[2]}
+    return acc_ops_converters.acc_ops_gather(mgx_module, node, (), acc_kwargs)
+

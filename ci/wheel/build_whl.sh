@@ -6,7 +6,7 @@ export PROJECT_DIR=/workspace/torch_migraphx
 
 # PY_BUILD_CODE, PY_VERSION
 build_audit_whl() {
-    /opt/python/$1/bin/python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/rocm5.6
+    /opt/python/$1/bin/python -m pip install torch==2.2.1 torchvision==0.17.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2/
     TORCH_LIB_DIR=/opt/python/$1/lib/python$2/site-packages/
 
     /opt/python/$1/bin/python setup.py clean bdist_wheel
@@ -45,8 +45,9 @@ build_py312(){
     build_audit_whl "cp312-cp312" "3.12"
 }
 
-# PyTorch wheels officially available for versions 3.8 - 3.11
-build_py38
+# repo.readeon only cointails wheels for 3.9 to 3.11
+# build_py38
 build_py39
 build_py310
 build_py311
+# build_py312
