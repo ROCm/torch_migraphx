@@ -1,6 +1,7 @@
 import sys
 import pytest
 import copy
+from packaging import version
 import torch_migraphx
 import torch
 from torchvision import models
@@ -54,6 +55,8 @@ def test_quant_vision_model(model_name, model_weights, rtol, atol, asymm,
     del mgx_mod, model, torch_fp32_mod, torch_q_mod, model_export
 
 
+@pytest.mark.skipif(version.parse(torch.__version__) > version.parse("2.4"), 
+                    reason="pt2e pipeline interaction with torch.compile API has changed in PyTorch 2.5, needs refactoring")
 @pytest.mark.skipif('transformers' not in sys.modules,
                     reason="requires the transformers library")
 @pytest.mark.parametrize(
