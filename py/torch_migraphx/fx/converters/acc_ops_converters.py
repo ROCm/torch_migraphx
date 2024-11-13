@@ -2056,6 +2056,14 @@ def acc_ops_layer_norm(mgx_module, node, args, kwargs):
     normalized_shape = kwargs['normalized_shape']
     weight = kwargs['weight']
     bias = kwargs['bias']
+    
+    dtype = get_arg_dtype(inp.instr_ref)
+    if weight is None:
+        weight = MGXInstruction(
+            mgx_module.add_literal(torch.tensor(1, dtype=dtype).numpy()))
+    if bias is None:
+        bias = MGXInstruction(
+            mgx_module.add_literal(torch.tensor(0, dtype=dtype).numpy()))
 
     assert all(not i.is_quantized() for i in (inp, weight, bias))
     inp, weight, bias = inp.instr_ref, weight.instr_ref, bias.instr_ref

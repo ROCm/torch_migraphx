@@ -94,3 +94,17 @@ def test_layernorm(op_alias, ln):
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+    
+    
+@pytest.mark.parametrize('op_alias',
+                         [torch.ops.aten.native_layer_norm.default])
+@pytest.mark.parametrize('ln', [
+    torch.nn.LayerNorm((25, 25), 1e-2).cuda().eval(),
+])
+def test_layernorm_defaults(op_alias, ln):
+    inp = torch.randn(8, 6, 25, 25).cuda()
+    norm_shape, eps = ln.normalized_shape, ln.eps
+    mod = FuncModuleFirstOut(op_alias, norm_shape, None, None, eps)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
