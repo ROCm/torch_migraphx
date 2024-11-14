@@ -62,9 +62,9 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
         print_graph_info('Traced Model', gm, example_inputs)
 
     optim_gm = pre_partition_pass(gm)
-    patitioned_gm = partition(optim_gm, verbose=verbose)
+    partition(optim_gm, verbose=verbose)
 
-    for name, mod in patitioned_gm.named_children():
+    for name, mod in optim_gm.named_children():
         # Const folded params can show up as "child objects"
         if not isinstance(mod, torch.fx.GraphModule):
             continue
@@ -77,8 +77,6 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
         mgx_mod = lower_subgraph(mod, partition_inputs, name=name, **kwargs)
 
         setattr(optim_gm, name, mgx_mod)
-        del mod
-        del partition_inputs
 
     return optim_gm
 
@@ -98,6 +96,7 @@ def lower_subgraph(module: torch.fx.GraphModule,
 
     verbose = kwargs['verbose'] if 'verbose' in kwargs else False
     fp16 = kwargs['fp16'] if 'fp16' in kwargs else False
+    deallocate = kwargs['deallocate'] if 'deallocate' in kwargs else False
     exhaustive_tune = kwargs[
         'exhaustive_tune'] if 'exhaustive_tune' in kwargs else False
     save_mxr = kwargs['save_mxr'] if 'save_mxr' in kwargs else False
@@ -106,7 +105,10 @@ def lower_subgraph(module: torch.fx.GraphModule,
     print_compiled = (kwargs['print_compiled_program']
                       if 'print_compiled_program' in kwargs else False)
 
-    interpreter = MGXInterpreter(module, inputs, verbose_log=verbose)
+    interpreter = MGXInterpreter(module,
+                                 inputs,
+                                 deallocate=deallocate,
+                                 verbose_log=verbose)
     interpreter.run()
 
     if save_mxr:
