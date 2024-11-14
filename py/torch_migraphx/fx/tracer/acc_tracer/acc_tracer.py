@@ -386,7 +386,7 @@ def _rewrite(
     # functions that are attrs of this moodule. Return the new, rewritten module
     # hierarchy.
     def rewrite_module(m: nn.Module):
-        if isinstance(m, jit.ScriptModule):
+        if isinstance(m, jit.ScriptModule) or m is None:
             # ScriptModule cannot be rewritten, so bypass it. The issue is it
             # requires explicitly calling its `__init__()`, calling
             # `nn.Module.__init__()` in the derived `RewrittenModule` is not
