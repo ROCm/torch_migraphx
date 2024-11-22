@@ -1293,6 +1293,26 @@ def aten_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
     
     return acc_ops_converters.acc_ops_scaled_dot_product_attention(mgx_module, node, (), acc_kwargs), None, None, None, None, None, None, None
 
+
+
+@migraphx_converter(torch.ops.aten._scaled_dot_product_efficient_attention.default)
+def aten_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
+    assert len(args) >= 3
+    query, key, value = args[0], args[1], args[2]
+    acc_kwargs = {"query": query, "key": key, "value": value}
+
+    if len(args) >= 4:
+        acc_kwargs["attn_bias"] = args[3]
+    if len(args) >= 7:
+        acc_kwargs["is_causal"] = args[6]
+
+    if "scale" in kwargs:
+        acc_kwargs["scale"] = kwargs["scale"]
+
+    node.meta['tensor_meta'] = node.meta['tensor_meta'][0]
+    
+    return acc_ops_converters.acc_ops_scaled_dot_product_attention(mgx_module, node, (), acc_kwargs), None, None, None
+
   
 @migraphx_converter(torch.ops.aten.erf.default)
 def aten_ops_erf(mgx_module, node, args, kwargs):

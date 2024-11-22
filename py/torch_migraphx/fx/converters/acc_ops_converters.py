@@ -2463,6 +2463,8 @@ def acc_ops_bitwise_and(mgx_module, node, _args, kwargs):
 def acc_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
     query, key, value = kwargs['query'], kwargs['key'], kwargs['value']
 
+    #Pytorch impl: https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
+    
     # L, S = query.size(-2), key.size(-2)
     L, S = query.shape().lens()[-2], key.shape().lens()[-2]
 
@@ -2470,7 +2472,10 @@ def acc_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
     scale_factor = 1 / torch.sqrt(torch.tensor(query.shape().lens()[-1])) if kwargs.get("scale") is None else kwargs["scale"]
     
     # attn_bias = torch.zeros(L, S, dtype=query.dtype)
-    attn_bias = MGXInstruction(mgx_module.add_literal(torch.zeros(L, S, dtype=query.torch_type()).numpy()))
+    if kwargs.get("attn_bias"):
+        attn_bias = kwargs.get("attn_bias")
+    else:
+        attn_bias = MGXInstruction(mgx_module.add_literal(torch.zeros(L, S, dtype=query.torch_type()).numpy()))
 
     # if is_causal:
     #     assert attn_mask is None
@@ -2502,7 +2507,8 @@ def acc_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
         else:
             add_kwargs = {'input': attn_bias, 'other': kwargs["attn_mask"]}
             attn_bias = acc_ops_add(mgx_module, node, args, add_kwargs)
-
+    
+    
     # attn_weight = query @ key.transpose(-2, -1) * scale_factor
     perm = list(range(len(key.shape().lens())))
     perm[-2], perm[-1] = perm[-1], perm[-2]
