@@ -92,7 +92,7 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
 
             setattr(optim_gm, name, mgx_mod)
 
-    return partitioned_gm
+    return optim_gm
 
 
 # @validate_inference(0.1, 0.1)
