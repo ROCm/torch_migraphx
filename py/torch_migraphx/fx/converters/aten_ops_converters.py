@@ -102,6 +102,13 @@ def aten_ops_squeeze(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_squeeze(mgx_module, node, (), acc_kwargs)
 
 
+@migraphx_converter(torch.ops.aten.repeat.default)
+def aten_ops_repeat(mgx_module, node, args, kwargs):
+    assert len(args) == 2
+    acc_kwargs = {"input": args[0], "repeats": args[1]}
+    return acc_ops_converters.acc_ops_repeat(mgx_module, node, (), acc_kwargs)
+
+
 @migraphx_converter(torch.ops.aten.log2.default)
 def aten_ops_log2(mgx_module, node, args, kwargs):
     assert len(args) == 1
@@ -474,6 +481,14 @@ def aten_ops_sigmoid(mgx_module, node, args, kwargs):
     acc_kwargs = {"input": args[0]}
 
     return acc_ops_converters.acc_ops_sigmoid(mgx_module, node, (), acc_kwargs)
+
+
+@migraphx_converter(torch.ops.aten.glu.default)
+def aten_ops_glu(mgx_module, node, args, kwargs):
+    assert len(args) >= 1
+    acc_kwargs = {"input": args[0], "dim": args[1] if len(args) >= 2 else -1}
+
+    return acc_ops_converters.acc_ops_glu(mgx_module, node, (), acc_kwargs)
 
 
 @migraphx_converter(torch.ops.aten.gelu.default)
@@ -1277,6 +1292,26 @@ def aten_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
     node.meta['tensor_meta'] = node.meta['tensor_meta'][0]
     
     return acc_ops_converters.acc_ops_scaled_dot_product_attention(mgx_module, node, (), acc_kwargs), None, None, None, None, None, None, None
+
+
+
+@migraphx_converter(torch.ops.aten._scaled_dot_product_efficient_attention.default)
+def aten_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
+    assert len(args) >= 3
+    query, key, value = args[0], args[1], args[2]
+    acc_kwargs = {"query": query, "key": key, "value": value}
+
+    if len(args) >= 4:
+        acc_kwargs["attn_bias"] = args[3]
+    if len(args) >= 7:
+        acc_kwargs["is_causal"] = args[6]
+
+    if "scale" in kwargs:
+        acc_kwargs["scale"] = kwargs["scale"]
+
+    node.meta['tensor_meta'] = node.meta['tensor_meta'][0]
+    
+    return acc_ops_converters.acc_ops_scaled_dot_product_attention(mgx_module, node, (), acc_kwargs), None, None, None
 
   
 @migraphx_converter(torch.ops.aten.erf.default)

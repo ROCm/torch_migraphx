@@ -67,11 +67,11 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
     verbose = kwargs['verbose'] if 'verbose' in kwargs else False
 
     optim_gm = pre_partition_pass(gm)
-    partitioned_gm = partition(optim_gm, verbose=verbose)
+    partition(optim_gm, verbose=verbose)
 
     log_level = min(_LOGGER.level, logging.INFO) if verbose else _LOGGER.level
     with SetLogLevel(_LOGGER, log_level):
-        for name, mod in partitioned_gm.named_children():
+        for name, mod in optim_gm.named_children():
             # Const folded params can show up as "child objects"
             if not isinstance(mod, torch.fx.GraphModule):
                 continue
@@ -90,9 +90,7 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
                                      name=name,
                                      **kwargs)
 
-            setattr(partitioned_gm, name, mgx_mod)
-            del mod
-            del partition_inputs
+            setattr(optim_gm, name, mgx_mod)
 
     return partitioned_gm
 
@@ -111,11 +109,12 @@ def lower_subgraph(module: torch.fx.GraphModule,
     """
 
     fp16 = kwargs['fp16'] if 'fp16' in kwargs else False
+    deallocate = kwargs['deallocate'] if 'deallocate' in kwargs else False
     exhaustive_tune = kwargs[
         'exhaustive_tune'] if 'exhaustive_tune' in kwargs else False
     save_mxr = kwargs['save_mxr'] if 'save_mxr' in kwargs else False
 
-    interpreter = MGXInterpreter(module, inputs)
+    interpreter = MGXInterpreter(module, inputs, deallocate=deallocate)
     interpreter.run()
 
     if save_mxr:

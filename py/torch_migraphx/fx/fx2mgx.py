@@ -46,7 +46,7 @@ if INTERPRETER_LOGLEVEL:
 
 class MGXInterpreter(torch.fx.Interpreter):
 
-    def __init__(self, module, sample_inputs):
+    def __init__(self, module, sample_inputs, deallocate=False):
         super().__init__(module)
 
         self.program = migraphx.program()
@@ -61,6 +61,7 @@ class MGXInterpreter(torch.fx.Interpreter):
             _LOGGER.warning(
                 'Torch model contains the following unsupported operations: \n'
                 + '\n'.join(f'{i}' for i in self.unsupported_ops))
+        self.deallocate = deallocate
 
     def validate_conversion(self):
         missing_converters = set()
@@ -149,6 +150,9 @@ class MGXInterpreter(torch.fx.Interpreter):
         if isinstance(attr, torch.nn.ParameterList):
             mgx_attrs = []
             for a in attr:
+                if self.deallocate:
+                    a.data = a.data.cpu()
+                    torch.cuda.empty_cache()
                 t, qparams = get_qparams(a)
                 mgx_attrs.append(
                     MGXInstruction(
@@ -158,6 +162,9 @@ class MGXInterpreter(torch.fx.Interpreter):
                     ))
             return tuple(mgx_attrs)
 
+        if self.deallocate:
+            attr.data = attr.data.cpu()
+            torch.cuda.empty_cache()
         t, qparams = get_qparams(attr)
         return MGXInstruction(self.mm.add_literal(t.cpu().detach().numpy()),
                               torch_attr_value=attr,

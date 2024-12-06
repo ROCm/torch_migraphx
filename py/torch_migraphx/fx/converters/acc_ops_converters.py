@@ -596,6 +596,29 @@ def acc_ops_elu(mgx_module, node, args, kwargs):
                                    [inp.instr_ref]))
 
 
+@migraphx_converter(acc_ops.glu)
+def acc_ops_glu(mgx_module, node, args, kwargs):
+    inp = kwargs["input"]
+    dim = kwargs['dim'] if 'dim' in kwargs else -1
+    
+    inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
+    inp_shape = inp_ref.shape().lens()
+
+    mid_point = inp_shape[dim] //2
+    first_half_start, first_half_end = 0, mid_point
+    second_half_start, second_half_end = mid_point , inp_shape[dim]
+
+    first_half = mgx_module.add_instruction(migraphx.op('slice', axes=[dim], starts=[first_half_start], ends=[first_half_end]), [inp_ref])
+    
+    second_half = mgx_module.add_instruction(migraphx.op('slice', axes=[dim], starts=[second_half_start], ends=[second_half_end]), [inp_ref])
+    
+    sigmoid_second_half = mgx_module.add_instruction(migraphx.op('sigmoid'), [second_half])
+    
+    glu_out = mgx_module.add_instruction(migraphx.op('mul'), [first_half, sigmoid_second_half])
+
+    return MGXInstruction(glu_out, qparams=qparams, bool_output=bool_output)
+
+
 @migraphx_converter(acc_ops.selu)
 def acc_ops_selu(mgx_module, node, args, kwargs):
 
@@ -882,6 +905,32 @@ def acc_ops_tile(mgx_module, node, args, kwargs):
                                              [inp, orig])
 
     return MGXInstruction(inp, bool_output=bool_output)
+
+@migraphx_converter(acc_ops.repeat)
+def acc_ops_repeat(mgx_module, node, args, kwargs):
+    
+    inp = kwargs["input"]
+    repeats = kwargs["repeats"]
+    
+    bool_output = inp.bool_output
+
+    assert not inp.is_quantized()
+
+    inp_shape = inp.shape().lens()
+
+    unsqueeze_count = len(repeats) - len(inp_shape)
+    
+    for i in range(unsqueeze_count):
+        inp = acc_ops_unsqueeze(mgx_module, node, args, {"input": inp, "dim": 0})
+    
+    inp_shape = inp.shape().lens()
+
+    tile_dims = [repeats[i] if i < len(repeats) else 1 for i in range(len(inp_shape))]
+
+    tile_kwargs = {"dims": tile_dims, "input": inp}
+    tiled = acc_ops_tile(mgx_module, node, args, tile_kwargs)
+
+    return MGXInstruction(tiled.instr_ref, bool_output=bool_output)
 
 
 # TODO: Further investigation required for cases when the input dims
@@ -2007,6 +2056,14 @@ def acc_ops_layer_norm(mgx_module, node, args, kwargs):
     normalized_shape = kwargs['normalized_shape']
     weight = kwargs['weight']
     bias = kwargs['bias']
+    
+    dtype = get_arg_dtype(inp.instr_ref)
+    if weight is None:
+        weight = MGXInstruction(
+            mgx_module.add_literal(torch.tensor(1, dtype=dtype).numpy()))
+    if bias is None:
+        bias = MGXInstruction(
+            mgx_module.add_literal(torch.tensor(0, dtype=dtype).numpy()))
 
     assert all(not i.is_quantized() for i in (inp, weight, bias))
     inp, weight, bias = inp.instr_ref, weight.instr_ref, bias.instr_ref
@@ -2406,6 +2463,8 @@ def acc_ops_bitwise_and(mgx_module, node, _args, kwargs):
 def acc_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
     query, key, value = kwargs['query'], kwargs['key'], kwargs['value']
 
+    #Pytorch impl: https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
+    
     # L, S = query.size(-2), key.size(-2)
     L, S = query.shape().lens()[-2], key.shape().lens()[-2]
 
@@ -2413,7 +2472,10 @@ def acc_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
     scale_factor = 1 / torch.sqrt(torch.tensor(query.shape().lens()[-1])) if kwargs.get("scale") is None else kwargs["scale"]
     
     # attn_bias = torch.zeros(L, S, dtype=query.dtype)
-    attn_bias = MGXInstruction(mgx_module.add_literal(torch.zeros(L, S, dtype=query.torch_type()).numpy()))
+    if kwargs.get("attn_bias"):
+        attn_bias = kwargs.get("attn_bias")
+    else:
+        attn_bias = MGXInstruction(mgx_module.add_literal(torch.zeros(L, S, dtype=query.torch_type()).numpy()))
 
     # if is_causal:
     #     assert attn_mask is None
@@ -2445,7 +2507,8 @@ def acc_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
         else:
             add_kwargs = {'input': attn_bias, 'other': kwargs["attn_mask"]}
             attn_bias = acc_ops_add(mgx_module, node, args, add_kwargs)
-
+    
+    
     # attn_weight = query @ key.transpose(-2, -1) * scale_factor
     perm = list(range(len(key.shape().lens())))
     perm[-2], perm[-1] = perm[-1], perm[-2]
