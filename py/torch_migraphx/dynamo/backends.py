@@ -51,11 +51,12 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
     # Any addition kwargs are captrued through the "options" key
     kwargs = kwargs["options"] if "options" in kwargs else kwargs
 
-    if "load_compiled" in kwargs:
-        return torch.load(kwargs["load_compiled"])
-
     # Refer to discussion https://github.com/pytorch/pytorch/issues/105485
     TracingContext.get().fake_mode.allow_non_fake_inputs = True
+
+    if "load_compiled" in kwargs:
+        # Need any torch tensors to be mapped to cpu when using libraries like 'accelerate'
+        return torch.load(kwargs["load_compiled"], map_location=torch.device("cpu"))
 
     # TODO: remove alias input fix once issue is fixed upstream
     # https://github.com/pytorch/pytorch/issues/108079
