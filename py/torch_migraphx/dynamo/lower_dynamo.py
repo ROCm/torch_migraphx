@@ -37,7 +37,7 @@ from torch_migraphx.fx.mgx_module import MGXModule
 from torch_migraphx.fx.fx2mgx import MGXInterpreter
 from torch_migraphx.fx.passes.pass_utils import validate_inference
 
-from .passes.pass_manager import pre_partition_pass, post_partition_pass
+from .passes.pass_manager import pre_partition_pass, post_partition_pass, post_lowering_pass
 from .passes.partition import partition, get_partition_inputs
 from .utils import print_graph_info
 
@@ -77,8 +77,9 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
         mgx_mod = lower_subgraph(mod, partition_inputs, name=name, **kwargs)
 
         setattr(optim_gm, name, mgx_mod)
-
-    return optim_gm
+    
+    lowered_gm = post_lowering_pass(optim_gm)
+    return lowered_gm
 
 
 # @validate_inference(0.1, 0.1)
