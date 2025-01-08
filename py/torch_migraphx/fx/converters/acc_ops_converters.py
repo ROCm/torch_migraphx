@@ -1193,8 +1193,9 @@ def acc_ops_embedding(mgx_module, node, args, kwargs):
         mgx_module.add_instruction(migraphx.op('gather', axis=0),
                                    [weight.instr_ref, inp.instr_ref]))
 
-@migraphx_converter(acc_ops.gather)
-def acc_ops_gather(mgx_module, node, args, kwargs):
+## MIGraphX cannot optimize gathernd well in some cases
+@migraphx_converter(acc_ops.gather, enabled=False)
+def acc_ops_gather_legacy(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     dim = kwargs['dim']
     index = kwargs['index']
@@ -1219,6 +1220,55 @@ def acc_ops_gather(mgx_module, node, args, kwargs):
     new_shape = tuple(list(index_lens) + [len(index_lens)])
     coords = acc_ops_reshape(mgx_module, node, (), {"input": coords, "shape": new_shape})
     return MGXInstruction(mgx_module.add_instruction(migraphx.op('gathernd'), [inp.instr_ref, coords.instr_ref]))
+
+
+@migraphx_converter(acc_ops.gather)
+def acc_ops_gather(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    dim = kwargs['dim']
+    idx = kwargs['index']
+
+    assert not inp.is_quantized() and not idx.is_quantized()
+
+    inp_ref = mgx_module.add_instruction(migraphx.op("contiguous"), [inp.instr_ref])
+    idx_ref = mgx_module.add_instruction(migraphx.op("contiguous"), [idx.instr_ref])
+
+    inp_lens, inp_strides = inp_ref.shape().lens(), inp_ref.shape().strides()
+    idx_lens, idx_strides = idx_ref.shape().lens(), idx_ref.shape().strides()
+    idx_dtype = get_arg_dtype(idx.instr_ref)
+
+    assert len(idx_lens) == len(inp_lens)
+    if dim < 0:
+        dim = len(idx_lens) + dim
+
+    base_indices = torch.zeros(idx_lens, dtype=idx_dtype)
+    for a in range(len(idx_lens)):
+        if a == dim:
+            continue
+
+        a_shp = [1] * len(inp_lens)
+        a_shp[a] = inp_lens[a]
+        a_inds = torch.arange(inp_lens[a]) * inp_strides[a]
+        a_inds = a_inds.reshape(a_shp).broadcast_to(idx_lens)
+        base_indices += a_inds
+
+    base_indices_lit = mgx_module.add_literal(base_indices.numpy())
+    dim_stride = mgx_module.add_literal(
+        torch.tensor(inp_strides[dim], dtype=idx_dtype).numpy())
+    dim_stride = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=idx_lens), [dim_stride])
+
+    dim_indices = mgx_module.add_instruction(migraphx.op("mul"),
+                                             [idx_ref, dim_stride])
+    data_indices = mgx_module.add_instruction(migraphx.op("add"),
+                                              [base_indices_lit, dim_indices])
+
+    flat_inp = mgx_module.add_instruction(
+        migraphx.op('reshape', dims=[inp.shape().elements()]), [inp_ref])
+
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('gather', axis=0),
+                                   [flat_inp, data_indices]))
                              
 
 @migraphx_converter(acc_ops.reshape)
