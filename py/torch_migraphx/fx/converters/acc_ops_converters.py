@@ -1860,16 +1860,16 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
 
 
         out_lens = idx_tensors[0].shape().lens() + lens[num_tensor_dims:]
-
         axial_indices = []
         for ax, dim in enumerate(lens):
             post_dims = len(lens) - len(idx_tensors)
             unsq_dims = list(range(-1, -post_dims - 1, -1))
             if ax < num_tensor_dims:
                 ax_idx = idx_tensors[ax]
+                ax_idx = normalize_neg_indices(mgx_module, ax_idx, dim)
                 ax_idx = mgx_module.add_instruction(
-                        migraphx.op("unsqueeze", axes=unsq_dims), [idx_tensors[ax]])
-                ax_idx = mgx_module.add_instruction(migraphx.op("multibroadcast", out_lens=out_lens), [ax_idx])
+                        migraphx.op("unsqueeze", axes=unsq_dims), [ax_idx])
+                ax_idx = insert_mbroadcast(mgx_module, ax_idx, out_lens)
             else:
                 shp = [1] * len(out_lens)
                 shp[ax - len(lens)] = dim
@@ -1885,15 +1885,12 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
         ## Compute indices for the new flattened tensor
         gather_indices = axial_indices[-1]
         multiplier = mgx_module.add_literal(torch.tensor(1, dtype=idx_dtype).numpy())
-        multiplier = mgx_module.add_instruction(
-            migraphx.op("multibroadcast", out_lens=out_lens), [multiplier])
+        multiplier = insert_mbroadcast(mgx_module, multiplier, out_lens)
         
         for i in range(len(lens)-2, -1, -1):
             prev_len = mgx_module.add_literal(
                 torch.tensor(lens[i+1], dtype=idx_dtype).numpy())
-            prev_len = mgx_module.add_instruction(
-                migraphx.op("multibroadcast", out_lens=multiplier.shape().lens()),
-                [prev_len])
+            prev_len = insert_mbroadcast(mgx_module, prev_len, multiplier.shape().lens())
             multiplier = mgx_module.add_instruction(migraphx.op("mul"),
                                                     [multiplier, prev_len])
             
