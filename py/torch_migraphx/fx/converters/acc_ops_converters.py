@@ -1813,52 +1813,6 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
 
         idx_dtype = get_arg_dtype(idx_tensors[0])
         lens = out_mgx.shape().lens()
-
-        ## IDEAL CODE - TODO: Change to this once migraphx resize optimization is updated
-
-        # flat_lens = [np.prod(lens[:num_tensor_dims])] + lens[num_tensor_dims:]
-        # out_mgx = mgx_module.add_instruction(
-        #     migraphx.op('reshape', dims=flat_lens), [out_mgx])
-
-        # ## Compute indices for the new flattened dim
-        # adv_indices = idx_tensors[-1]
-        # idx_dtype = get_arg_dtype(adv_indices)
-        # # Track multiplier to calculate offset for each flattened dim
-        # multiplier = mgx_module.add_literal(
-        #     torch.tensor(lens[num_tensor_dims - 1], dtype=idx_dtype).numpy())
-        # multiplier = mgx_module.add_instruction(
-        #     migraphx.op("multibroadcast", out_lens=adv_indices.shape().lens()),
-        #     [multiplier])
-        # for i in range(num_tensor_dims - 2, -1, -1):
-        #     axis_offset = mgx_module.add_instruction(
-        #         migraphx.op("mul"), [idx_tensors[i], multiplier])
-        #     adv_indices = mgx_module.add_instruction(
-        #         migraphx.op("add"), [adv_indices, axis_offset])
-            
-        #     axis_len = mgx_module.add_literal(
-        #         torch.tensor(lens[i], dtype=idx_dtype).numpy())
-        #     axis_len = mgx_module.add_instruction(
-        #         migraphx.op("multibroadcast", out_lens=multiplier.shape().lens()),
-        #         [axis_len])
-        #     multiplier = mgx_module.add_instruction(migraphx.op("mul"),
-        #                                             [multiplier, axis_len])
-
-        # out_mgx = mgx_module.add_instruction(migraphx.op('gather', axis=0),
-        #                                      [out_mgx, adv_indices])
-
-        ## LEGACY CODE USING GATHERND
-        # unsq_idx_tensors = []
-        # for t in idx_tensors:
-        #     unsq_idx_tensors.append(
-        #         mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]),
-        #                                    [t]))
-        # gather_idx = mgx_module.add_instruction(migraphx.op('concat', axis=-1),
-        #                                         unsq_idx_tensors)
-
-        # out_mgx = mgx_module.add_instruction(migraphx.op('gathernd'),
-        #                                      [out_mgx, gather_idx])
-
-
         out_lens = idx_tensors[0].shape().lens() + lens[num_tensor_dims:]
         axial_indices = []
         for ax, dim in enumerate(lens):
