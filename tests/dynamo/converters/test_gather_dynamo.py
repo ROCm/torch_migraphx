@@ -16,19 +16,19 @@ class GatherModule(torch.nn.Module):
 
 
 @pytest.mark.parametrize('op_alias', [torch.ops.aten.gather.default])
-@pytest.mark.parametrize("input_dim, dim", [((3, 3), 0), 
-                                            ((3, 3), 1), 
-                                            ((3, 3), -1), 
-                                            ((3, 3), -2),
-                                            ((10, 5), -2), 
-                                            ((2, 3, 4, 5, 6), -3),
-                                            ((2, 3, 4, 5, 6), -4)])
+@pytest.mark.parametrize("input_dim, dim", [((3, 2), 0), 
+                                            ((3, 2, 4), 1), 
+                                            ((1, 1), -1), 
+                                            ((2, 4, 6), -2),
+                                            ((4, 2), -2), 
+                                            ((2, 3, 4, 1, 3), -3),
+                                            ((3, 3, 2, 4, 5), -4)])
 def test_gather(op_alias, input_dim, dim):
     input = torch.rand(input_dim).cuda()
 
     dim_size = input.size(dim)
     index_shape = list(input.size())
-    index_shape[dim] = np.random.randint(1, dim_size)  
+    index_shape[dim] = np.random.randint(1, dim_size*2)  
     index = torch.randint(0, dim_size, index_shape).cuda()
 
     mod = GatherModule(op_alias, dim).cuda()
