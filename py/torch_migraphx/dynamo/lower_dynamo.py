@@ -113,7 +113,8 @@ def lower_subgraph(module: torch.fx.GraphModule,
     interpreter.run()
 
     if save_mxr:
-        name = f"{kwargs['name']}.mxr" if 'name' in kwargs else "prog.mxr"
+        prefix = save_mxr if isinstance(save_mxr, str) else ""
+        name = f"{prefix}_{kwargs['name']}.mxr" if 'name' in kwargs else f"{prefix}_prog.mxr"
         migraphx.save(interpreter.program, name)
 
     if print_uncompiled: interpreter.program.print()
