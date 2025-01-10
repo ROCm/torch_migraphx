@@ -1193,8 +1193,9 @@ def acc_ops_embedding(mgx_module, node, args, kwargs):
         mgx_module.add_instruction(migraphx.op('gather', axis=0),
                                    [weight.instr_ref, inp.instr_ref]))
 
-@migraphx_converter(acc_ops.gather)
-def acc_ops_gather(mgx_module, node, args, kwargs):
+## MIGraphX cannot optimize gathernd well in some cases
+@migraphx_converter(acc_ops.gather, enabled=False)
+def acc_ops_gather_legacy(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     dim = kwargs['dim']
     index = kwargs['index']
@@ -1219,6 +1220,55 @@ def acc_ops_gather(mgx_module, node, args, kwargs):
     new_shape = tuple(list(index_lens) + [len(index_lens)])
     coords = acc_ops_reshape(mgx_module, node, (), {"input": coords, "shape": new_shape})
     return MGXInstruction(mgx_module.add_instruction(migraphx.op('gathernd'), [inp.instr_ref, coords.instr_ref]))
+
+
+@migraphx_converter(acc_ops.gather)
+def acc_ops_gather(mgx_module, node, args, kwargs):
+    inp = kwargs['input']
+    dim = kwargs['dim']
+    idx = kwargs['index']
+
+    assert not inp.is_quantized() and not idx.is_quantized()
+
+    inp_ref = mgx_module.add_instruction(migraphx.op("contiguous"), [inp.instr_ref])
+    idx_ref = mgx_module.add_instruction(migraphx.op("contiguous"), [idx.instr_ref])
+
+    inp_lens, inp_strides = inp_ref.shape().lens(), inp_ref.shape().strides()
+    idx_lens, idx_strides = idx_ref.shape().lens(), idx_ref.shape().strides()
+    idx_dtype = get_arg_dtype(idx.instr_ref)
+
+    assert len(idx_lens) == len(inp_lens)
+    if dim < 0:
+        dim = len(idx_lens) + dim
+
+    base_indices = torch.zeros(idx_lens, dtype=idx_dtype)
+    for a in range(len(idx_lens)):
+        if a == dim:
+            continue
+
+        a_shp = [1] * len(inp_lens)
+        a_shp[a] = inp_lens[a]
+        a_inds = torch.arange(inp_lens[a]) * inp_strides[a]
+        a_inds = a_inds.reshape(a_shp).broadcast_to(idx_lens)
+        base_indices += a_inds
+
+    base_indices_lit = mgx_module.add_literal(base_indices.numpy())
+    dim_stride = mgx_module.add_literal(
+        torch.tensor(inp_strides[dim], dtype=idx_dtype).numpy())
+    dim_stride = mgx_module.add_instruction(
+        migraphx.op('multibroadcast', out_lens=idx_lens), [dim_stride])
+
+    dim_indices = mgx_module.add_instruction(migraphx.op("mul"),
+                                             [idx_ref, dim_stride])
+    data_indices = mgx_module.add_instruction(migraphx.op("add"),
+                                              [base_indices_lit, dim_indices])
+
+    flat_inp = mgx_module.add_instruction(
+        migraphx.op('reshape', dims=[inp.shape().elements()]), [inp_ref])
+
+    return MGXInstruction(
+        mgx_module.add_instruction(migraphx.op('gather', axis=0),
+                                   [flat_inp, data_indices]))
                              
 
 @migraphx_converter(acc_ops.reshape)
@@ -1759,18 +1809,54 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
     elif num_tensor_dims > 1:
         idx_tensors = [idx[ax] for ax in tensor_dims]
         idx_tensors = broadcast_tensors(mgx_module, *idx_tensors)
-        unsq_idx_tensors = []
-        for t in idx_tensors:
-            unsq_idx_tensors.append(
-                mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[-1]),
-                                           [t]))
-        gather_idx = mgx_module.add_instruction(migraphx.op('concat', axis=-1),
-                                                unsq_idx_tensors)
+        idx_rank = len(idx_tensors[0].shape().lens())
 
-        out_mgx = mgx_module.add_instruction(migraphx.op('gathernd'),
-                                             [out_mgx, gather_idx])
+        idx_dtype = get_arg_dtype(idx_tensors[0])
+        lens = out_mgx.shape().lens()
+        out_lens = idx_tensors[0].shape().lens() + lens[num_tensor_dims:]
+        axial_indices = []
+        for ax, dim in enumerate(lens):
+            post_dims = len(lens) - len(idx_tensors)
+            unsq_dims = list(range(-1, -post_dims - 1, -1))
+            if ax < num_tensor_dims:
+                ax_idx = idx_tensors[ax]
+                ax_idx = normalize_neg_indices(mgx_module, ax_idx, dim)
+                ax_idx = mgx_module.add_instruction(
+                        migraphx.op("unsqueeze", axes=unsq_dims), [ax_idx])
+                ax_idx = insert_mbroadcast(mgx_module, ax_idx, out_lens)
+            else:
+                shp = [1] * len(out_lens)
+                shp[ax - len(lens)] = dim
+                ax_idx = torch.arange(dim).reshape(shp).broadcast_to(out_lens)
+                ax_idx = mgx_module.add_literal(ax_idx.to(idx_dtype).numpy())
+            
+            axial_indices.append(ax_idx)
+        
+        out_mgx = mgx_module.add_instruction(
+            migraphx.op('reshape', dims=[out_mgx.shape().elements()]),
+            [out_mgx])
 
-        idx_rank = len(gather_idx.shape().lens()) - 1
+        ## Compute indices for the new flattened tensor
+        gather_indices = axial_indices[-1]
+        multiplier = mgx_module.add_literal(torch.tensor(1, dtype=idx_dtype).numpy())
+        multiplier = insert_mbroadcast(mgx_module, multiplier, out_lens)
+        
+        for i in range(len(lens)-2, -1, -1):
+            prev_len = mgx_module.add_literal(
+                torch.tensor(lens[i+1], dtype=idx_dtype).numpy())
+            prev_len = insert_mbroadcast(mgx_module, prev_len, multiplier.shape().lens())
+            multiplier = mgx_module.add_instruction(migraphx.op("mul"),
+                                                    [multiplier, prev_len])
+            
+            offset = mgx_module.add_instruction(
+                migraphx.op("mul"), [axial_indices[i], multiplier])
+            gather_indices = mgx_module.add_instruction(
+                migraphx.op("add"), [gather_indices, offset])
+
+
+        out_mgx = mgx_module.add_instruction(migraphx.op('gather', axis=0),
+                                             [out_mgx, gather_indices])
+
         offset = num_tensor_dims - idx_rank
 
         # Remove squeezed dimensions from original permutation

@@ -34,6 +34,7 @@ from .const_fold import const_fold
 from .promote_types import promote_inputs
 from .remove_empty_slice import remove_empty_slices
 from .fix_tensor_meta import fix_tensor_meta
+from .remove_lowered_constants import remove_lowered_constants
 
 
 class MGXPassManager(PassManager):
@@ -57,6 +58,14 @@ def pre_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
 def post_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
     passes = [
         fix_tensor_meta,
+    ]
+    post_partition_pass_mgr = MGXPassManager(passes)
+    return post_partition_pass_mgr(gm)
+
+
+def post_lowering_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
+    passes = [
+        remove_lowered_constants,
     ]
     post_partition_pass_mgr = MGXPassManager(passes)
     return post_partition_pass_mgr(gm)
