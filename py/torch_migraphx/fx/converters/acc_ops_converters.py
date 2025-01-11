@@ -1814,45 +1814,39 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
         idx_dtype = get_arg_dtype(idx_tensors[0])
         lens = out_mgx.shape().lens()
         out_lens = idx_tensors[0].shape().lens() + lens[num_tensor_dims:]
-        axial_indices = []
-        for ax, dim in enumerate(lens):
-            post_dims = len(lens) - len(idx_tensors)
-            unsq_dims = list(range(-1, -post_dims - 1, -1))
-            if ax < num_tensor_dims:
-                ax_idx = idx_tensors[ax]
-                ax_idx = normalize_neg_indices(mgx_module, ax_idx, dim)
-                ax_idx = mgx_module.add_instruction(
-                        migraphx.op("unsqueeze", axes=unsq_dims), [ax_idx])
-                ax_idx = insert_mbroadcast(mgx_module, ax_idx, out_lens)
-            else:
-                shp = [1] * len(out_lens)
-                shp[ax - len(lens)] = dim
-                ax_idx = torch.arange(dim).reshape(shp).broadcast_to(out_lens)
-                ax_idx = mgx_module.add_literal(ax_idx.to(idx_dtype).numpy())
-            
-            axial_indices.append(ax_idx)
+        
+        idx_offsets = []
+        rsp_lens = idx_tensors[0].shape().lens() + [1 for _ in lens[num_tensor_dims:]]
+        for ax in range(num_tensor_dims):
+            dim_offset = np.prod(lens[ax+1:])
+            dim_offset = mgx_module.add_literal(torch.tensor(dim_offset, dtype=idx_dtype).numpy())
+            ax_idx = idx_tensors[ax]
+            ax_idx = normalize_neg_indices(mgx_module, ax_idx, lens[ax])
+            ax_idx = mgx_module.add_instruction(
+                migraphx.op('reshape', dims=rsp_lens), [ax_idx])
+            dim_offset = insert_mbroadcast(mgx_module, dim_offset, rsp_lens)
+            ax_idx = mgx_module.add_instruction(migraphx.op("mul"), [ax_idx, dim_offset])
+            idx_offsets.append(ax_idx)
+
+        gather_indices = insert_mbroadcast(mgx_module, idx_offsets[0], out_lens)
+        for ins in idx_offsets[1:]:
+            ins = insert_mbroadcast(mgx_module, ins, out_lens)
+            gather_indices = mgx_module.add_instruction(
+                migraphx.op("add"), [gather_indices, ins])
+        
+        for i, dim in enumerate(lens[num_tensor_dims:]):
+            ax = i + num_tensor_dims
+            dim_offset = np.prod(lens[ax+1:])
+            shp = [1] * len(out_lens)
+            shp[ax - len(lens)] = lens[ax]
+            ax_idx = dim_offset * torch.arange(dim).reshape(shp).broadcast_to(out_lens)
+            ax_idx = mgx_module.add_literal(ax_idx.to(idx_dtype).numpy())
+            gather_indices = mgx_module.add_instruction(
+                migraphx.op("add"), [gather_indices, ax_idx])
         
         out_mgx = mgx_module.add_instruction(
             migraphx.op('reshape', dims=[out_mgx.shape().elements()]),
             [out_mgx])
-
-        ## Compute indices for the new flattened tensor
-        gather_indices = axial_indices[-1]
-        multiplier = mgx_module.add_literal(torch.tensor(1, dtype=idx_dtype).numpy())
-        multiplier = insert_mbroadcast(mgx_module, multiplier, out_lens)
-        
-        for i in range(len(lens)-2, -1, -1):
-            prev_len = mgx_module.add_literal(
-                torch.tensor(lens[i+1], dtype=idx_dtype).numpy())
-            prev_len = insert_mbroadcast(mgx_module, prev_len, multiplier.shape().lens())
-            multiplier = mgx_module.add_instruction(migraphx.op("mul"),
-                                                    [multiplier, prev_len])
-            
-            offset = mgx_module.add_instruction(
-                migraphx.op("mul"), [axial_indices[i], multiplier])
-            gather_indices = mgx_module.add_instruction(
-                migraphx.op("add"), [gather_indices, offset])
-
 
         out_mgx = mgx_module.add_instruction(migraphx.op('gather', axis=0),
                                              [out_mgx, gather_indices])
