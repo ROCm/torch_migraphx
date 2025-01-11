@@ -2109,17 +2109,8 @@ def compute_norm(mgx_module, x, eps, axes):
     mean_mgx = mgx_module.add_instruction(
         migraphx.op('multibroadcast', out_lens=out_shape), [mean_mgx])
     sub_mgx = mgx_module.add_instruction(migraphx.op('sub'), [x, mean_mgx])
-
-    num_reduce_elems = torch.tensor(out_shape)[axes].prod().sqrt().item()
-    sqrt_elems_mgx = mgx_module.add_literal(
-        torch.tensor(num_reduce_elems, dtype=dtype).numpy())
-    sqrt_elems_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [sqrt_elems_mgx])
-    div_sub_mgx = mgx_module.add_instruction(migraphx.op('div'),
-                                             [sub_mgx, sqrt_elems_mgx])
-    pow_mgx = mgx_module.add_instruction(migraphx.op('mul'),
-                                         [div_sub_mgx, div_sub_mgx])
-    var_mgx = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=axes),
+    pow_mgx = mgx_module.add_instruction(migraphx.op('mul'), [sub_mgx, sub_mgx])
+    var_mgx = mgx_module.add_instruction(migraphx.op('reduce_mean', axes=axes),
                                          [pow_mgx])
 
     var_mgx = mgx_module.add_instruction(
