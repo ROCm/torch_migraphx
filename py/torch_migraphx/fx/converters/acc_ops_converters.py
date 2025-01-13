@@ -1821,9 +1821,9 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
             dim_offset = np.prod(lens[ax+1:])
             dim_offset = mgx_module.add_literal(torch.tensor(dim_offset, dtype=idx_dtype).numpy())
             ax_idx = idx_tensors[ax]
-            ax_idx = normalize_neg_indices(mgx_module, ax_idx, lens[ax])
             ax_idx = mgx_module.add_instruction(
                 migraphx.op('reshape', dims=rsp_lens), [ax_idx])
+            ax_idx = normalize_neg_indices(mgx_module, ax_idx, lens[ax])
             dim_offset = insert_mbroadcast(mgx_module, dim_offset, rsp_lens)
             ax_idx = mgx_module.add_instruction(migraphx.op("mul"), [ax_idx, dim_offset])
             idx_offsets.append(ax_idx)
