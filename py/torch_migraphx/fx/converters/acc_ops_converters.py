@@ -2112,9 +2112,9 @@ def compute_norm(mgx_module, x, eps, axes):
     add_eps_mgx = mgx_module.add_instruction(migraphx.op('add'),
                                              [var_mgx, eps_mgx])
 
-    sqrt_mgx = mgx_module.add_instruction(migraphx.op('sqrt'), [add_eps_mgx])
+    rsqrt_mgx = mgx_module.add_instruction(migraphx.op('rsqrt'), [add_eps_mgx])
 
-    out = mgx_module.add_instruction(migraphx.op('div'), [sub_mgx, sqrt_mgx])
+    out = mgx_module.add_instruction(migraphx.op('mul'), [sub_mgx, rsqrt_mgx])
 
     return out
 
@@ -2174,11 +2174,11 @@ def acc_ops_group_norm(mgx_module, node, args, kwargs):
     assert len(out_shape) > 2 and num_ch % num_groups == 0
 
     group_size = num_ch // num_groups
-    grouped_shape = [out_shape[0]] + [num_groups, group_size] + out_shape[2:]
+    grouped_shape = [out_shape[0], num_groups, -1]
     grouped_inp = mgx_module.add_instruction(
         migraphx.op('reshape', dims=grouped_shape), [inp])
 
-    axes = list(range(-len(grouped_shape[2:]), 0))
+    axes = [-1]
 
     norm_mgx = compute_norm(mgx_module, grouped_inp, eps, axes)
     norm_mgx = mgx_module.add_instruction(
