@@ -28,6 +28,7 @@
 #####################################################################################
 
 from typing import Sequence
+import os
 
 import torch
 from torch.fx.passes.shape_prop import ShapeProp
@@ -105,6 +106,8 @@ def lower_subgraph(module: torch.fx.GraphModule,
                         if 'print_parsed_program' in kwargs else False)
     print_compiled = (kwargs['print_compiled_program']
                       if 'print_compiled_program' in kwargs else False)
+    env_vars = (kwargs['compile_env_variables']
+                      if 'compile_env_variables' in kwargs else {})
 
     interpreter = MGXInterpreter(module,
                                  inputs,
@@ -119,10 +122,15 @@ def lower_subgraph(module: torch.fx.GraphModule,
 
     if print_uncompiled: interpreter.program.print()
 
+    old_env = dict(os.environ)
+    os.environ.update(env_vars)
     mgx_module = MGXModule(program=interpreter.program,
                            input_names=interpreter.get_input_names(),
                            quantize_fp16=fp16,
                            exhaustive_tune=exhaustive_tune)
+    
+    os.environ.clear()
+    os.environ.update(old_env)
 
     if print_compiled: mgx_module.program.print()
 
