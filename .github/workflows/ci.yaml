@@ -61,11 +61,12 @@ jobs:
           env:
             DOCKER_TAG: ${{ needs.check_image.outputs.imagetag }}
           run: |
-            echo $DOCKER_TOKEN | docker login docker.io -u $DOCKER_USER --password-stdin
+            echo $DOCKER_TOKEN | docker login -u $DOCKER_USER --password-stdin
 
             docker pull $DOCKER_IMAGE:latest || true
-            docker tag $DOCKER_IMAGE $DOCKER_IMAGE:test
-            docker push $DOCKER_IMAGE:test;
+            docker build . --file ./ci/base.Dockerfile --cache-from $DOCKER_IMAGE:latest --tag $DOCKER_IMAGE:$DOCKER_TAG --tag $DOCKER_IMAGE:latest;
+            docker push $DOCKER_IMAGE:$DOCKER_TAG;
+            docker push $DOCKER_IMAGE:latest;
     
     # run_tests:
     #   runs-on: ROCM-Ubuntu
