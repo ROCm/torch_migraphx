@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 import torch
 import torch_migraphx
 import torchvision.models as models
-from utils import benchmark_module, print_bm_results
+from utils import benchmark_module, print_bm_results, add_csv_result
 
 from torch._export import capture_pre_autograd_graph
 import torch._dynamo
@@ -30,8 +30,10 @@ parser.add_argument('-m', '--model', type=str, default='resnet50')
 parser.add_argument('-b', '--batch-size', type=int, default=1)
 parser.add_argument('--fp16', action='store_true', default=False)
 parser.add_argument('--asymmetric', action='store_true', default=False)
-parser.add_argument('--no-compare', action='store_true', default=False)
+parser.add_argument('--compare', action='store_true', default=False)
 parser.add_argument('-i', '--iter', type=int, default=100)
+parser.add_argument('--csv', type=str, default="",
+                    help='Add perf results to a csv file')
 
 
 def stable_convert_pt2e(model, use_reference_representation=False):
@@ -87,36 +89,45 @@ def benchmark_torchvision_models(model_name, args):
                                  iterations=args.iter)
     del mgx_mod
 
-    if args.no_compare:
-        print(
-            f"{model_fp32._get_name()}: Avg execution time: {time_int8:0.4f} ms, Rate: {1e3 * bs / time_int8:0.4f} /sec"
-        )
-        return
+    names = ["MGX INT8"]
+    times = [time_int8]
 
-    torch._dynamo.reset()
-    mgx_mod_fp32 = torch.compile(copy.deepcopy(model_fp32),
-                                 backend='migraphx').cuda()
-    mgx_mod_fp32(input_fp32.cuda())
+    if args.compare:
+        torch._dynamo.reset()
+        mgx_mod_fp32 = torch.compile(copy.deepcopy(model_fp32),
+                                    backend='migraphx').cuda()
+        mgx_mod_fp32(input_fp32.cuda())
 
-    time_fp32 = benchmark_module(mgx_mod_fp32, (input_fp32.cuda(), ),
-                                 iterations=args.iter)
-    del mgx_mod_fp32
+        time_fp32 = benchmark_module(mgx_mod_fp32, (input_fp32.cuda(), ),
+                                    iterations=args.iter)
+        del mgx_mod_fp32
 
-    torch._dynamo.reset()
-    mgx_mod_fp16 = torch.compile(model_fp32.half(), backend='migraphx').cuda()
-    mgx_mod_fp16(input_fp32.half().cuda())
+        names.append("MGX FP32")
+        times.append(time_fp32)
 
-    time_fp16 = benchmark_module(mgx_mod_fp16, (input_fp32.half().cuda(), ),
-                                 iterations=args.iter)
-    del mgx_mod_fp16
+        torch._dynamo.reset()
+        mgx_mod_fp16 = torch.compile(model_fp32.half(), backend='migraphx').cuda()
+        mgx_mod_fp16(input_fp32.half().cuda())
+
+        time_fp16 = benchmark_module(mgx_mod_fp16, (input_fp32.half().cuda(), ),
+                                    iterations=args.iter)
+        del mgx_mod_fp16
+
+        names.append("MGX FP16")
+        times.append(time_fp16)
 
     print(
         f"Running benchmarks for {model_fp32._get_name()}, BS = {bs}, Asymmetric = {args.asymmetric}, INT8 + FP16 = {args.fp16}"
     )
-    names = ["MGX FP32", "MGX FP16", "MGX INT8"]
-    times = [time_fp32, time_fp16, time_int8]
 
-    print_bm_results(names, times, bs, 0)
+    print_bm_results(names, times, bs, 1)
+
+    if args.csv:
+        targets = "mgx_dynamo"
+        base_dtype = "fp16" if args.fp16 else "fp32"
+        sym = "asym" if args.asymmetric else "sym"
+        dtypes = [f"{base_dtype}_int8_{sym}", "fp32", "fp16"]
+        add_csv_result(args.csv, model_name, targets, times, bs, dtypes)
 
 
 def benchmark_transformer_models(model_name, model_class, tokenizer_class,

@@ -99,4 +99,5 @@ if __name__ == '__main__':
     print_bm_results(model_names, times, bs)
 
     if args.csv:
-        add_csv_result(args.csv, model_name, times, bs, dtype)
+        targets = ["torch", "mgx_fx", "mgx_dynamo", "inductor"]
+        add_csv_result(args.csv, model_name, targets, times, bs, dtype)
