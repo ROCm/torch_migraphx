@@ -61,7 +61,7 @@ jobs:
           env:
             DOCKER_TAG: ${{ needs.check_image.outputs.imagetag }}
           run: |
-            echo $DOCKER_TOKEN | docker login -u $DOCKER_USER --password-stdin
+            echo $DOCKER_TOKEN | docker login docker.io -u $DOCKER_USER --password-stdin
 
             docker pull $DOCKER_IMAGE:latest || true
             docker tag $DOCKER_IMAGE $DOCKER_IMAGE:test
