@@ -64,6 +64,7 @@ jobs:
             echo $DOCKER_TOKEN | docker login -u $DOCKER_USER --password-stdin
 
             docker pull $DOCKER_IMAGE:latest || true
+            docker tag $DOCKER_IMAGE $DOCKER_IMAGE:test
             docker push $DOCKER_IMAGE:test;
     
     # run_tests:
