@@ -33,3 +33,12 @@ def print_bm_results(names: Sequence[str],
             [n, f"{t:0.4f}", f"{1e3 * bs / t:0.4f}", f"{t_ref/t:0.4f}x"])
 
     print(tabulate(rows, headers=headers))
+
+
+def add_csv_result(csv_file, model_name, times, bs, dtype):
+    rates = [1e3 * bs / t for t in times]
+    targets = ["torch", "mgx_fx", "mgx_dynamo", "inductor"]
+    names = [f"{model_name}_{target}_{dtype}_b{bs}" for target in targets[:len(rates)]]
+    with open(csv_file, "a") as f:
+        for n, r in zip(names, rates):
+            f.write(f"{n},{r:0.4f}, QPS\n")
