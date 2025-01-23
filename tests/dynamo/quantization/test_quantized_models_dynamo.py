@@ -5,11 +5,12 @@ from packaging import version
 import torch_migraphx
 import torch
 from torchvision import models
-from torch._export import capture_pre_autograd_graph
 from torch.ao.quantization.quantize_pt2e import prepare_pt2e
 from torch_migraphx.dynamo.quantization import MGXQuantizer
 from quantization_utils_dynamo import (stable_convert_pt2e,
-                                       move_q_gm_to_device, verify_outputs,
+                                       stable_pre_aot_export,
+                                       move_q_gm_to_device, 
+                                       verify_outputs,
                                        compute_quantized_outputs,
                                        verify_quantized_outputs)
 
@@ -35,7 +36,7 @@ def test_quant_vision_model(model_name, model_weights, rtol, atol, asymm,
 
     sample_inputs = [torch.randn(4, 3, 244, 244)]
 
-    model_export = capture_pre_autograd_graph(model, sample_inputs)
+    model_export = stable_pre_aot_export(model, sample_inputs)
 
     quantizer = MGXQuantizer(asymmetric_activations=asymm)
     m = prepare_pt2e(model_export, quantizer)
@@ -75,7 +76,7 @@ def test_quant_LLM(model_class, tokenizer_class, model_name, rtol, atol, asymm,
     inputs = [encoded_input["input_ids"]]
     gold_output = model(*inputs)
 
-    model_export = capture_pre_autograd_graph(model, inputs)
+    model_export = stable_pre_aot_export(model, inputs)
 
     quantizer = MGXQuantizer(asymmetric_activations=asymm)
     m = prepare_pt2e(model_export, quantizer)
