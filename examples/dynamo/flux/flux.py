@@ -56,10 +56,10 @@ def run(args):
 
     pipe = pipe.to("cuda")
 
-    # pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx')
-    # pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, backend='migraphx')
+    pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx')
+    pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, backend='migraphx')
     pipe.transformer = torch.compile(pipe.transformer, backend='migraphx')
-    # pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend='migraphx')
+    pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend='migraphx')
 
     image = pipe(prompt=args.prompts,
                  height=args.image_height,
