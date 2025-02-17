@@ -7,5 +7,5 @@ pip install -r requirements.txt
 ## Run demo
 Refer to the script for more accepted parameters
 ```
-python flux.py --fp16
+python flux.py
 ```
