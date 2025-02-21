@@ -2,7 +2,11 @@ from packaging import version
 import torch_migraphx
 import torch
 
-from torch._export import capture_pre_autograd_graph
+if version.parse(torch.__version__) < version.parse("2.6.dev"):
+    from torch._export import capture_pre_autograd_graph
+else:
+    from torch.export import export_for_training
+
 from torch.ao.quantization.quantize_pt2e import (
     prepare_pt2e,
     convert_pt2e,
@@ -26,20 +30,27 @@ class FuncModule(torch.nn.Module):
 
 
 def stable_convert_pt2e(model, use_reference_representation=False):
-    print(torch.__version__)
     if version.parse(torch.__version__) < version.parse("2.2"):
         return convert_pt2e(model, use_reference_representation)
     else:
         return convert_pt2e(model,
                             use_reference_representation,
                             fold_quantize=False)
+    
+
+def stable_pre_aot_export(model, inputs, *args, **kwargs):
+    if version.parse(torch.__version__) < version.parse("2.6.dev"):
+        return capture_pre_autograd_graph(model, inputs, *args, **kwargs)
+    else:
+        return export_for_training(model, tuple(inputs), *args, **kwargs).module()
+
 
 
 def quantize_module(mod, inp_shapes, asymm=False, calibration_n=10):
     quantizer = MGXQuantizer(asymmetric_activations=asymm)
 
     ex_inputs = [torch.randn(*s) for s in inp_shapes]
-    model_export = capture_pre_autograd_graph(mod, ex_inputs)
+    model_export = stable_pre_aot_export(mod, ex_inputs)
 
     model_prepared = prepare_pt2e(model_export, quantizer)
     for _ in range(calibration_n):

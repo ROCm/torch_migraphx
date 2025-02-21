@@ -5,7 +5,7 @@ from argparse import ArgumentParser
 import copy
 import os 
 
-from utils import benchmark_module, print_bm_results
+from utils import benchmark_module, print_bm_results, add_csv_result
 
 parser = ArgumentParser(description='Model to benchmark')
 parser.add_argument('-m', '--model', type=str, default='alexnet',
@@ -18,6 +18,10 @@ parser.add_argument('-i', '--iter', type=int, default=100,
                     help='Number of iterations to run for benchmarking. Default is 100.')
 parser.add_argument('--nhwc', action='store_true', default=False,
                     help='If set, use NHWC (channel-last) memory format instead of NCHW. Default is False.')
+parser.add_argument('--inductor', action='store_true', default=False,
+                    help='Perform benchmark with torch inductor backend (default settings)')
+parser.add_argument('--csv', type=str, default="",
+                    help='Add perf results to a csv file')
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -43,7 +47,9 @@ if __name__ == '__main__':
     if args.nhwc == True:
         model = mod.to(memory_format=torch.channels_last)
 
+    dtype = "fp32"
     if args.fp16:
+        dtype = "fp16"
         mod = mod.half()
         sample_inputs = [i.half() for i in sample_inputs]
 
@@ -68,7 +74,8 @@ if __name__ == '__main__':
 
     # Dynamo Lowering
     if "migraphx" in torch._dynamo.list_backends():
-        mgx_dynamo_mod = torch.compile(mod, backend="migraphx")
+        torch._dynamo.reset()
+        mgx_dynamo_mod = torch.compile(copy.deepcopy(mod), backend="migraphx")
         mgx_dynamo_mod(*sample_inputs)
 
         mgx_dynamo_res = benchmark_module(mgx_dynamo_mod,
@@ -77,5 +84,20 @@ if __name__ == '__main__':
 
         model_names.append("MIGraphX Dynamo")
         times.append(mgx_dynamo_res)
+        del mgx_dynamo_mod
+
+    if args.inductor:
+        torch._dynamo.reset()
+        inductor_mod = torch.compile(mod)
+        inductor_mod(*sample_inputs)
+        inductor_res = benchmark_module(inductor_mod,
+                                        sample_inputs,
+                                        iterations=args.iter)
+        model_names.append("Torch Inductor")
+        times.append(inductor_res)
 
     print_bm_results(model_names, times, bs)
+
+    if args.csv:
+        targets = ["torch", "mgx_fx", "mgx_dynamo", "inductor"]
+        add_csv_result(args.csv, model_name, targets, times, bs, dtype)

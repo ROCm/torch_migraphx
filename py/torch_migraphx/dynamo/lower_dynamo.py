@@ -37,7 +37,7 @@ from torch_migraphx.fx.mgx_module import MGXModule
 from torch_migraphx.fx.fx2mgx import MGXInterpreter
 from torch_migraphx.fx.passes.pass_utils import validate_inference
 
-from .passes.pass_manager import pre_partition_pass, post_partition_pass
+from .passes.pass_manager import pre_partition_pass, post_partition_pass, post_lowering_pass
 from .passes.partition import partition, get_partition_inputs
 from .utils import print_graph_info
 
@@ -77,8 +77,9 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
         mgx_mod = lower_subgraph(mod, partition_inputs, name=name, **kwargs)
 
         setattr(optim_gm, name, mgx_mod)
-
-    return optim_gm
+    
+    lowered_gm = post_lowering_pass(optim_gm)
+    return lowered_gm
 
 
 # @validate_inference(0.1, 0.1)
@@ -96,6 +97,7 @@ def lower_subgraph(module: torch.fx.GraphModule,
 
     verbose = kwargs['verbose'] if 'verbose' in kwargs else False
     fp16 = kwargs['fp16'] if 'fp16' in kwargs else False
+    bf16 = kwargs['bf16'] if 'bf16' in kwargs else False
     deallocate = kwargs['deallocate'] if 'deallocate' in kwargs else False
     exhaustive_tune = kwargs[
         'exhaustive_tune'] if 'exhaustive_tune' in kwargs else False
@@ -112,7 +114,8 @@ def lower_subgraph(module: torch.fx.GraphModule,
     interpreter.run()
 
     if save_mxr:
-        name = f"{kwargs['name']}.mxr" if 'name' in kwargs else "prog.mxr"
+        prefix = f"{save_mxr}_" if isinstance(save_mxr, str) else ""
+        name = f"{prefix}{kwargs['name']}.mxr" if 'name' in kwargs else f"{prefix}_prog.mxr"
         migraphx.save(interpreter.program, name)
 
     if print_uncompiled: interpreter.program.print()
@@ -120,6 +123,7 @@ def lower_subgraph(module: torch.fx.GraphModule,
     mgx_module = MGXModule(program=interpreter.program,
                            input_names=interpreter.get_input_names(),
                            quantize_fp16=fp16,
+                           quantize_bf16=bf16,
                            exhaustive_tune=exhaustive_tune)
 
     if print_compiled: mgx_module.program.print()
