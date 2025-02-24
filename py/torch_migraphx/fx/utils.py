@@ -57,7 +57,6 @@ TYPE_MAP = {
     torch.int16: 'int16_type',
     torch.int32: 'int32_type',
     torch.long: 'int64_type',
-    torch.bfloat16: 'bf16_type'
 }
 
 INV_TYPE_MAP = {v: k for k, v in TYPE_MAP.items()}
