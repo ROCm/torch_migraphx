@@ -33,9 +33,9 @@ parser.add_argument('--model_repo',
                     default='black-forest-labs/FLUX.1-dev',
                     help='Huggingface repo path')
 
-parser.add_argument('--fp16',
+parser.add_argument('--bf16',
                     action='store_true',
-                    help='Load fp16 version of the pipeline')
+                    help='Load bf16 version of the pipeline')
 
 parser.add_argument("-d",
                     "--image-height",
@@ -51,15 +51,19 @@ parser.add_argument("-w",
 
 
 def run(args):
-    dtype = torch.float16 if args.fp16 else torch.float32
-    pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=dtype)
+
+    options = {}
+    if args.bf16:
+        options["bf16"] = True
+
+    pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.float32)
 
     pipe = pipe.to("cuda")
 
-    pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx')
-    pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, backend='migraphx')
-    pipe.transformer = torch.compile(pipe.transformer, backend='migraphx')
-    pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend='migraphx')
+    pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx', options=options)
+    pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, backend='migraphx', options=options)
+    pipe.transformer = torch.compile(pipe.transformer, backend='migraphx', options=options)
+    pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend='migraphx', options=options)
 
     image = pipe(prompt=args.prompts,
                  height=args.image_height,
