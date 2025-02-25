@@ -149,5 +149,4 @@ def benchmark_flux_model(args):
 
 if __name__ == '__main__':
     args = parser.parse_args()
-
     benchmark_flux_model(args)
