@@ -109,7 +109,20 @@ def benchmark_flux_model(args):
     model_names.append("Torch Model")
     times.append(torch_res)
 
-    del pipe 
+    if args.inductor:
+        torch._dynamo.reset()
+
+        pipe.text_encoder = torch.compile(pipe.text_encoder)
+        pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2)
+        pipe.transformer = torch.compile(pipe.transformer)
+        pipe.vae.decoder = torch.compile(pipe.vae.decoder)
+
+        inductor_res = benchmark_module(pipe, args)
+
+        model_names.append("Torch Inductor")
+        times.append(inductor_res)
+
+    del pipe
 
     if "migraphx" in torch._dynamo.list_backends():
 
@@ -131,23 +144,6 @@ def benchmark_flux_model(args):
         
         model_names.append("MIGraphX Dynamo")
         times.append(mgx_dynamo_res)
-        del pipe
-
-    if args.inductor:
-        torch._dynamo.reset()
-        
-        pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch_dtype)
-        pipe = pipe.to("cuda")
-
-        pipe.text_encoder = torch.compile(pipe.text_encoder)
-        pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2)
-        pipe.transformer = torch.compile(pipe.transformer)
-        pipe.vae.decoder = torch.compile(pipe.vae.decoder)
-
-        inductor_res = benchmark_module(pipe, args)
-
-        model_names.append("Torch Inductor")
-        times.append(inductor_res)
         del pipe
 
     print_bm_results(model_names, times, 1)

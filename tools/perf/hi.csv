@@ -1,0 +1,2 @@
+FLUX.1-dev_Torch Model_fp16_b1,0.0630, QPS
+FLUX.1-dev_Torch Inductor_fp16_b1,0.0854, QPS
