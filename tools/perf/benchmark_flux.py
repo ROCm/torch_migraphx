@@ -125,11 +125,6 @@ def benchmark_flux_model(args):
     del pipe
 
     if "migraphx" in torch._dynamo.list_backends():
-
-        os.environ["MIGRAPHX_ENABLE_NHWC"] = '1'
-        os.environ["MIGRAPHX_MLIR_USE_SPECIFIC_OPS"] = 'attention,convolution,fused_convolution'
-        os.environ["MIGRAPHX_DISABLE_LAYERNORM_FUSION"] = '1'
-
         torch._dynamo.reset()
 
         pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.float32)
