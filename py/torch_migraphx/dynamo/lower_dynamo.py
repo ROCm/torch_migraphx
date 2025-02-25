@@ -97,6 +97,7 @@ def lower_subgraph(module: torch.fx.GraphModule,
 
     verbose = kwargs['verbose'] if 'verbose' in kwargs else False
     fp16 = kwargs['fp16'] if 'fp16' in kwargs else False
+    bf16 = kwargs['bf16'] if 'bf16' in kwargs else False
     deallocate = kwargs['deallocate'] if 'deallocate' in kwargs else False
     exhaustive_tune = kwargs[
         'exhaustive_tune'] if 'exhaustive_tune' in kwargs else False
@@ -122,6 +123,7 @@ def lower_subgraph(module: torch.fx.GraphModule,
     mgx_module = MGXModule(program=interpreter.program,
                            input_names=interpreter.get_input_names(),
                            quantize_fp16=fp16,
+                           quantize_bf16=bf16,
                            exhaustive_tune=exhaustive_tune)
 
     if print_compiled: mgx_module.program.print()
