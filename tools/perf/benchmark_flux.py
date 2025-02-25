@@ -1,7 +1,8 @@
 import argparse
 import torch
 from diffusers import FluxPipeline
-from utils import print_bm_results
+from utils import print_bm_results, add_csv_result
+import os
 
 import torch_migraphx
 
@@ -56,6 +57,12 @@ parser.add_argument('--inductor',
                     default=False,
                     help='Perform benchmark with torch inductor backend (default settings)')
 
+parser.add_argument('--csv', 
+                    type=str, 
+                    default="",
+                    help='Add perf results to a csv file')
+
+
 def benchmark_module(pipe, args) -> float:
     pipe(prompt=args.prompts,
                  height=args.image_height,
@@ -88,8 +95,10 @@ def benchmark_flux_model(args):
     times = []
 
     torch_dtype = torch.float32
+    dtype = "fp32"
     options = {}
     if args.bf16:
+        dtype = "fp16"
         options["bf16"] = True
         torch_dtype = torch.bfloat16
 
@@ -103,6 +112,11 @@ def benchmark_flux_model(args):
     del pipe 
 
     if "migraphx" in torch._dynamo.list_backends():
+
+        os.environ["MIGRAPHX_ENABLE_NHWC"] = '1'
+        os.environ["MIGRAPHX_MLIR_USE_SPECIFIC_OPS"] = 'attention,convolution,fused_convolution'
+        os.environ["MIGRAPHX_DISABLE_LAYERNORM_FUSION"] = '1'
+
         torch._dynamo.reset()
 
         pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.float32)
@@ -118,7 +132,6 @@ def benchmark_flux_model(args):
         model_names.append("MIGraphX Dynamo")
         times.append(mgx_dynamo_res)
         del pipe
-
 
     if args.inductor:
         torch._dynamo.reset()
@@ -138,13 +151,9 @@ def benchmark_flux_model(args):
         del pipe
 
     print_bm_results(model_names, times, 1)
-    
 
-
-    
-
-
-   
+    if args.csv:
+        add_csv_result(args.csv, "FLUX.1-dev", model_names, times, 1, dtype)
 
 
 if __name__ == '__main__':
