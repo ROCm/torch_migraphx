@@ -16,8 +16,6 @@ parser.add_argument('--fp16',
 def run(args):
     from diffusers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler, WanPipeline
     from diffusers.utils import export_to_video
-    # pip install git+https://github.com/huggingface/diffusers.git
-    # pip install ftfy
 
     #scheduler_a = FlowMatchEulerDiscreteScheduler(shift=5.0)
     #scheduler_b = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=4.0)
@@ -26,8 +24,11 @@ def run(args):
 
     pipe = pipe.to("cuda")
 
+    print("compile encoder")
     pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx')
+    print("compile transaformer")
     pipe.transformer = torch.compile(pipe.transformer, backend='migraphx')
+    print("compile vae")
     pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend='migraphx')
 
     prompt = "A cat walks on the grass, realistic"
@@ -41,6 +42,7 @@ def run(args):
         num_frames=81,
         guidance_scale=5.0,
     ).frames[0]
+
     export_to_video(output, "output.mp4", fps=15)
 
 
