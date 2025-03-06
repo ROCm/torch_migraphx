@@ -24,11 +24,8 @@ def run(args):
 
     pipe = pipe.to("cuda")
 
-    print("compile encoder")
     pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx')
-    print("compile transaformer")
     pipe.transformer = torch.compile(pipe.transformer, backend='migraphx')
-    print("compile vae")
     pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend='migraphx')
 
     prompt = "A cat walks on the grass, realistic"
