@@ -18,15 +18,15 @@ def run(args):
     from diffusers.utils import export_to_video
 
     #scheduler_a = FlowMatchEulerDiscreteScheduler(shift=5.0)
-    #scheduler_b = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=True, flow_shift=4.0)
+    #scheduler_b = UniPCMultistepScheduler(prediction_type="flow_prediction", use_flow_sigmas=False, flow_shift=4.0)
 
     pipe = WanPipeline.from_pretrained("Wan-AI/Wan2.1-T2V-1.3B-Diffusers")
 
     pipe = pipe.to("cuda")
 
-    pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx')
-    pipe.transformer = torch.compile(pipe.transformer, backend='migraphx')
-    pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend='migraphx')
+    pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx', options={"verbose": False})
+    pipe.transformer = torch.compile(pipe.transformer, backend='migraphx', options={"verbose": False})
+    pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend='migraphx', options={"verbose": False})
 
     prompt = "A cat walks on the grass, realistic"
     negative_prompt = "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, still picture, messy background, three legs, many people in the background, walking backwards"

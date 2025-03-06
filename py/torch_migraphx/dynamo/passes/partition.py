@@ -55,7 +55,26 @@ class MGXOperatorSupport(OperatorSupport):
             self.unsupported.add(f"{node.target} : {node_meta.dtype}")
             return False
 
-        if node.op == "get_attr": return True
+         # --- If this is a get_attr node, we can do extra checks ---
+        if node.op == "get_attr":
+            root_mod = submodules[""]  
+            attr_name = node.target   
+
+            if hasattr(root_mod, attr_name):
+                attr_val = getattr(root_mod, attr_name)
+                
+                if isinstance(attr_val, torch.nn.ParameterList):
+                    for param in attr_val:
+                        if param.dtype not in self.supported_dtypes:
+                            self.unsupported.add(f"{attr_name} : {param.dtype}")
+                            return False
+                        
+                if isinstance(attr_val, torch.nn.Parameter):
+                    if attr_val.dtype not in self.supported_dtypes:
+                        self.unsupported.add(f"{attr_name} : {attr_val.dtype}")
+                        return False
+
+            return True
 
         if node.target in CONVERTERS.keys():
             if not node.is_impure():
