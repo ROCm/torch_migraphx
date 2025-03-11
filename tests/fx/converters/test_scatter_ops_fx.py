@@ -116,3 +116,19 @@ def test_scatter_add_method(inp_size, src_size, index, dim):
 
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
+
+
+@pytest.mark.parametrize('inp_size, src_size, index, dim', [
+    ((3, 5), (2, 5), [0, 2], 0),
+    ((2, 3, 4), (2, 2, 4), [1, 0], 1),
+    ((3, 4, 2), (3, 4, 4), [1, 0, 0, 1], 2),
+])
+def test_index_copy(inp_size, src_size, index, dim):
+    inp = torch.randn(*inp_size)
+    src = torch.randn(*src_size)
+    idx = torch.tensor(index)
+
+    mod = FuncModule(torch.index_copy, dim=dim, index=idx, source=src)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
