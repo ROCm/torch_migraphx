@@ -139,3 +139,19 @@ def test_scatter_reduce(op_alias, inp_size, src_size, index, dim, reduce, includ
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
 
+
+@pytest.mark.parametrize('op_alias', [torch.ops.aten.index_copy.default])
+@pytest.mark.parametrize('inp_size, src_size, index, dim', [
+    ((4, 2), (1, 2), [2], 0),
+    ((2, 3, 4), (2, 2, 4), [2, 1], 1),
+    ((3, 4, 2), (3, 4, 4), [0, 0, 0, 1], 2),
+])
+def test_index_copy(op_alias, inp_size, src_size, index, dim):
+    inp = torch.randn(*inp_size).cuda()
+    src = torch.randn(*src_size).cuda()
+    idx = torch.tensor(index).cuda()
+
+    mod = FuncModule(op_alias, dim, idx, src)
+
+    mgx_mod = convert_to_mgx(mod, [inp])
+    verify_outputs(mod, mgx_mod, inp)
