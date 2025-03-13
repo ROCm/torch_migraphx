@@ -37,6 +37,10 @@ parser.add_argument('--bf16',
                     action='store_true',
                     help='Load bf16 version of the pipeline')
 
+parser.add_argument('--deallocate',
+                    action='store_true',
+                    help='Deallocate memory in torch')
+
 parser.add_argument("-d",
                     "--image-height",
                     type=int,
@@ -55,6 +59,9 @@ def run(args):
     options = {}
     if args.bf16:
         options["bf16"] = True
+    
+    if args.deallocate:
+        options["deallocate"] = True
 
     pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch.float32)
 
