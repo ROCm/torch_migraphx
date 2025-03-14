@@ -285,6 +285,11 @@ def select_scatter(*, input, src, dim, index):
     return torch.select_scatter(input=input, src=src, dim=dim, index=index)
 
 
+@register_acc_op_mapping(op_and_target=("call_function", torch.index_copy))
+@register_acc_op
+def index_copy(*, input, dim, index, source):
+    return torch.index_copy(input=input, dim=dim, index=index, source=source)
+
 
 @register_acc_op_mapping(op_and_target=("call_function", torch.index_select))
 @register_acc_op

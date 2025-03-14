@@ -202,6 +202,19 @@ def aten_ops_select_scatter(mgx_module, node, args, kwargs):
     return acc_ops_converters.acc_ops_select_scatter(mgx_module, node, (),
                                                      acc_kwargs)
 
+@migraphx_converter(torch.ops.aten.index_copy.default)
+def aten_ops_index_copy(mgx_module, node, args, kwargs):
+    assert len(args) == 4
+    acc_kwargs = {
+        "input": args[0],
+        "dim": args[1],
+        "index": args[2],
+        "source": args[3],
+    }
+
+    return acc_ops_converters.acc_ops_index_copy(mgx_module, node, (),
+                                                     acc_kwargs)
+
 
 @migraphx_converter(torch.ops.aten.index_select.default)
 def aten_ops_index_select(mgx_module, node, args, kwargs):
