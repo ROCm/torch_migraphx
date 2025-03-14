@@ -108,6 +108,8 @@ def benchmark_flux_model(args):
     if args.deallocate:
         options["deallocate"] = True
 
+    print(options)
+
     pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch_dtype)
     pipe = pipe.to("cuda")
 
