@@ -151,27 +151,21 @@ class MGXInterpreter(torch.fx.Interpreter):
                     a.data = a.data.cpu()
                     torch.cuda.empty_cache()
                 t, qparams = get_qparams(a)
-                try:
-                    mgx_attrs.append(
+                mgx_attrs.append(
                     MGXInstruction(
                         self.mm.add_literal(t.cpu().detach().numpy()),
                         torch_attr_value=a,
                         qparams=qparams,
                     ))
-                except:
-                    import pdb; pdb.set_trace()
             return tuple(mgx_attrs)
 
         if self.deallocate:
             attr.data = attr.data.cpu()
             torch.cuda.empty_cache()
         t, qparams = get_qparams(attr)
-        try:
-            return MGXInstruction(self.mm.add_literal(t.cpu().detach().numpy()),
+        return MGXInstruction(self.mm.add_literal(t.cpu().detach().numpy()),
                               torch_attr_value=attr,
                               qparams=qparams)
-        except:
-            import pdb; pdb.set_trace()
 
     def output(self, node, args, kwargs):
         assert len(args) == 1
