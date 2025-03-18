@@ -29,7 +29,7 @@
 import torch
 from torch.fx.passes.pass_manager import PassManager
 
-from .remove_ops import remove_const_ops, remove_view_ops
+from .remove_ops import remove_const_ops, remove_view_ops, remove_tuple_getitem_ops
 from .const_fold import const_fold
 from .promote_types import promote_inputs
 from .remove_empty_slice import remove_empty_slices
@@ -58,6 +58,7 @@ def pre_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
 def post_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
     passes = [
         fix_tensor_meta,
+        remove_tuple_getitem_ops,
     ]
     post_partition_pass_mgr = MGXPassManager(passes)
     return post_partition_pass_mgr(gm)
