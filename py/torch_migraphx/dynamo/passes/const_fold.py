@@ -30,17 +30,24 @@
 import torch
 import torch.fx
 from torch.fx.experimental.const_fold import split_const_subgraphs
+from ...fx.utils import TYPE_MAP
 
 
 def const_fold(traced_mod: torch.fx.GraphModule):
 
     def skip_folding(node: torch.fx.Node):
+        supported_dtypes = TYPE_MAP.keys()
         skip_ops = {
             torch.ops.quantized_decomposed.quantize_per_tensor.default,
             torch.ops.quantized_decomposed.dequantize_per_tensor.default,
             torch.ops.quantized_decomposed.quantize_per_channel.default,
             torch.ops.quantized_decomposed.dequantize_per_channel.default,
         }
+        # Skip folding constants with unsupported dtypes
+        node_meta = node.meta.get("tensor_meta", None)
+        if node_meta and not node_meta.dtype in supported_dtypes:
+            return True
+        
         return node.target in skip_ops
 
     # BUG in split_const_subgraphs where it errors out when the whole graph is constatnt

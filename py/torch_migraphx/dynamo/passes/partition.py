@@ -54,6 +54,11 @@ class MGXOperatorSupport(OperatorSupport):
         if node_meta and not node_meta.dtype in self.supported_dtypes:
             self.unsupported.add(f"{node.target} : {node_meta.dtype}")
             return False
+        elif node_meta is None:
+            for u in node.users:
+                umeta = u.meta.get("tensor_meta", None)
+                if umeta and not umeta.dtype in self.supported_dtypes:
+                    return False
 
         if node.op == "get_attr": return True
 
