@@ -30,6 +30,7 @@
 import torch
 import torch.fx
 
+from ...fx.utils import TYPE_MAP
 
 def remove_clone_ops(gm: torch.fx.GraphModule):
     clone_ops = [
@@ -45,6 +46,29 @@ def remove_clone_ops(gm: torch.fx.GraphModule):
     gm.recompile()
     return gm
 
+
+def remove_mul_complex_ops(gm: torch.fx.GraphModule):
+    for node in gm.graph.nodes:
+        if node.op == "call_function" and node.target == torch.ops.aten.mul.Tensor:
+            node_meta = node.meta.get("tensor_meta", None)
+            if node_meta and node_meta.dtype.is_complex:
+                with gm.graph.inserting_before(node):
+                    new_args = []
+
+                    for arg in node.args:
+                        real_node = gm.graph.call_function(torch.ops.aten.view_as_real, (arg,), {})
+                        new_args.append(real_node)
+
+                    node.args = tuple(new_args)
+            
+            for user in list(node.users):
+                if user.op == "call_function" and user.target == torch.ops.aten.view_as_real.default:
+                    user.replace_all_uses_with(node)
+                    gm.graph.erase_node(user)
+
+    gm.graph.eliminate_dead_code()
+    gm.recompile()
+    return gm
 
 def remove_view_ops(gm: torch.fx.GraphModule):
     view_ops = [
