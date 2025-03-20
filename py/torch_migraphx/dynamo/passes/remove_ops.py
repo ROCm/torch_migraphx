@@ -55,17 +55,34 @@ def remove_mul_complex_ops(gm: torch.fx.GraphModule):
                 with gm.graph.inserting_before(node):
                     new_args = []
 
+                    reals = []
+                    imags = []
+
                     for arg in node.args:
                         real_node = gm.graph.call_function(torch.ops.aten.view_as_real, (arg,), {})
+                        reals.append(gm.graph.call_function(torch.ops.aten.select, (real_node, 2, 0), {}))
+                        imags.append(gm.graph.call_function(torch.ops.aten.select, (real_node, 2, 1), {}))
                         new_args.append(real_node)
 
-                    node.args = tuple(new_args)
+                    x_real, c_real = reals
+                    x_imag, c_imag = imags
+
+                    mul = gm.graph.call_function(torch.ops.aten.mul, (x_real, c_real), {})
+                    mul_1 = gm.graph.call_function(torch.ops.aten.mul, (x_imag, c_imag), {})
+                    mul_2 = gm.graph.call_function(torch.ops.aten.mul, (x_real, c_imag), {})
+                    mul_3 = gm.graph.call_function(torch.ops.aten.mul, (x_imag, c_real), {})
+                    sub = gm.graph.call_function(torch.ops.aten.sub, (mul, mul_1), {})
+                    add = gm.graph.call_function(torch.ops.aten.add, (mul_2, mul_3), {})
+                    stack = gm.graph.call_function(torch.ops.aten.stack, ([sub, add], -1), {})
             
             for user in list(node.users):
                 if user.op == "call_function" and user.target == torch.ops.aten.view_as_real.default:
                     user.replace_all_uses_with(node)
                     gm.graph.erase_node(user)
 
+            node.replace_all_uses_with(stack)
+            gm.graph.erase_node(node)
+            
     gm.graph.eliminate_dead_code()
     gm.recompile()
     return gm
