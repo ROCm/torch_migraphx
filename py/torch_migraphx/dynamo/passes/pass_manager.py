@@ -35,6 +35,7 @@ from .promote_types import promote_inputs
 from .remove_empty_slice import remove_empty_slices
 from .fix_tensor_meta import fix_tensor_meta
 from .remove_lowered_constants import remove_lowered_constants
+from .simplify_complex import rewrite_complex_ops
 
 
 class MGXPassManager(PassManager):
@@ -49,6 +50,7 @@ def pre_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
         remove_view_ops,
         promote_inputs,
         remove_empty_slices,
+        rewrite_complex_ops,
         const_fold,
     ]
     pre_partition_pass_mgr = MGXPassManager(passes)
