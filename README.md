@@ -27,7 +27,22 @@ Install Pre-reqs:
 - [MIGraphX](https://github.com/ROCm/AMDMIGraphX?tab=readme-ov-file#installing-from-binaries)
 
 Build and install from source
+
+If you wish to set a custom path for your cmake install
+
+```bash
+export CMAKE_BIN=/path/to/my/cmake
 ```
+
+If you wish to set a custom number of processes for building (otherwise all will be used).
+
+```bash
+export CMAKE_BIN=/path/to/my/cmake
+```
+
+Then to install
+
+```bash
 git clone https://github.com/ROCmSoftwarePlatform/torch_migraphx.git
 cd ./torch_migraphx/py
 export TORCH_CMAKE_PATH=$(python -c "import torch; print(torch.utils.cmake_prefix_path)")
