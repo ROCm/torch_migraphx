@@ -46,6 +46,8 @@ if not TORCH_CMAKE_PATH:
     import torch
     TORCH_CMAKE_PATH = torch.utils.cmake_prefix_path
 
+CMAKE_BIN = os.environ.get("CMAKE_BIN", "cmake")
+
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=''):
         Extension.__init__(self, name, sources=[])
@@ -55,8 +57,7 @@ class CMakeExtension(Extension):
 class CMakeBuild(build_ext):
     def run(self):
         try:
-            cmake_bin = os.environ.get("CMAKE_BIN", "cmake")
-            out = subprocess.check_output([cmake_bin, '--version'])
+            out = subprocess.check_output([CMAKE_BIN, '--version'])
         except OSError:
             raise RuntimeError(
                 "CMake must be installed to build the following extensions: " +
@@ -104,10 +105,10 @@ class CMakeBuild(build_ext):
             env.get('CXXFLAGS', ''), self.distribution.get_version())
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)
-        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args,
+        subprocess.check_call([CMAKE_BIN, ext.sourcedir] + cmake_args,
                               cwd=self.build_temp,
                               env=env)
-        subprocess.check_call(['cmake', '--build', '.'] + build_args,
+        subprocess.check_call([CMAKE_BIN, '--build', '.'] + build_args,
                               cwd=self.build_temp)
 
         print()
