@@ -32,7 +32,10 @@ import migraphx
 
 # For old MIGraphX dev builds, there is no way to obtain proper version information
 # default this to 2.10 because this issue is resolved from 2.11.0 and onward
-MIGRAPHX_VERSION = migraphx.__version__ if migraphx.__version__ != "dev" else "2.10"
+try:
+    MIGRAPHX_VERSION = migraphx.__version__ if migraphx.__version__ != "dev" else "2.10"
+except:
+    MIGRAPHX_VERSION = "2.10"
 
 CONVERTERS = {}
 
