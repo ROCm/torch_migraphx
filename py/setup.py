@@ -93,8 +93,11 @@ class CMakeBuild(build_ext):
             build_args += ['--', '/m']
         else:
             cmake_args += ['-DCMAKE_BUILD_TYPE=' + cfg]
-            # TODO: find # of procs
-            build_args += ['--', '-j2']
+            if os.environ.get("NPROCS"):
+                build_args += ['--', '-j' + os.environ["NPROCS"]]
+            else:
+                nprocs = os.sysconf('SC_NPROCESSORS_ONLN')
+                build_args += ['--', '-j' + str(nprocs)]
 
         env = os.environ.copy()
         env['CXXFLAGS'] = '{} -DVERSION_INFO=\\"{}\\"'.format(
