@@ -55,7 +55,8 @@ class CMakeExtension(Extension):
 class CMakeBuild(build_ext):
     def run(self):
         try:
-            out = subprocess.check_output(['cmake', '--version'])
+            cmake_bin = os.environ.get("CMAKE_BIN", "cmake")
+            out = subprocess.check_output([cmake_bin, '--version'])
         except OSError:
             raise RuntimeError(
                 "CMake must be installed to build the following extensions: " +
