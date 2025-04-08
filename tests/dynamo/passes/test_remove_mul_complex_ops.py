@@ -4,10 +4,9 @@ from torch_migraphx.dynamo.passes.remove_complex_ops import rewrite_complex_ops
 from dynamo_passes_test_utils import target_exists_in_graph
 
 class ComplexMul(torch.nn.Module):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.const = None
+    def __init__(self, complex_const):
+        super().__init__()
+        self.const = complex_const
 
     def forward(self, x):
         x_complex = torch.view_as_complex(x)
@@ -30,8 +29,7 @@ class ComplexMul(torch.nn.Module):
        )
     ])
 def test_remove_const_ops(x, complex_const):
-    mod_complex_mul = ComplexMul()
-    mod_complex_mul.const = complex_const
+    mod_complex_mul = ComplexMul(complex_const)
 
     args = (x,)
     exported = torch.export.export(mod_complex_mul, args)
