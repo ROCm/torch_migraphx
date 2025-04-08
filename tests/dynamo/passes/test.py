@@ -1,34 +1,27 @@
 import torch
 import torch_migraphx
-
-# call_function  view_as_complex_default                             aten.view_as_complex.default                          (reshape_19,)                                                                                                {}
-# call_function  mul_tensor_7                                        aten.mul.Tensor                                       (view_as_complex_default, reshape_3)                                                                         {}
-# call_function  view_as_real_default                                aten.view_as_real.default                             (mul_tensor_7,)    
-torch.manual_seed(4)
-complex_const = torch.randn(3, 2, 2, dtype=torch.cfloat)
-x = torch.randn(3, 2, 2, 2)
+import pytest
+from dynamo_passes_test_utils import target_exists_in_graph
 
 class ComplexMul(torch.nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.const = complex_const
+        self.const = None
 
     def forward(self, x):
         x_complex = torch.view_as_complex(x)
         return torch.view_as_real(x_complex * self.const)
 
-mod = ComplexMul()
-out1 = mod(x)
 
 class RealMul(torch.nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.const = torch.view_as_real(complex_const)
-    
+        self.const = None
+
     def forward(self, x):
-        c = self.const
+        c = torch.view_as_real(self.const)
         x_real, x_imag = x[..., 0], x[..., 1]
         c_real, c_imag = c[..., 0], c[..., 1]
         out_real = x_real * c_real - x_imag * c_imag
@@ -36,9 +29,6 @@ class RealMul(torch.nn.Module):
         return torch.stack((out_real, out_imag), dim=-1)
 
     import torch
-
-mod2 = RealMul()
-out2 = mod2(x)
 
 def real_mul_aten_ops(x, complex_const):
     c = torch.ops.aten.view_as_real.default(complex_const)
@@ -62,14 +52,40 @@ def real_mul_aten_ops(x, complex_const):
 
     return out
 
-out3 = real_mul_aten_ops(x, complex_const)
 
-with torch.inference_mode():
-    mod_mgx = torch.compile(mod, backend="migraphx", options={"verbose": True, "print_compiled_program": True})
-    mgx_out = mod_mgx(x)
+@pytest.mark.parametrize(
+    'x, complex_const',
+    [
+        (
+            torch.randn(5, 10, 2, 2),
+            torch.randn(5, 10, 2, dtype=torch.cfloat),
+        ),
+        (
+            torch.randn(3, 2, 2, 2),
+            torch.randn(3, 2, 2, dtype=torch.cfloat),
+        ),
+        (
+            torch.randn(2, 2, 2),
+            torch.randn(2, 2, dtype=torch.cfloat),
+        ),
+    ]
+)
+def test_remove_complex_mul(x, complex_const):
+    
+    mod_raw = ComplexMul()
+    mod_raw.const = complex_const
+    mod_manual = RealMul()
+    mod_manual.const = complex_const
 
+    out1 = mod_raw(x)
+    out2 = mod_manual(x)
+    out3 = real_mul_aten_ops(x, complex_const)
 
-assert torch.allclose(out1, mgx_out.cpu().detach())
-assert torch.allclose(out2, mgx_out.cpu().detach())
-assert torch.allclose(out3, mgx_out.cpu().detach())
+    assert torch.allclose(out1, out2)
+    assert torch.allclose(out1, out3)
 
+    with torch.inference_mode():
+        mod_mgx = torch.compile(mod_raw, backend="migraphx", options={"verbose": True, "print_compiled_program": True})
+        mgx_out = mod_mgx(x)
+
+    assert torch.allclose(out1, mgx_out.cpu().detach())
