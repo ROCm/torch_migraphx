@@ -39,7 +39,7 @@ def test_remove_const_ops(x, complex_const):
     gm_out = gm(complex_const, x)[0]
 
     new_gm = rewrite_complex_ops(gm)
-    new_gm_out = gm(complex_const, x)[0]
+    new_gm_out = new_gm(complex_const, x)[0]
 
     assert torch.allclose(gm_out, new_gm_out)
     assert not target_exists_in_graph(new_gm, torch.ops.aten.view_as_complex.default)
