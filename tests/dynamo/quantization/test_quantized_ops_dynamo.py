@@ -41,6 +41,21 @@ def test_quant_addmm(op_alias, in_shape, m1_shape, m2_shape, asymm,
     del mod, q_mod, mgx_mod
 
 
+# Required for torch 2.6+ as export_for_training API is broken when
+# modules have non registered tensors
+class ConvModule(torch.nn.Module):
+
+    def __init__(self, func, weight, bias, *args):
+        super(ConvModule, self).__init__()
+        self.func = func
+        self.weight = torch.nn.Parameter(weight)
+        self.bias = torch.nn.Parameter(bias)
+        self.args = args
+
+    def forward(self, x):
+        return self.func(x, self.weight, self.bias, *self.args)
+
+
 @pytest.mark.parametrize('op_alias', [
     torch.ops.aten.convolution.default,
 ])
@@ -55,7 +70,7 @@ def test_quant_convnd(op_alias, conv_mod, in_shape, asymm, default_torch_seed):
     stride, padding, dilation = conv_mod.stride, conv_mod.padding, conv_mod.dilation
     inp = torch.randn(8, 3, *in_shape)
 
-    mod = FuncModule(op_alias, weight, bias, stride, padding, dilation, False,
+    mod = ConvModule(op_alias, weight, bias, stride, padding, dilation, False,
                      (0, ), 1).eval()
     q_mod = quantize_module(mod, [inp.size()], asymm=asymm)
     mgx_mod = convert_to_mgx(q_mod, [inp])
