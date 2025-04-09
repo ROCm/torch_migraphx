@@ -29,10 +29,7 @@
 
 import torch
 import torch.fx
-from torch.fx.passes.shape_prop import TensorMetadata
-import copy 
 
-from ...fx.utils import TYPE_MAP
 
 def remove_clone_ops(gm: torch.fx.GraphModule):
     clone_ops = [
@@ -47,6 +44,7 @@ def remove_clone_ops(gm: torch.fx.GraphModule):
     gm.graph.eliminate_dead_code()
     gm.recompile()
     return gm
+
 
 def remove_view_ops(gm: torch.fx.GraphModule):
     view_ops = [
