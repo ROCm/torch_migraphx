@@ -3,7 +3,7 @@ import pytest
 from torch_migraphx.dynamo.passes.rewrite_complex_ops import remove_complex_real_ops
 from dynamo_passes_test_utils import target_exists_in_graph
 
-class ComplexMul(torch.nn.Module):
+class ComplexConversion(torch.nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -19,7 +19,7 @@ class ComplexMul(torch.nn.Module):
         torch.randn(3, 10, 2, 2)
     ])
 def test_remove_const_ops(x):
-    mod_complex_mul = ComplexMul()
+    mod_complex_mul = ComplexConversion()
     args = (x,)
     exported = torch.export.export(mod_complex_mul, args)
 
