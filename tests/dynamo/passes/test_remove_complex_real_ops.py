@@ -1,6 +1,6 @@
 import torch
 import pytest 
-from torch_migraphx.dynamo.passes.remove_complex_ops import rewrite_complex_ops
+from torch_migraphx.dynamo.passes.rewrite_complex_ops import remove_complex_real_ops
 from dynamo_passes_test_utils import target_exists_in_graph
 
 class ComplexMul(torch.nn.Module):
@@ -27,8 +27,8 @@ def test_remove_const_ops(x):
     gm = exported.graph_module
     gm_out = gm(x)[0]
 
-    new_gm = rewrite_complex_ops(gm)
-    new_gm_out = gm(x)[0]
+    new_gm = remove_complex_real_ops(gm)
+    new_gm_out = new_gm(x)[0]
 
     assert torch.allclose(gm_out, new_gm_out)
     assert not target_exists_in_graph(new_gm, torch.ops.aten.view_as_complex.default)

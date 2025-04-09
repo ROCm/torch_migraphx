@@ -1,6 +1,6 @@
 import torch
 import pytest 
-from torch_migraphx.dynamo.passes.remove_complex_ops import rewrite_complex_ops
+from torch_migraphx.dynamo.passes.rewrite_complex_ops import rewrite_complex_ops
 from dynamo_passes_test_utils import target_exists_in_graph
 
 class ComplexMul(torch.nn.Module):
