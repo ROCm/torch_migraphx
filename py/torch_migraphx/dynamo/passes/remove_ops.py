@@ -29,7 +29,6 @@
 
 import torch
 import torch.fx
-import operator
 
 
 def remove_clone_ops(gm: torch.fx.GraphModule):
@@ -46,16 +45,6 @@ def remove_clone_ops(gm: torch.fx.GraphModule):
     gm.recompile()
     return gm
 
-def remove_tuple_getitem_ops(gm: torch.fx.GraphModule):
-    for node in gm.graph.nodes:
-        if node.op == "call_function" and node.target == operator.getitem:
-            if isinstance(node.args[0], tuple):
-                og_node = node
-                out = node.args[0][node.args[1]]
-                og_node.replace_all_uses_with(out)
-    gm.graph.eliminate_dead_code()
-    gm.recompile()
-    return gm
 
 def remove_view_ops(gm: torch.fx.GraphModule):
     view_ops = [
