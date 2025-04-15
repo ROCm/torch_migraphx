@@ -111,7 +111,6 @@ class MGXModule(torch.nn.Module):
                                  exhaustive_tune=self.exhaustive_tune)
 
         self.output_names = self._infer_output_names()
-        self._allocate_param_buffers(self.output_names)
 
         self.input_mgx_shapes = [
             self.program.get_parameter_shapes()[n] for n in self.input_names
@@ -142,6 +141,8 @@ class MGXModule(torch.nn.Module):
 
             self.mgx_buffers[inp_name] = mgx_argument_from_ptr(
                 inp_val.data_ptr(), mgx_shape)
+        
+        self._allocate_param_buffers(self.output_names)
 
         curr_stream = torch.cuda.current_stream()
         outs = self.program.run_async(self.mgx_buffers,
