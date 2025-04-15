@@ -122,7 +122,6 @@ setup(
     install_requires=[
     "torch>=1.11.0",
     "numpy>=1.20.0",
-    "pybind11-global",
     "packaging",
     "tabulate",
     ],

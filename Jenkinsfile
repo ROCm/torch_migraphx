@@ -30,7 +30,7 @@ def runTests() {
             sh '''
             docker_tag=$(sha256sum ./ci/base.Dockerfile | awk '{print $1}')
             docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=`pwd`:/workspace/torch_migraphx rocm/torch-migraphx-ci-ubuntu:$docker_tag bash -c \
-            'cd /workspace/torch_migraphx/py ; export TORCH_CMAKE_PATH=$(python -c "import torch; print(torch.utils.cmake_prefix_path)") ; python -m pip install . ; cd /workspace/torch_migraphx/tests/ ; pytest'
+            'cd /workspace/torch_migraphx/py ; python -m pip install . ; cd /workspace/torch_migraphx/tests/ ; pytest'
             '''
         }
     }
