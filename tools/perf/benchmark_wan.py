@@ -1,8 +1,10 @@
-from typing import Tuple
 import argparse
 import torch
+from utils import print_bm_results, add_csv_result
+import os
 from diffusers import FlowMatchEulerDiscreteScheduler, UniPCMultistepScheduler, WanPipeline
 from diffusers.utils import export_to_video
+from typing import Tuple
 
 import torch_migraphx
 
@@ -53,11 +55,53 @@ parser.add_argument('--bf16',
                     action='store_true',
                     help='Load fp16 version of the pipeline')
 
-parser.add_argument("--compile_migraphx",
-        choices=["all", "encoder", "transformer", "decoder"],
-        nargs="+",
-        help="Quantize models with fp16 precision.",
-    )
+parser.add_argument("-i",
+                    "--iterations",
+                    type=int,
+                    default=100,
+                    help="Iterations for benchmarking")
+
+parser.add_argument('--inductor', 
+                    action='store_true', 
+                    default=False,
+                    help='Perform benchmark with torch inductor backend (default settings)')
+
+parser.add_argument('--csv', 
+                    type=str, 
+                    default="",
+                    help='Add perf results to a csv file')
+
+
+def benchmark_module(pipe, args) -> float:
+    pipe(
+            prompt=args.prompt,
+            negative_prompt=args.negative_prompt,
+            height=args.image_height,
+            width=args.image_width,
+            num_frames=81,
+            guidance_scale=5.0,
+            num_inference_steps=args.num_steps,
+        )
+    
+    torch.cuda.synchronize()
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+
+    start_event.record()
+    for _ in range(args.iterations):
+        pipe(
+            prompt=args.prompt,
+            negative_prompt=args.negative_prompt,
+            height=args.image_height,
+            width=args.image_width,
+            num_frames=81,
+            guidance_scale=5.0,
+            num_inference_steps=args.num_steps,
+        )
+    end_event.record()
+    torch.cuda.synchronize()
+
+    return start_event.elapsed_time(end_event) / args.iterations
 
 class FunctionalWanRotaryPosEmbed(torch.nn.Module):
     def __init__(
@@ -94,16 +138,22 @@ class FunctionalWanRotaryPosEmbed(torch.nn.Module):
         freqs = torch.cat([freqs_f, freqs_h, freqs_w], dim=-1).reshape(1, 1, ppf * pph * ppw, -1)
         return freqs
 
+def benchmark_wan_model(args):
 
-def run(args):
-    import pdb; pdb.set_trace()
+    model_names = [] 
+    times = []
 
+    torch_dtype = torch.float32
+    dtype = "fp32"
     options = {}
     if args.bf16:
+        dtype = "bf16"
         options["bf16"] = True
-    
+        torch_dtype = torch.bfloat16
     if args.deallocate:
         options["deallocate"] = True
+
+    print(options)
 
     pipe = WanPipeline.from_pretrained("Wan-AI/Wan2.1-T2V-1.3B-Diffusers")
     rope_args = (
@@ -113,15 +163,49 @@ def run(args):
         pipe.transformer.rope.freqs,
         )
     pipe.transformer.rope = FunctionalWanRotaryPosEmbed(*rope_args)
-
     pipe = pipe.to("cuda")
 
-    with torch.no_grad():
+    torch_res = benchmark_module(pipe, args)
+    model_names.append("Torch Model")
+    times.append(torch_res)
 
-        if args.compile_migraphx is None:
-            compile_migraphx = []
-        elif "all" in args.compile_migraph:
-            compile_migraphx = ["encoder", "transformer", "decoder"]
+
+    if args.compile_migraphx is None:
+        compile_migraphx = []
+    elif "all" in args.compile_migraph:
+        compile_migraphx = ["encoder", "transformer", "decoder"]
+
+
+    if args.inductor:
+        torch._dynamo.reset()
+
+        if "encoder" in compile_migraphx:
+            pipe.text_encoder = torch.compile(pipe.text_encoder)
+        if "transformer" in compile_migraphx:
+            pipe.transformer = torch.compile(pipe.transformer)
+        if "decoder" in compile_migraphx:
+            pipe.vae.decoder = torch.compile(pipe.vae.decoder)
+
+        inductor_res = benchmark_module(pipe, args)
+
+        model_names.append("Torch Inductor")
+        times.append(inductor_res)
+
+    del pipe
+
+    if "migraphx" in torch._dynamo.list_backends():
+        torch._dynamo.reset()
+
+        pipe = WanPipeline.from_pretrained("Wan-AI/Wan2.1-T2V-1.3B-Diffusers")
+        rope_args = (
+            pipe.transformer.rope.attention_head_dim, 
+            pipe.transformer.rope.patch_size, 
+            pipe.transformer.rope.max_seq_len, 
+            pipe.transformer.rope.freqs,
+            )
+        pipe.transformer.rope = FunctionalWanRotaryPosEmbed(*rope_args)
+
+        pipe = pipe.to("cuda")
 
         if "encoder" in compile_migraphx:
             pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx', options=options, dynamic=False)
@@ -130,19 +214,18 @@ def run(args):
         if "decoder" in compile_migraphx:
             pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend='migraphx', options=options, dynamic=False)
 
-        output = pipe(
-            prompt=args.prompt,
-            negative_prompt=args.negative_prompt,
-            height=args.image_height,
-            width=args.image_width,
-            num_frames=81,
-            guidance_scale=5.0,
-            num_inference_steps=args.num_steps,
-        ).frames[0]
+        mgx_dynamo_res = benchmark_module(pipe, args)
+        
+        model_names.append("MIGraphX Dynamo")
+        times.append(mgx_dynamo_res)
+        del pipe
 
-    export_to_video(output, args.output, fps=15)
+    print_bm_results(model_names, times, 1)
+
+    if args.csv:
+        add_csv_result(args.csv, "Wan2.1", model_names, times, 1, dtype)
 
 
 if __name__ == '__main__':
     args = parser.parse_args()
-    run(args)
+    benchmark_wan_model(args)
