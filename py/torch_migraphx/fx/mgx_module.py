@@ -139,21 +139,14 @@ class MGXModule(torch.nn.Module):
                 )
                 inp_val = inp_val.cuda()
 
-            self.mgx_buffers[inp_name] = mgx_argument_from_ptr(
-                inp_val.data_ptr(), mgx_shape)
+            self.mgx_buffers[inp_name] = mgx_argument_from_ptr(inp_val.data_ptr(), mgx_shape)
         
         self._allocate_param_buffers(self.output_names)
 
         curr_stream = torch.cuda.current_stream()
-        outs = self.program.run_async(self.mgx_buffers,
-                                      curr_stream.cuda_stream, HIPSTREAMTYPE)
+        self.program.run_async(self.mgx_buffers, curr_stream.cuda_stream, HIPSTREAMTYPE)
 
-        if self.enable_par_conversion:
-            outs = tensors_from_mgx_arguments_par(outs, self.out_lens,
-                                                  self.out_strides,
-                                                  self.out_type_strs)
-        else:
-            outs = tensors_from_mgx_arguments(outs, self.output_mgx_shapes)
+        outs = [self.torch_buffers[o] for o in self.output_names]
 
         if len(outs) == 1:
             return outs[0]
@@ -184,7 +177,8 @@ class MGXModule(torch.nn.Module):
                                          dtype=torch_dtype,
                                          device=torch.cuda.current_device())
             self.torch_buffers[param_name] = tensor
-            self.mgx_buffers[param_name] = mgx_argument_from_tensor(tensor)
+            self.mgx_buffers[param_name] =  mgx_argument_from_ptr(
+                tensor.data_ptr(), param_shape)
 
     # Following functions are required for saving MGXModules using torch.save
     def _on_state_dict(self, state_dict, prefix, local_metadata):

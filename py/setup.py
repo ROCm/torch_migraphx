@@ -41,11 +41,6 @@ from setuptools.command.test import test as TestCommand
 
 __version__ = open("version.txt").read().strip()
 
-TORCH_CMAKE_PATH = os.environ.get("TORCH_CMAKE_PATH")
-if not TORCH_CMAKE_PATH:
-    import torch
-    TORCH_CMAKE_PATH = torch.utils.cmake_prefix_path
-
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=''):
         Extension.__init__(self, name, sources=[])
@@ -71,6 +66,10 @@ class CMakeBuild(build_ext):
             self.build_extension(ext)
 
     def build_extension(self, ext):
+        TORCH_CMAKE_PATH = os.environ.get("TORCH_CMAKE_PATH")
+        if not TORCH_CMAKE_PATH:
+            import torch
+            TORCH_CMAKE_PATH = torch.utils.cmake_prefix_path
         extdir = os.path.abspath(
             os.path.dirname(self.get_ext_fullpath(ext.name)))
         cmake_args = [
@@ -120,7 +119,6 @@ setup(
     description='Intergrate PyTorch with MIGraphX acceleration engine',
     long_description_content_type='text/markdown',
     long_description=long_description,
-    setup_requires=["cmake"],
     install_requires=[
     "torch>=1.11.0",
     "numpy>=1.20.0",
@@ -130,12 +128,9 @@ setup(
     ],
     packages=find_packages(),
     package_dir={'torch_migraphx': 'torch_migraphx'},
-    ext_modules=[CMakeExtension('_torch_migraphx')],
-    cmdclass=dict(build_ext=CMakeBuild),
     license="BSD",
     classifiers = [
         "Programming Language :: Python :: 3",
-        "Programming Language :: C++",
         "License :: OSI Approved :: BSD License",
         "Operating System :: POSIX :: Linux",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",

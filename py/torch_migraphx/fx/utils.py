@@ -33,7 +33,6 @@ from packaging import version
 import random
 import torch
 import migraphx
-from .. import _C
 from torch.fx.passes.shape_prop import TensorMetadata
 
 from typing import List
@@ -99,13 +98,11 @@ def torch_qdtype_to_mgx_enum(dtype: torch.dtype) -> migraphx.shape.type_t:
 
 
 def mgx_argument_from_tensor(tensor: torch.tensor) -> migraphx.argument:
-    return _C.tensor_to_arg(tensor)
-
-
-def tensor_from_mgx_argument(
-    arg: migraphx.argument, device: torch.device = torch.device('cuda')
-) -> torch.tensor:
-    return _C.arg_to_tensor(arg, device)
+    mgx_type_str = torch_dtype_to_mgx(tensor.dtype)
+    lens = list(tensor.size())
+    strides = list(tensor.stride())
+    mgx_shape = migraphx.shape(lens=lens, type=mgx_type_str, strides=strides)
+    return migraphx.argument_from_pointer(mgx_shape, tensor.data_ptr())
 
 
 def mgx_argument_from_ptr(ptr: int,
@@ -113,32 +110,7 @@ def mgx_argument_from_ptr(ptr: int,
     return migraphx.argument_from_pointer(shape, ptr)
 
 
-def tensors_from_mgx_arguments_par(args: List[migraphx.argument],
-                                   lens: List[List[int]],
-                                   strides: List[List[int]],
-                                   type_strs: List[str],
-                                   device: torch.device = torch.device('cuda'),
-                                   thread_size: int = 1) -> List[torch.tensor]:
-
-    ptrs = [a.data_ptr() for a in args]
-    scalars = [a.shape().scalar() for a in args]
-    return _C.args_to_tensors_par(ptrs, lens, strides, type_strs, scalars,
-                                  device, thread_size)
-
-
-def tensors_from_mgx_arguments(
-    args: List[migraphx.argument],
-    mgx_shapes: List[migraphx.shape],
-    device: torch.device = torch.device('cuda')
-) -> List[torch.tensor]:
-    return [
-        _C.tensor_from_ptr(a.data_ptr(), s.lens(), s.strides(),
-                           s.type_string(), s.scalar(), device)
-        for a, s in zip(args, mgx_shapes)
-    ]
-
-
-def get_qparams(tensor: torch.Tensor) -> (torch.Tensor, dict):
+def get_qparams(tensor: torch.Tensor) -> tuple[torch.Tensor, dict]:
     if not tensor.is_quantized:
         return tensor, None
 
