@@ -55,6 +55,16 @@ parser.add_argument('--bf16',
                     action='store_true',
                     help='Load fp16 version of the pipeline')
 
+parser.add_argument("--compile_migraphx",
+        choices=["all", "encoder", "transformer", "decoder"],
+        nargs="+",
+        help="Quantize models with fp16 precision.",
+    )
+
+parser.add_argument('--deallocate',
+                    action='store_true',
+                    help='Deallocate memory in torch')
+
 parser.add_argument("-i",
                     "--iterations",
                     type=int,
@@ -172,8 +182,10 @@ def benchmark_wan_model(args):
 
     if args.compile_migraphx is None:
         compile_migraphx = []
-    elif "all" in args.compile_migraph:
+    elif "all" in args.compile_migraphx:
         compile_migraphx = ["encoder", "transformer", "decoder"]
+    else:
+        compile_migraphx = args.compile_migraphx
 
 
     if args.inductor:

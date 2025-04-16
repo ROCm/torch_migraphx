@@ -59,6 +59,10 @@ parser.add_argument("--compile_migraphx",
         help="Quantize models with fp16 precision.",
     )
 
+parser.add_argument('--deallocate',
+                    action='store_true',
+                    help='Deallocate memory in torch')
+
 class FunctionalWanRotaryPosEmbed(torch.nn.Module):
     def __init__(
         self, attention_head_dim: int, patch_size: Tuple[int, int, int], max_seq_len: int, freqs: torch.Tensor
@@ -96,14 +100,13 @@ class FunctionalWanRotaryPosEmbed(torch.nn.Module):
 
 
 def run(args):
-    import pdb; pdb.set_trace()
-
     options = {}
     if args.bf16:
         options["bf16"] = True
-    
     if args.deallocate:
         options["deallocate"] = True
+    
+    print(options)
 
     pipe = WanPipeline.from_pretrained("Wan-AI/Wan2.1-T2V-1.3B-Diffusers")
     rope_args = (
@@ -120,8 +123,10 @@ def run(args):
 
         if args.compile_migraphx is None:
             compile_migraphx = []
-        elif "all" in args.compile_migraph:
+        elif "all" in args.compile_migraphx:
             compile_migraphx = ["encoder", "transformer", "decoder"]
+        else:
+            compile_migraphx = args.compile_migraphx
 
         if "encoder" in compile_migraphx:
             pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx', options=options, dynamic=False)
