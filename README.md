@@ -30,8 +30,7 @@ Build and install from source
 ```
 git clone https://github.com/ROCmSoftwarePlatform/torch_migraphx.git
 cd ./torch_migraphx/py
-export TORCH_CMAKE_PATH=$(python -c "import torch; print(torch.utils.cmake_prefix_path)")
-pip install .
+pip install . --no-build-isolation
 ```
 
 ## Example Usage

@@ -10,7 +10,7 @@ except ModuleNotFoundError as e:
           or refer to https://github.com/ROCm/AMDMIGraphX for advanced use cases. If using a source
           based build, make sure to add the souce build path to PYTHONPATH""")
 
-from torch_migraphx import fx
+from torch_migraphx import fx, _C
 
 if version.parse(_torch_version) >= version.parse("2.1.0"):
     from torch_migraphx import dynamo
