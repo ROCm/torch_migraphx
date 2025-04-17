@@ -37,7 +37,7 @@ import subprocess
 from distutils.version import LooseVersion
 from setuptools import setup, Extension, find_packages
 from setuptools.command.build_ext import build_ext
-from setuptools.command.test import test as TestCommand
+from torch.utils import cpp_extension
 
 __version__ = open("version.txt").read().strip()
 
@@ -127,6 +127,8 @@ setup(
     ],
     packages=find_packages(),
     package_dir={'torch_migraphx': 'torch_migraphx'},
+    ext_modules=[cpp_extension.CppExtension('_torch_migraphx', ['./torch_migraphx/csrc/torch_migraphx_py.cpp'])],
+    cmdclass={'build_ext': cpp_extension.BuildExtension},
     license="BSD",
     classifiers = [
         "Programming Language :: Python :: 3",
