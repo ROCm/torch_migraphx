@@ -36,6 +36,7 @@ from torch._guards import TracingContext
 from torch._functorch.aot_autograd import aot_export_joint_simple
 from torch._dynamo.backends.common import aot_autograd, fake_tensor_unsupported
 from torch._inductor.compile_fx import fw_compiler_freezing, _graph_counter
+from torch._functorch import config as functorch_config
 from .lower_dynamo import lower_aten_to_mgx
 from .passes.export.input_aliasing import insert_clone_input
 
@@ -58,6 +59,7 @@ def migraphx_pretraced_backend(gm: torch.fx.GraphModule,
                          example_inputs: Sequence[torch.Tensor], **kwargs):
 
     # Any additional kwargs are captrued through the "options" key
+    is_aot_wrapped = kwargs.get("is_aot_wrapped", False)
     kwargs = kwargs["options"] if "options" in kwargs else kwargs
 
     if "load_compiled" in kwargs:
@@ -68,12 +70,17 @@ def migraphx_pretraced_backend(gm: torch.fx.GraphModule,
 
     print(gm.graph.print_tabular())
     
-    # TODO: remove alias input fix once issue is fixed upstream
-    # https://github.com/pytorch/pytorch/issues/108079
-    clone_inp_gm = insert_clone_input(gm)
-    opt_model = aot_export_joint_simple(clone_inp_gm,
-                                        example_inputs,
-                                        trace_joint=False)
+    if not is_aot_wrapped:
+        # TODO: remove alias input fix once issue is fixed upstream
+        # https://github.com/pytorch/pytorch/issues/108079
+        clone_inp_gm = insert_clone_input(gm)
+        opt_model = aot_export_joint_simple(clone_inp_gm,
+                                            example_inputs,
+                                            trace_joint=False)
+    else:
+        opt_model = gm
+    
+    return opt_model
     
     print(gm.graph.print_tabular())
     print([i.shape for i in example_inputs])
@@ -91,7 +98,7 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
                          example_inputs: Sequence[torch.Tensor], **kwargs):
     
     graph_id = next(_graph_counter)
-    _pretraced_backend = functools.partial(migraphx_pretraced_backend,  **kwargs)
+    _pretraced_backend = functools.partial(migraphx_pretraced_backend, is_aot_wrapped=True, **kwargs)
 
     with torch.no_grad():
         inference_compiler = functools.partial(
@@ -103,6 +110,9 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
             graph_id=graph_id,
             forward_device=None
         )
-    # return aot_autograd(
-    #     fw_compiler=fake_tensor_unsupported(_pretraced_backend))(gm, example_inputs)
-    return aot_autograd(fw_compiler=inference_compiler)(gm, example_inputs)
+    
+
+    with functorch_config.patch(unlift_effect_tokens=True): 
+        return aot_autograd(
+            fw_compiler=inference_compiler,
+        )(gm, example_inputs)
