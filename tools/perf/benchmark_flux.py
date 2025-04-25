@@ -101,12 +101,14 @@ def benchmark_flux_model(args):
     torch_dtype = torch.float32
     dtype = "fp32"
     options = {}
+    all_options = {}
     if args.bf16:
         dtype = "bf16"
         options["bf16"] = True
+        all_options["bf16"] = True
         torch_dtype = torch.bfloat16
     if args.deallocate:
-        options["deallocate"] = True
+        all_options["deallocate"] = True
 
     print(options)
 
@@ -140,8 +142,8 @@ def benchmark_flux_model(args):
 
         pipe.text_encoder = torch.compile(pipe.text_encoder, backend='migraphx', options=options)
         pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, backend='migraphx', options=options)
-        pipe.transformer = torch.compile(pipe.transformer, backend='migraphx', options=options)
-        pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend='migraphx', options=options)
+        pipe.transformer = torch.compile(pipe.transformer, backend='migraphx', options=all_options)
+        pipe.vae.decoder = torch.compile(pipe.vae.decoder, backend='migraphx', options=all_options)
 
         mgx_dynamo_res = benchmark_module(pipe, args)
         
