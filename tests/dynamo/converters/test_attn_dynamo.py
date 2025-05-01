@@ -23,9 +23,9 @@ class AttnMod(FuncModule):
             ])
     ])
 @pytest.mark.parametrize('qkv_shape, is_causal, scale', [
-    ((2, 1, 5, 64), False, None),
-    ((2, 1, 5, 64), True, None),
-    ((2, 1, 5, 64), False, 0.5),
+    ((2, 1, 5, 8), False, None),
+    ((2, 3, 5, 16), True, None),
+    ((2, 2, 5, 32), False, 0.5),
     ((2, 1, 5, 64), True, 0.25),
 ])
 def test_attn_flash(op_alias, qkv_shape, is_causal, scale):
@@ -55,8 +55,12 @@ def test_attn_flash(op_alias, qkv_shape, is_causal, scale):
     ])
 @pytest.mark.parametrize('qkv_shape, is_causal, scale, bias', [
     ((2, 3, 5, 16), False, None, False),
-    ((2, 3, 5, 9), True, None, True),
-    ((4, 3, 5, 12), False, 0.5, True),
+    # Disabling bias parameter as attn_bias is not defined as an input in the 
+    # high level API and no good documentation exists on the behavior of this
+    # low level aten op for this parameter 
+    # https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
+    # ((1, 3, 5, 9), True, None, True),
+    # ((4, 3, 5, 12), False, 0.5, True),
     ((5, 3, 5, 10), True, 0.25, False),
 ])
 def test_attn_efficient(op_alias, qkv_shape, is_causal, scale, bias):
