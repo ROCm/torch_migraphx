@@ -26,7 +26,7 @@ def runTests() {
         show_node_info()
         checkout scm
 
-        gitStatusWrapper(credentialsId: "${env.status_wrapper_creds}", gitHubContext: "Jenkins - pytest-${arch}", account: 'ROCmSoftwarePlatform', repo: 'torch_migraphx') {
+        gitStatusWrapper(credentialsId: "${env.status_wrapper_creds}", gitHubContext: "Jenkins - pytest-${arch}", account: 'ROCm', repo: 'torch_migraphx') {
             sh '''
             docker_tag=$(sha256sum ./ci/base.Dockerfile | awk '{print $1}')
             docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -v=`pwd`:/workspace/torch_migraphx rocm/torch-migraphx-ci-ubuntu:$docker_tag bash -c \
