@@ -1,28 +1,18 @@
 # Example use:
-# docker build -t tm_build -f ci/build.Dockerfile .
-# docker run -it -v$(pwd):/workspace/torch_migraphx tm_build /bin/bash /workspace/torch_migraphx/ci/build_whl.sh
+# docker build -t tm_build -f ci/wheel/build.Dockerfile .
+# docker run -it -v$(pwd):/workspace/torch_migraphx tm_build /bin/bash /workspace/torch_migraphx/ci/wheel/build_whl.sh
 
 export PROJECT_DIR=/workspace/torch_migraphx
 
 # PY_BUILD_CODE, PY_VERSION
 build_audit_whl() {
-    /opt/python/$1/bin/python -m pip install torch==2.2.1 torchvision==0.17.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2/
-    TORCH_LIB_DIR=/opt/python/$1/lib/python$2/site-packages/
+    /opt/python/$1/bin/python -m pip install torch==2.6.0 torchvision==0.21.0 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4/
+    TORCH_LIB_DIR=/opt/python/$1/lib/python$2/site-packages/torch/lib/
 
     /opt/python/$1/bin/python setup.py clean bdist_wheel
 
     /opt/python/$1/bin/python -m pip install auditwheel
-    LD_LIBRARY_PATH=${TORCH_LIB_DIR}:${LD_LIBRARY_PATH} /opt/python/$1/bin/python -m auditwheel repair  $(cat ${PROJECT_DIR}/ci/excludes.params) --plat manylinux_2_17_x86_64 dist/torch_migraphx-*-$1-linux_x86_64.whl
-}
-
-build_py37(){
-    cd ${PROJECT_DIR}/py
-    build_audit_whl "cp37-cp37m" "3.7"
-}
-
-build_py38(){
-    cd ${PROJECT_DIR}/py
-    build_audit_whl "cp38-cp38" "3.8"
+    LD_LIBRARY_PATH=${TORCH_LIB_DIR}:${LD_LIBRARY_PATH} /opt/python/$1/bin/python -m auditwheel repair --plat manylinux_2_28_x86_64 dist/torch_migraphx-*-$1-linux_x86_64.whl
 }
 
 build_py39(){
@@ -45,9 +35,7 @@ build_py312(){
     build_audit_whl "cp312-cp312" "3.12"
 }
 
-# repo.readeon only cointails wheels for 3.9 to 3.11
-# build_py38
-build_py39
+# build_py39
 build_py310
-build_py311
-# build_py312
+# build_py311
+build_py312
