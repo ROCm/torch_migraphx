@@ -33,10 +33,9 @@ import functools
 import torch
 import torch._dynamo as dynamo
 from torch._guards import TracingContext
-from torch._functorch.aot_autograd import aot_export_joint_simple
+from torch._functorch.aot_autograd import aot_export_joint_simple, make_boxed_func
 from torch._dynamo.backends.common import aot_autograd, fake_tensor_unsupported
 from torch._inductor.compile_fx import fw_compiler_freezing, _graph_counter
-from torch._functorch import config as functorch_config
 from .lower_dynamo import lower_aten_to_mgx
 from .passes.export.input_aliasing import insert_clone_input
 
@@ -49,9 +48,13 @@ if version.parse(torch.__version__) >= version.parse("2.5"):
 @dynamo.register_backend(name="migraphx")
 def migraphx_backend(gm: torch.fx.GraphModule,
                      example_inputs: Sequence[torch.Tensor], **kwargs):
-
+    
+    use_aot = kwargs.get("use_aot", False)
     # Any logic to pick default dynamo backend should be placed here
-    return migraphx_aot_backend(gm, example_inputs, **kwargs)
+    if use_aot:
+        return migraphx_aot_backend(gm, example_inputs, **kwargs)
+    
+    return migraphx_pretraced_backend(gm, example_inputs, **kwargs)
 
 
 @dynamo.register_backend(name="migraphx_pretraced")
@@ -67,8 +70,6 @@ def migraphx_pretraced_backend(gm: torch.fx.GraphModule,
 
     # Refer to discussion https://github.com/pytorch/pytorch/issues/105485
     TracingContext.get().fake_mode.allow_non_fake_inputs = True
-
-    print(gm.graph.print_tabular())
     
     if not is_aot_wrapped:
         # TODO: remove alias input fix once issue is fixed upstream
@@ -80,15 +81,13 @@ def migraphx_pretraced_backend(gm: torch.fx.GraphModule,
     else:
         opt_model = gm
     
-    return opt_model
-    
-    print(gm.graph.print_tabular())
-    print([i.shape for i in example_inputs])
-    
     compiled_gm = lower_aten_to_mgx(opt_model, example_inputs, **kwargs)
 
     if "save_compiled" in kwargs:
         torch.save(compiled_gm, kwargs["save_compiled"], pickle_protocol=4)
+    
+    if is_aot_wrapped:
+        compiled_gm.forward = make_boxed_func(compiled_gm.forward)
 
     return compiled_gm
 
@@ -100,7 +99,7 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
     graph_id = next(_graph_counter)
     _pretraced_backend = functools.partial(migraphx_pretraced_backend, is_aot_wrapped=True, **kwargs)
 
-    with torch.no_grad():
+    if not torch.is_grad_enabled():
         inference_compiler = functools.partial(
             fw_compiler_freezing,
             dynamo_model=gm,
@@ -110,9 +109,10 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
             graph_id=graph_id,
             forward_device=None
         )
-    
+    else:
+        inference_compiler = fake_tensor_unsupported(_pretraced_backend)
 
-    with functorch_config.patch(unlift_effect_tokens=True): 
-        return aot_autograd(
-            fw_compiler=inference_compiler,
-        )(gm, example_inputs)
+    return aot_autograd(
+        fw_compiler=inference_compiler, 
+        keep_inference_input_mutations=True,
+    )(gm, example_inputs)
