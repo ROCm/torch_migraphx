@@ -1316,6 +1316,10 @@ def aten_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
 
     if len(args) >= 4:
         acc_kwargs["attn_bias"] = args[3]
+        logging.warning("The op `aten._scaled_dot_product_efficient_attention.default` is called with "
+        "attn_bias defined. The behavior of this is not stable between PyTorch versions and may result "
+        "in accuracy problems. Consider setting Torch sdpa to use MATH or FLASH algorithms as a workaround. "
+        "See https://pytorch.org/docs/stable/generated/torch.nn.attention.sdpa_kernel.html")
     if len(args) >= 7:
         acc_kwargs["is_causal"] = args[6]
 

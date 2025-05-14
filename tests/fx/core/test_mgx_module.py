@@ -23,7 +23,7 @@ def test_save_and_load_mgx_module():
                         input_names=interp.get_input_names())
 
     torch.save(mgx_mod, 'mgx.pt')
-    reload_mgx_mod = torch.load('mgx.pt')
+    reload_mgx_mod = torch.load('mgx.pt', weights_only=False)
 
     reload_output = reload_mgx_mod(inputs[0].cuda()).cpu()
 

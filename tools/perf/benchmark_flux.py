@@ -34,6 +34,10 @@ parser.add_argument('--bf16',
                     action='store_true',
                     help='Load bf16 version of the pipeline')
 
+parser.add_argument('--deallocate',
+                    action='store_true',
+                    help='Deallocate memory from torch')
+
 parser.add_argument("-d",
                     "--image-height",
                     type=int,
@@ -98,9 +102,13 @@ def benchmark_flux_model(args):
     dtype = "fp32"
     options = {}
     if args.bf16:
-        dtype = "fp16"
+        dtype = "bf16"
         options["bf16"] = True
         torch_dtype = torch.bfloat16
+    if args.deallocate:
+        options["deallocate"] = True
+
+    print(options)
 
     pipe = FluxPipeline.from_pretrained("black-forest-labs/FLUX.1-dev", torch_dtype=torch_dtype)
     pipe = pipe.to("cuda")

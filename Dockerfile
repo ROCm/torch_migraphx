@@ -1,8 +1,8 @@
-FROM rocm/pytorch:rocm6.2.3_ubuntu22.04_py3.10_pytorch_release_2.3.0
+FROM rocm/pytorch:rocm6.4_ubuntu22.04_py3.10_pytorch_release_2.6.0
 
 ARG ROCM_PATH=/opt/rocm
 ARG MIGRAPHX_BRANCH=master 
-ARG GPU_ARCH="gfx900;gfx906;gfx908;gfx90a;gfx1030;gfx1100;gfx1101;gfx1102;gfx940;gfx941;gfx942"
+ARG GPU_ARCH="gfx900;gfx906;gfx908;gfx90a;gfx1030;gfx1100;gfx1101;gfx1102;gfx940;gfx941;gfx942;gfx950"
 
 COPY . /workspace/torch_migraphx
 
@@ -16,10 +16,7 @@ RUN git clone https://github.com/ROCm/AMDMIGraphX.git \
     && cd build && make install
 
 # Install torch_migraphx
-RUN pip3 install pybind11-global
-RUN cd /workspace/torch_migraphx/py && \
-    export TORCH_CMAKE_PATH=$(python -c "import torch; print(torch.utils.cmake_prefix_path)") && \
-    python -m pip install .
+RUN cd /workspace/torch_migraphx/py && python -m pip install . --no-build-isolation
 
 WORKDIR /workspace
 ENV LD_LIBRARY_PATH=${ROCM_PATH}/lib

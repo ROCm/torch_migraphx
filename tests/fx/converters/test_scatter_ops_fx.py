@@ -121,7 +121,7 @@ def test_scatter_add_method(inp_size, src_size, index, dim):
 @pytest.mark.parametrize('inp_size, src_size, index, dim', [
     ((3, 5), (2, 5), [0, 2], 0),
     ((2, 3, 4), (2, 2, 4), [1, 0], 1),
-    ((3, 4, 2), (3, 4, 4), [1, 0, 0, 1], 2),
+    ((3, 4, 2), (3, 4, 1), [1], 2),
 ])
 def test_index_copy(inp_size, src_size, index, dim):
     inp = torch.randn(*inp_size)

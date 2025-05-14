@@ -63,7 +63,7 @@ def migraphx_pretraced_backend(gm: torch.fx.GraphModule,
     kwargs = kwargs["options"] if "options" in kwargs else kwargs
 
     if "load_compiled" in kwargs:
-        return torch.load(kwargs["load_compiled"])
+        return torch.load(kwargs["load_compiled"], weights_only=False)
 
     # Refer to discussion https://github.com/pytorch/pytorch/issues/105485
     TracingContext.get().fake_mode.allow_non_fake_inputs = True

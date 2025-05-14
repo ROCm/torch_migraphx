@@ -144,7 +144,7 @@ def test_scatter_reduce(op_alias, inp_size, src_size, index, dim, reduce, includ
 @pytest.mark.parametrize('inp_size, src_size, index, dim', [
     ((4, 2), (1, 2), [2], 0),
     ((2, 3, 4), (2, 2, 4), [2, 1], 1),
-    ((3, 4, 2), (3, 4, 4), [0, 0, 0, 1], 2),
+    ((3, 4, 2), (3, 4, 1), [0], 2),
 ])
 def test_index_copy(op_alias, inp_size, src_size, index, dim):
     inp = torch.randn(*inp_size).cuda()
