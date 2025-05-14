@@ -169,6 +169,7 @@ class MGXInterpreter(torch.fx.Interpreter):
 
     def output(self, node, args, kwargs):
         assert len(args) == 1
+        
         out = args[0] if isinstance(args[0], Iterable) else (args[0], )
         out = [
             MGXInstruction(convert_arg(self.mm, o.instr_ref, torch.bool))
