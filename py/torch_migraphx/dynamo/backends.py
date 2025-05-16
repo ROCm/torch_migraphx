@@ -49,7 +49,8 @@ if version.parse(torch.__version__) >= version.parse("2.5"):
 def migraphx_backend(gm: torch.fx.GraphModule,
                      example_inputs: Sequence[torch.Tensor], **kwargs):
     
-    use_aot = kwargs.get("use_aot", False)
+    options = kwargs["options"] if "options" in kwargs else {}
+    use_aot = options.get("use_aot", False)
     # Any logic to pick default dynamo backend should be placed here
     if use_aot:
         return migraphx_aot_backend(gm, example_inputs, **kwargs)
