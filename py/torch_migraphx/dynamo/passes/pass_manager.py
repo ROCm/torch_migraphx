@@ -26,6 +26,8 @@
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
+import logging
+import os
 import torch
 from torch.fx.passes.pass_manager import PassManager
 
@@ -36,7 +38,13 @@ from .promote_types import promote_inputs
 from .remove_empty_slice import remove_empty_slices
 from .fix_tensor_meta import fix_tensor_meta
 from .remove_lowered_constants import remove_lowered_constants
+from ..utils import get_graph_info
 
+
+_LOGGER = logging.getLogger(__name__)
+DYNAMO_LOGLEVEL = os.environ.get('TORCH_MIGRAPHX_LOG_DYNAMO_PASSES', None)
+if DYNAMO_LOGLEVEL:
+    _LOGGER.setLevel(DYNAMO_LOGLEVEL)
 
 class MGXPassManager(PassManager):
 
@@ -54,6 +62,7 @@ def pre_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
         const_fold,
     ]
     pre_partition_pass_mgr = MGXPassManager(passes)
+    _LOGGER.info(f"Pre Partition Pass In:\n{get_graph_info(gm.graph)}") 
     return pre_partition_pass_mgr(gm)
 
 
@@ -62,6 +71,7 @@ def post_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
         fix_tensor_meta,
     ]
     post_partition_pass_mgr = MGXPassManager(passes)
+    _LOGGER.info(f"Post Partition Pass In:\n{get_graph_info(gm.graph)}") 
     return post_partition_pass_mgr(gm)
 
 
