@@ -77,8 +77,7 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
                 continue
 
             mod = post_partition_pass(mod)
-            partition_inputs = get_partition_inputs(partitioned_gm, mod,
-                                                    example_inputs)
+            partition_inputs = get_partition_inputs(optim_gm, mod, example_inputs)
 
             _LOGGER.info(f"Lowering subgraph: {name}")
             _LOGGER.info(
