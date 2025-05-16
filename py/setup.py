@@ -37,14 +37,9 @@ import subprocess
 from distutils.version import LooseVersion
 from setuptools import setup, Extension, find_packages
 from setuptools.command.build_ext import build_ext
-from setuptools.command.test import test as TestCommand
+from torch.utils import cpp_extension
 
 __version__ = open("version.txt").read().strip()
-
-TORCH_CMAKE_PATH = os.environ.get("TORCH_CMAKE_PATH")
-if not TORCH_CMAKE_PATH:
-    import torch
-    TORCH_CMAKE_PATH = torch.utils.cmake_prefix_path
 
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=''):
@@ -71,6 +66,10 @@ class CMakeBuild(build_ext):
             self.build_extension(ext)
 
     def build_extension(self, ext):
+        TORCH_CMAKE_PATH = os.environ.get("TORCH_CMAKE_PATH")
+        if not TORCH_CMAKE_PATH:
+            import torch
+            TORCH_CMAKE_PATH = torch.utils.cmake_prefix_path
         extdir = os.path.abspath(
             os.path.dirname(self.get_ext_fullpath(ext.name)))
         cmake_args = [
@@ -123,18 +122,16 @@ setup(
     install_requires=[
     "torch>=1.11.0",
     "numpy>=1.20.0",
-    "pybind11-global",
     "packaging",
     "tabulate",
     ],
     packages=find_packages(),
     package_dir={'torch_migraphx': 'torch_migraphx'},
-    ext_modules=[CMakeExtension('_torch_migraphx')],
-    cmdclass=dict(build_ext=CMakeBuild),
+    ext_modules=[cpp_extension.CppExtension('_torch_migraphx', ['./torch_migraphx/csrc/torch_migraphx_py.cpp'])],
+    cmdclass={'build_ext': cpp_extension.BuildExtension},
     license="BSD",
     classifiers = [
         "Programming Language :: Python :: 3",
-        "Programming Language :: C++",
         "License :: OSI Approved :: BSD License",
         "Operating System :: POSIX :: Linux",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",

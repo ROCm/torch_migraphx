@@ -25,7 +25,7 @@ def print_bm_results(names: Sequence[str],
                      times: Sequence[float],
                      bs: int,
                      ref_idx: int = 0):
-    t_ref = times[ref_idx]
+    t_ref = times[ref_idx] if ref_idx < len(times) else torch.nan
     rows = []
     headers = ["Model", "Avg Exec Time (ms)", "Rate (/sec)", "Speed Up"]
     for n, t in zip(names, times):
@@ -33,3 +33,13 @@ def print_bm_results(names: Sequence[str],
             [n, f"{t:0.4f}", f"{1e3 * bs / t:0.4f}", f"{t_ref/t:0.4f}x"])
 
     print(tabulate(rows, headers=headers))
+
+
+def add_csv_result(csv_file, model_name, targets, times, bs, dtypes):
+    rates = [1e3 * bs / t for t in times]
+    targets = targets if isinstance(targets, (list, tuple)) else [targets]*len(rates)
+    dtypes = dtypes if isinstance(dtypes, (list, tuple)) else [dtypes]*len(rates)
+    names = [f"{model_name}_{target}_{dtype}_b{bs}" for target, dtype in zip(targets[:len(rates)],dtypes[:len(rates)])]
+    with open(csv_file, "a") as f:
+        for n, r in zip(names, rates):
+            f.write(f"{n},{r:0.4f}, QPS\n")

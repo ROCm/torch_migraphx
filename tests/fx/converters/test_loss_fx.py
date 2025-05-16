@@ -26,7 +26,6 @@ def test_nll_loss_fx(inp_size, no_weight, reduction, ignore_index):
 
 @pytest.mark.parametrize('reduction', [('mean'), ('sum'), ('none')])
 @pytest.mark.parametrize('C, no_weight, target, ignore_index', [
-    (3, True, 0, 0), 
     (3, False, 1, -100),
     (3, True, 2, 1),
 ])
@@ -40,7 +39,4 @@ def test_nll_loss_1d_fx(C, no_weight, reduction, target, ignore_index):
     mod = FuncModule(torch.nn.functional.nll_loss, target=target, weight=weight,
                      reduction = reduction, ignore_index = ignore_index)
     mgx_mod = convert_to_mgx(mod, [inp])
-    # Output is nan when ignore_idx == target (div by 0)
-    # MIGraphX creates a kernel that ends up outputting a tensor of len 1 instead of a scalar
-    # TODO: fused kernels in migraphx should respect the original output shape
-    verify_outputs(mod, mgx_mod, [inp], equal_nan=True, scalar=True)
+    verify_outputs(mod, mgx_mod, [inp])

@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
 from typing import Sequence
+from packaging import version
 
 import torch
 import torch._dynamo as dynamo
@@ -34,6 +35,11 @@ from torch._guards import TracingContext
 from torch._functorch.aot_autograd import aot_export_joint_simple
 from .lower_dynamo import lower_aten_to_mgx
 from .passes.export.input_aliasing import insert_clone_input
+
+# Need to expliciltly enable freezing for torch 2.5 onward
+if version.parse(torch.__version__) >= version.parse("2.5"):
+    import torch._inductor.config as inductor_config
+    inductor_config.freezing = True
 
 
 @dynamo.register_backend(name="migraphx")
@@ -52,7 +58,7 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
     kwargs = kwargs["options"] if "options" in kwargs else kwargs
 
     if "load_compiled" in kwargs:
-        return torch.load(kwargs["load_compiled"])
+        return torch.load(kwargs["load_compiled"], weights_only=False)
 
     # Refer to discussion https://github.com/pytorch/pytorch/issues/105485
     TracingContext.get().fake_mode.allow_non_fake_inputs = True

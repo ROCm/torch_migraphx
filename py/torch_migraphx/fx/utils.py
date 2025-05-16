@@ -29,7 +29,7 @@
 import os
 import sys
 from enum import Enum
-from typing import List, Callable
+from typing import List, Callable, Sequence
 from packaging import version
 import random
 import torch
@@ -125,13 +125,21 @@ def torch_qdtype_to_mgx_enum(dtype: torch.dtype) -> migraphx.shape.type_t:
 
 
 def mgx_argument_from_tensor(tensor: torch.tensor) -> migraphx.argument:
-    return _C.tensor_to_arg(tensor)
+    mgx_type_str = torch_dtype_to_mgx(tensor.dtype)
+    lens = list(tensor.size())
+    strides = list(tensor.stride())
+    mgx_shape = migraphx.shape(lens=lens, type=mgx_type_str, strides=strides)
+    return migraphx.argument_from_pointer(mgx_shape, tensor.data_ptr())
 
 
 def tensor_from_mgx_argument(
     arg: migraphx.argument, device: torch.device = torch.device('cuda')
 ) -> torch.tensor:
-    return _C.arg_to_tensor(arg, device)
+    torch_dtype = torch_dtype_from_mgx(arg.get_shape().type_string())
+    lens = list(arg.get_shape().lens())
+    strides = list(arg.get_shape().strides())
+
+    return _C.from_blob(arg.data_ptr(), lens, strides, torch_dtype, device)
 
 
 def mgx_argument_from_ptr(ptr: int,
@@ -139,17 +147,18 @@ def mgx_argument_from_ptr(ptr: int,
     return migraphx.argument_from_pointer(shape, ptr)
 
 
-def tensors_from_mgx_arguments_par(args: List[migraphx.argument],
-                                   lens: List[List[int]],
-                                   strides: List[List[int]],
-                                   type_strs: List[str],
-                                   device: torch.device = torch.device('cuda'),
-                                   thread_size: int = 1) -> List[torch.tensor]:
-
-    ptrs = [a.data_ptr() for a in args]
-    scalars = [a.shape().scalar() for a in args]
-    return _C.args_to_tensors_par(ptrs, lens, strides, type_strs, scalars,
-                                  device, thread_size)
+def tensor_from_ptr(ptr: int, 
+                    lens: Sequence, 
+                    strides: Sequence,
+                    type_string: str, 
+                    is_scalar: bool, 
+                    device: torch.device):
+    torch_dtype = torch_dtype_from_mgx(type_string)
+    if is_scalar:
+        lens = []
+        strides = []
+    
+    return _C.from_blob(ptr, lens, strides, torch_dtype, device)
 
 
 def tensors_from_mgx_arguments(
@@ -157,14 +166,15 @@ def tensors_from_mgx_arguments(
     mgx_shapes: List[migraphx.shape],
     device: torch.device = torch.device('cuda')
 ) -> List[torch.tensor]:
+    
     return [
-        _C.tensor_from_ptr(a.data_ptr(), s.lens(), s.strides(),
-                           s.type_string(), s.scalar(), device)
+        tensor_from_ptr(a.data_ptr(), s.lens(), s.strides(),
+                        s.type_string(), s.scalar(), device)
         for a, s in zip(args, mgx_shapes)
     ]
 
 
-def get_qparams(tensor: torch.Tensor) -> (torch.Tensor, dict):
+def get_qparams(tensor: torch.Tensor) -> tuple[torch.Tensor, dict]:
     if not tensor.is_quantized:
         return tensor, None
 

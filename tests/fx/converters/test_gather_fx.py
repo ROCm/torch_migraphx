@@ -24,7 +24,7 @@ def test_gather(input_dim, dim):
 
     dim_size = input.size(dim)
     index_shape = list(input.size())
-    index_shape[dim] = np.random.randint(1, dim_size)  
+    index_shape[dim] = np.random.randint(1, dim_size*2)  
     index = torch.randint(0, dim_size, index_shape)
 
     mod = GatherModule(dim)

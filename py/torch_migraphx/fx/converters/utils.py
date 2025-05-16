@@ -51,6 +51,28 @@ def broadcast_tensors(mgx_module, *tensors):
     return outs
 
 
+def insert_mbroadcast(mgx_module, ins, dims):
+    return mgx_module.add_instruction(
+        migraphx.op("multibroadcast", out_lens=dims), [ins])
+
+
+def normalize_neg_indices(mgx_module, idx_ins, dim_val):
+    dtype = get_arg_dtype(idx_ins)
+    # find locations of negative indices
+    zeros = mgx_module.add_literal(torch.tensor(0, dtype=dtype).numpy())
+    zeros = insert_mbroadcast(mgx_module, zeros, idx_ins.shape().lens())
+    neg_idx = mgx_module.add_instruction(migraphx.op('less'), [idx_ins, zeros])
+
+    dim_size = mgx_module.add_literal(
+        torch.tensor(dim_val, dtype=dtype).numpy())
+    dim_size = insert_mbroadcast(mgx_module, dim_size, idx_ins.shape().lens())
+    offset_idx = mgx_module.add_instruction(migraphx.op('add'),
+                                            [idx_ins, dim_size])
+
+    return mgx_module.add_instruction(migraphx.op('where'),
+                                      [neg_idx, offset_idx, idx_ins])
+
+
 def get_arg_dtype(arg):
     if isinstance(arg, migraphx.instruction_ref):
         dtype = torch_dtype_from_mgx(arg.shape().type_string())

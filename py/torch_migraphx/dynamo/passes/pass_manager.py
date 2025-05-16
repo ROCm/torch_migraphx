@@ -32,11 +32,14 @@ import torch
 from torch.fx.passes.pass_manager import PassManager
 
 from .remove_ops import remove_const_ops, remove_view_ops
+from .rewrite_complex_ops import rewrite_complex_ops
 from .const_fold import const_fold
 from .promote_types import promote_inputs
 from .remove_empty_slice import remove_empty_slices
 from .fix_tensor_meta import fix_tensor_meta
+from .remove_lowered_constants import remove_lowered_constants
 from ..utils import get_graph_info
+
 
 _LOGGER = logging.getLogger(__name__)
 DYNAMO_LOGLEVEL = os.environ.get('TORCH_MIGRAPHX_LOG_DYNAMO_PASSES', None)
@@ -55,6 +58,7 @@ def pre_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
         remove_view_ops,
         promote_inputs,
         remove_empty_slices,
+        rewrite_complex_ops,
         const_fold,
     ]
     pre_partition_pass_mgr = MGXPassManager(passes)
@@ -68,4 +72,12 @@ def post_partition_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
     ]
     post_partition_pass_mgr = MGXPassManager(passes)
     _LOGGER.info(f"Post Partition Pass In:\n{get_graph_info(gm.graph)}") 
+    return post_partition_pass_mgr(gm)
+
+
+def post_lowering_pass(gm: torch.fx.GraphModule) -> torch.fx.GraphModule:
+    passes = [
+        remove_lowered_constants,
+    ]
+    post_partition_pass_mgr = MGXPassManager(passes)
     return post_partition_pass_mgr(gm)
