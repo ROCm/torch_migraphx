@@ -67,6 +67,7 @@ def migraphx_pretraced_backend(gm: torch.fx.GraphModule,
 
     # Any additional kwargs are captrued through the "options" key
     is_aot_wrapped = kwargs.get("is_aot_wrapped", False)
+    is_freezing = kwargs.get("is_freezing", False)
     kwargs = kwargs["options"] if "options" in kwargs else kwargs
 
     if "load_compiled" in kwargs:
@@ -90,7 +91,7 @@ def migraphx_pretraced_backend(gm: torch.fx.GraphModule,
     if "save_compiled" in kwargs:
         torch.save(compiled_gm, kwargs["save_compiled"], pickle_protocol=4)
 
-    if is_aot_wrapped:
+    if is_freezing:
         compiled_gm.forward = make_boxed_func(compiled_gm.forward)
 
     return compiled_gm
@@ -107,7 +108,9 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
                                            is_aot_wrapped=True,
                                            **kwargs)
 
+    TracingContext.get().fake_mode.allow_non_fake_inputs = True
     if not torch.is_grad_enabled():
+        _pretraced_backend = functools.partial(_pretraced_backend, is_freezing=True, **kwargs)
         inference_compiler = functools.partial(
             fw_compiler_freezing,
             dynamo_model=gm,
