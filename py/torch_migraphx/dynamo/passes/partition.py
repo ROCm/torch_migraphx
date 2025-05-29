@@ -110,9 +110,7 @@ def partition(gm: torch.fx.GraphModule,
     fused_gm.recompile()
     fused_gm.delete_all_unused_submodules()
 
-    log_level = _LOGGER.level
-    if verbose and _LOGGER.level > logging.INFO:
-        log_level = logging.INFO
+    log_level = logging.DEBUG if verbose else _LOGGER.level
 
     with SetLogLevel(_LOGGER, log_level):
         _LOGGER.debug(f"Partitioned Module:\n{get_graph_info(fused_gm.graph)}")
