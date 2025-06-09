@@ -64,7 +64,9 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
     Returns:
         torch.fx.GraphModule: GraphModule contatning MGXModule objects for supported subgraphs
     """
-    verbose = kwargs['verbose'] if 'verbose' in kwargs else False
+    verbose = kwargs.get("verbose", False)
+    if verbose and _LOGGER.level == logging.NOTSET: 
+        _LOGGER.setLevel(logging.INFO)
 
     optim_gm = pre_partition_pass(gm)
     partition(optim_gm, verbose=verbose)
