@@ -2621,27 +2621,47 @@ def acc_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
 
     # attn_weight = torch.softmax(attn_weight, dim=-1)
     if kwargs.get("return_lse"):
-        # Not using stable softmax because lse returned by pytorch is not logsumexp(x)
-        # not logsumexp(x - max(x))
-        exp = acc_ops_exp(mgx_module, node, args, {'input': attn_weight})
-        sum_exp = acc_ops_sum(mgx_module, node, args, {'input': exp, 'dim': (-1,), 'keepdim': True})
+        # # Not using stable softmax because lse returned by pytorch is not logsumexp(x)
+        # # not logsumexp(x - max(x))
+        # exp = acc_ops_exp(mgx_module, node, args, {'input': attn_weight})
+        # sum_exp = acc_ops_sum(mgx_module, node, args, {'input': exp, 'dim': (-1,), 'keepdim': True})
         
-        # torch flash attn and other sdpa impl use 2^x and log2 for scaling
-        # Refer to https://github.com/vllm-project/vllm/blob/main/vllm/attention/ops/triton_flash_attention.py
-        lse = acc_ops_log2(mgx_module, node, args, {'input': sum_exp})
+        # # torch flash attn and other sdpa impl use 2^x and log2 for scaling
+        # # Refer to https://github.com/vllm-project/vllm/blob/main/vllm/attention/ops/triton_flash_attention.py
+        # lse = acc_ops_log2(mgx_module, node, args, {'input': sum_exp})
 
+        # ln2_scale = MGXInstruction(mgx_module.add_literal(
+        #     torch.tensor([1.44269504089], dtype=attn_weight.torch_type()).numpy()))
+        # x_ln2 = acc_ops_mul(mgx_module, node, args, {'input': attn_weight, 'other': ln2_scale})
+
+        # lit2 = MGXInstruction(mgx_module.add_literal(
+        #     torch.tensor([2], dtype=attn_weight.torch_type()).numpy()))
+        # lse_shift = acc_ops_sub(mgx_module, node, args, {'input': x_ln2, 'other': lse})
+
+        # attn_weight = acc_ops_pow(mgx_module, node, args, {'input': lit2, 'exponent': lse_shift})
+        
+        # # LSE output is squeezed on reduction dim and written out in fp32
+        # lse = acc_ops_squeeze(mgx_module, node, args, {'input': lse, 'dim': -1})
+        # lse = MGXInstruction(convert_arg(mgx_module, lse.instr_ref, torch.float32))
+
+        maxx = acc_ops_max(mgx_module, node, args, {'input': attn_weight, 'dim': -1, 'keepdim': True})[0]
+        norm = acc_ops_sub(mgx_module, node, args, {'input': attn_weight, 'other': maxx})
+        exp = acc_ops_exp(mgx_module, node, args, {'input': norm})
+        se = acc_ops_sum(mgx_module, node, args, {'input': exp, 'dim': (-1,), 'keepdim': True})
+        lse = acc_ops_log(mgx_module, node, args, {'input': se})
+
+        attn_weight = acc_ops_div(mgx_module, node, args, {'input': exp, 'other': se})
+        # lse_shift = acc_ops_sub(mgx_module, node, args, {'input': norm, 'other': lse})
+        # attn_weight = acc_ops_exp(mgx_module, node, args, {'input': lse_shift})
+
+        # Compute lse without normalization by max and convert to base 2
+        lse_add = acc_ops_add(mgx_module, node, args, {'input': lse, 'other': maxx})
         ln2_scale = MGXInstruction(mgx_module.add_literal(
             torch.tensor([1.44269504089], dtype=attn_weight.torch_type()).numpy()))
-        x_ln2 = acc_ops_mul(mgx_module, node, args, {'input': attn_weight, 'other': ln2_scale})
+        lse_base2 = acc_ops_mul(mgx_module, node, args, {'input': lse_add, 'other': ln2_scale})
 
-        lit2 = MGXInstruction(mgx_module.add_literal(
-            torch.tensor([2], dtype=attn_weight.torch_type()).numpy()))
-        lse_shift = acc_ops_sub(mgx_module, node, args, {'input': x_ln2, 'other': lse})
-
-        attn_weight = acc_ops_pow(mgx_module, node, args, {'input': lit2, 'exponent': lse_shift})
-        
         # LSE output is squeezed on reduction dim and written out in fp32
-        lse = acc_ops_squeeze(mgx_module, node, args, {'input': lse, 'dim': -1})
+        lse = acc_ops_squeeze(mgx_module, node, args, {'input': lse_base2, 'dim': -1})
         lse = MGXInstruction(convert_arg(mgx_module, lse.instr_ref, torch.float32))
 
     else:
