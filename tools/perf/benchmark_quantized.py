@@ -5,9 +5,8 @@ from argparse import ArgumentParser
 import torch
 import torch_migraphx
 import torchvision.models as models
-from utils import benchmark_module, print_bm_results, add_csv_result
+from utils import benchmark_module, print_bm_results, add_csv_result, stable_pre_aot_export
 
-from torch._export import capture_pre_autograd_graph
 import torch._dynamo
 from torch.ao.quantization.quantize_pt2e import prepare_pt2e, convert_pt2e
 from torch_migraphx.dynamo.quantization import MGXQuantizer
@@ -68,7 +67,7 @@ def benchmark_torchvision_models(model_name, args):
     model_fp32 = getattr(models, model_name)().eval()
     input_fp32 = torch.randn(bs, 3, 224, 224)
 
-    model_export = capture_pre_autograd_graph(copy.deepcopy(model_fp32),
+    model_export = stable_pre_aot_export(copy.deepcopy(model_fp32),
                                               (input_fp32, ))
     quantizer = MGXQuantizer(asymmetric_activations=args.asymmetric)
     m = prepare_pt2e(model_export, quantizer)
@@ -143,7 +142,7 @@ def benchmark_transformer_models(model_name, model_class, tokenizer_class,
     encoded_input = tokenizer(text, return_tensors='pt')
     inp = encoded_input["input_ids"]
 
-    model_export = capture_pre_autograd_graph(copy.deepcopy(model), (inp, ))
+    model_export = stable_pre_aot_export(copy.deepcopy(model), (inp, ))
 
     quantizer = MGXQuantizer(asymmetric_activations=args.asymmetric)
     m = prepare_pt2e(model_export, quantizer)

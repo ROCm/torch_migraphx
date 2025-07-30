@@ -2,6 +2,19 @@ from typing import Sequence, Mapping, Any
 import torch
 from tabulate import tabulate
 
+from packaging import version
+if version.parse(torch.__version__) < version.parse("2.6.dev"):
+    from torch._export import capture_pre_autograd_graph
+else:
+    from torch.export import export_for_training
+
+
+def stable_pre_aot_export(model, inputs, *args, **kwargs):
+    if version.parse(torch.__version__) < version.parse("2.6.dev"):
+        return capture_pre_autograd_graph(model, inputs, *args, **kwargs)
+    else:
+        return export_for_training(model, tuple(inputs), *args, **kwargs).module()
+
 
 def benchmark_module(model: torch.nn.Module,
                      inputs: Sequence[torch.Tensor],
