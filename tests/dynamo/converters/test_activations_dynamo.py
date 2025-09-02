@@ -112,11 +112,13 @@ def test_single_param_activation_funcs(op_alias, inp_size, alpha):
 @pytest.mark.parametrize('op_alias', [
     torch.ops.aten._softmax.default,
     torch.ops.aten._log_softmax.default,
+    torch.ops.aten._safe_softmax.default,
 ])
 @pytest.mark.parametrize('inp_size, dim', [((11, 3, 9), 1),
                                            ((32, 12, 100), -1)])
 def test_softmax(op_alias, inp_size, dim):
     inp = torch.randn(inp_size).cuda()
-    mod = FuncModule(op_alias, dim, False).cuda()
+    arg2 = None if op_alias == torch.ops.aten._safe_softmax.default else False
+    mod = FuncModule(op_alias, dim, arg2).cuda()
     mgx_mod = convert_to_mgx(mod, [inp])
     verify_outputs(mod, mgx_mod, inp)
