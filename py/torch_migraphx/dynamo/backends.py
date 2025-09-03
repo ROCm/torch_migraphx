@@ -71,25 +71,30 @@ def migraphx_pretraced_backend(gm: torch.fx.GraphModule,
     kwargs = kwargs["options"] if "options" in kwargs else kwargs
 
     if "load_compiled" in kwargs:
-        return torch.load(kwargs["load_compiled"], weights_only=False)
+        compiled_gm = torch.load(kwargs["load_compiled"], weights_only=False)
 
-    # Refer to discussion https://github.com/pytorch/pytorch/issues/105485
-    TracingContext.get().fake_mode.allow_non_fake_inputs = True
-
-    if not is_aot_wrapped:
-        # TODO: remove alias input fix once issue is fixed upstream
-        # https://github.com/pytorch/pytorch/issues/108079
-        clone_inp_gm = insert_clone_input(gm)
-        opt_model = aot_export_joint_simple(clone_inp_gm,
-                                            example_inputs,
-                                            trace_joint=False)
+        # Required for loading aot wrapped submodules
+        if hasattr(compiled_gm, "real_recompile"):
+            assert callable(compiled_gm.real_recompile)
+            compiled_gm.real_recompile()
     else:
-        opt_model = gm
+        # Refer to discussion https://github.com/pytorch/pytorch/issues/105485
+        TracingContext.get().fake_mode.allow_non_fake_inputs = True
 
-    compiled_gm = lower_aten_to_mgx(opt_model, example_inputs, **kwargs)
+        if not is_aot_wrapped:
+            # TODO: remove alias input fix once issue is fixed upstream
+            # https://github.com/pytorch/pytorch/issues/108079
+            clone_inp_gm = insert_clone_input(gm)
+            opt_model = aot_export_joint_simple(clone_inp_gm,
+                                                example_inputs,
+                                                trace_joint=False)
+        else:
+            opt_model = gm
 
-    if "save_compiled" in kwargs:
-        torch.save(compiled_gm, kwargs["save_compiled"], pickle_protocol=4)
+        compiled_gm = lower_aten_to_mgx(opt_model, example_inputs, **kwargs)
+
+        if "save_compiled" in kwargs:
+            torch.save(compiled_gm, kwargs["save_compiled"], pickle_protocol=4)
 
     if is_freezing:
         compiled_gm.forward = make_boxed_func(compiled_gm.forward)
