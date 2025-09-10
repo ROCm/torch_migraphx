@@ -6,7 +6,7 @@ export PROJECT_DIR=/workspace/torch_migraphx
 
 # PY_BUILD_CODE, PY_VERSION
 build_audit_whl() {
-    /opt/python/$1/bin/python -m pip install torch==2.6.0 torchvision==0.21.0 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4/
+    /opt/python/$1/bin/python -m pip install torch==2.7.1 torchvision==0.22.1 -f https://compute-artifactory.amd.com/artifactory/compute-pytorch-rocm/compute-rocm-dkms-no-npi-hipclang/16643/
     TORCH_LIB_DIR=/opt/python/$1/lib/python$2/site-packages/torch/lib/
 
     /opt/python/$1/bin/python setup.py clean bdist_wheel
