@@ -1,8 +1,10 @@
-FROM registry-sc-harbor.amd.com/framework/compute-rocm-dkms-no-npi-hipclang:16590_ubuntu24.04_py3.12_pytorch_release-2.8_db3ba667
-
+ARG PYTORCH_IMAGE
+FROM ${PYTORCH_IMAGE}
 ARG ROCM_PATH=/opt/rocm
-ARG MIGRAPHX_BRANCH="rocm-6.4.0" 
-ARG GPU_ARCH="gfx900;gfx906;gfx908;gfx90a;gfx1030;gfx1100;gfx1101;gfx1102;gfx940;gfx941;gfx942"
+ARG MIGRAPHX_BRANCH
+ENV MIGRAPHX_BRANCH=${MIGRAPHX_BRANCH:-"master" }
+ARG GPU_ARCH
+ENV GPU_ARCH=${GPU_ARCH:-"gfx900;gfx906;gfx908;gfx90a;gfx1030;gfx1100;gfx1101;gfx1102;gfx940;gfx941;gfx942"}
 
 # Install Dependencies: MIGraphX
 # Install rbuild

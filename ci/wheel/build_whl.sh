@@ -35,16 +35,16 @@ build_py312(){
     build_audit_whl "cp312-cp312" "3.12"
 }
 
-echo "Python version is: $PYTHON_VERSION_TorchMIGX"
-if [[ "$PYTHON_VERSION_TorchMIGX" == *"3.9"* ]]; then
+echo "Python version is: $PYTHON_VERSION"
+if [[ "$PYTHON_VERSION" == *"3.9"* ]]; then
     build_py39
 fi
-if [[ "$PYTHON_VERSION_TorchMIGX" == *"3.10"* ]]; then
+if [[ "$PYTHON_VERSION" == *"3.10"* ]]; then
     build_py310
 fi
-if [[ "$PYTHON_VERSION_TorchMIGX" == *"3.11"* ]]; then
+if [[ "$PYTHON_VERSION" == *"3.11"* ]]; then
     build_py311
 fi
-if [[ "$PYTHON_VERSION_TorchMIGX" == *"3.12"* ]]; then
+if [[ "$PYTHON_VERSION" == *"3.12"* ]]; then
     build_py312
 fi
