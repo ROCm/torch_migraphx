@@ -1,4 +1,4 @@
-ARG PYTORCH_IMAGE=registry-sc-harbor.amd.com/framework/compute-rocm-dkms-no-npi-hipclang:16590_ubuntu24.04_py3.12_pytorch_release-2.8_db3ba667
+ARG PYTORCH_IMAGE
 FROM ${PYTORCH_IMAGE}
 ARG ROCM_PATH=/opt/rocm
 ARG MIGRAPHX_BRANCH
