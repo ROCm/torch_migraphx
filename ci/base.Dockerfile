@@ -26,6 +26,6 @@ ENV LD_LIBRARY_PATH=${ROCM_PATH}/lib
 ENV PYTHONPATH=${ROCM_PATH}/lib
 
 # Install TorchMIGX wheel
-RUN wget -r -nd -l1 -A "torch_migraphx*${PYTHON_VERSION}*manylinux*.whl " https://compute-artifactory.amd.com/artifactory/compute-pytorch-rocm/${ROCM_BUILD_JOB}/${BUILD_NUM}/ \
-    && pip install --no-build-isolation torch_migraphx*${PYTHON_VERSION}*manylinux*.whl \
+RUN wget -r -nd -l1 "torch_migraphx*${PYTHON_VERSION}*manylinux*.whl" https://compute-artifactory.amd.com/artifactory/compute-pytorch-rocm/${ROCM_BUILD_JOB}/${BUILD_NUM}/ \
+    && pip3 install --no-build-isolation torch_migraphx*${PYTHON_VERSION}*manylinux*.whl \
     && rm torch_migraphx*${PYTHON_VERSION}*manylinux*.whl 
