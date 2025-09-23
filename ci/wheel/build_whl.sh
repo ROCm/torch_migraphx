@@ -6,7 +6,7 @@ export PROJECT_DIR=/workspace/torch_migraphx
 
 # PY_BUILD_CODE, PY_VERSION
 build_audit_whl() {
-    /opt/python/$1/bin/python -m pip install torch==2.6.0 torchvision==0.21.0 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4/
+    /opt/python/$1/bin/python -m pip install torch==2.7.1 torchvision==0.22.1 -f https://compute-artifactory.amd.com/artifactory/compute-pytorch-rocm/compute-rocm-dkms-no-npi-hipclang/16643/
     TORCH_LIB_DIR=/opt/python/$1/lib/python$2/site-packages/torch/lib/
 
     /opt/python/$1/bin/python setup.py clean bdist_wheel
@@ -35,7 +35,16 @@ build_py312(){
     build_audit_whl "cp312-cp312" "3.12"
 }
 
-# build_py39
-build_py310
-# build_py311
-build_py312
+echo "Python version is: $PYTHON_VERSION"
+if [[ "$PYTHON_VERSION" == *"3.9"* ]]; then
+    build_py39
+fi
+if [[ "$PYTHON_VERSION" == *"3.10"* ]]; then
+    build_py310
+fi
+if [[ "$PYTHON_VERSION" == *"3.11"* ]]; then
+    build_py311
+fi
+if [[ "$PYTHON_VERSION" == *"3.12"* ]]; then
+    build_py312
+fi

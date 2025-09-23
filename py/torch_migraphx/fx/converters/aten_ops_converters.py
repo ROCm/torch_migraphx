@@ -524,9 +524,10 @@ def aten_ops_silu(mgx_module, node, args, kwargs):
 
 
 # Ignores half_to_float input
+@migraphx_converter(torch.ops.aten._safe_softmax.default)
 @migraphx_converter(torch.ops.aten._softmax.default)
 def aten_ops_softmax(mgx_module, node, args, kwargs):
-    assert len(args) == 3
+    assert len(args) >= 2
     acc_kwargs = {"input": args[0], "dim": args[1]}
 
     return acc_ops_converters.acc_ops_softmax(mgx_module, node, (), acc_kwargs)
