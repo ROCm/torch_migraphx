@@ -1303,9 +1303,11 @@ def aten_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
     if "scale" in kwargs:
         acc_kwargs["scale"] = kwargs["scale"]
 
+    acc_kwargs["return_lse"] = True
+
     node.meta['tensor_meta'] = node.meta['tensor_meta'][0]
     
-    return acc_ops_converters.acc_ops_scaled_dot_product_attention(mgx_module, node, (), acc_kwargs), None, None, None, None, None, None, None
+    return *acc_ops_converters.acc_ops_scaled_dot_product_attention(mgx_module, node, (), acc_kwargs), None, None, None, None, None, None
 
 
 
