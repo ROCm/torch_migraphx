@@ -1,0 +1,6 @@
+--exclude libc10.so
+--exclude libc10_hip.so
+--exclude libtorch.so
+--exclude libtorch_hip.so
+--exclude libtorch_cpu.so
+--exclude libtorch_python.so
