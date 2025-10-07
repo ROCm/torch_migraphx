@@ -12,7 +12,7 @@ build_audit_whl() {
     /opt/python/$1/bin/python setup.py clean bdist_wheel
 
     /opt/python/$1/bin/python -m pip install auditwheel
-    LD_LIBRARY_PATH=${TORCH_LIB_DIR}:${LD_LIBRARY_PATH} /opt/python/$1/bin/python -m auditwheel repair --plat manylinux_2_28_x86_64 dist/torch_migraphx-*-$1-linux_x86_64.whl
+    LD_LIBRARY_PATH=${TORCH_LIB_DIR}:${LD_LIBRARY_PATH} /opt/python/$1/bin/python -m auditwheel repair $(cat ${PROJECT_DIR}/ci/wheel/excludes.params) --plat manylinux_2_28_x86_64 dist/torch_migraphx-*-$1-linux_x86_64.whl
 }
 
 build_py39(){
