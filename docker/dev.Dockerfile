@@ -1,4 +1,4 @@
-FROM rocm/pytorch:rocm6.4_ubuntu22.04_py3.10_pytorch_release_2.6.0
+FROM rocm/pytorch:rocm6.4.4_ubuntu24.04_py3.12_pytorch_release_2.7.1
 
 ARG ROCM_PATH=/opt/rocm
 ARG MIGRAPHX_BRANCH=develop 

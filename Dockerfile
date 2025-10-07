@@ -1,5 +1,4 @@
-FROM rocm/pytorch:rocm6.4_ubuntu22.04_py3.10_pytorch_release_2.6.0
-
+FROM rocm/pytorch:rocm6.4.4_ubuntu24.04_py3.12_pytorch_release_2.7.1
 ARG ROCM_PATH=/opt/rocm
 ARG MIGRAPHX_BRANCH=master 
 ARG GPU_ARCH="gfx900;gfx906;gfx908;gfx90a;gfx1030;gfx1100;gfx1101;gfx1102;gfx940;gfx941;gfx942;gfx950"
