@@ -14,11 +14,24 @@ if not hasattr(torch_migraphx, "dynamo"):
 ])
 @pytest.mark.parametrize("asymm", [False, True])
 def test_quant_mm(op_alias, in_shape, other_shape, asymm, default_torch_seed):
+    # Force synchronous execution to prevent async stream segfault
+    import os
+    os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+    
+    # Ensure proper CUDA initialization
+    torch.cuda.init()
+    torch.cuda.synchronize()
+    
     inp = torch.randn(in_shape)
     other = torch.randn(other_shape)
     mod = FuncModule(op_alias, other).eval()
     q_mod = quantize_module(mod, [in_shape], asymm=asymm)
+    
+    # Force synchronization before and after MGX conversion
+    torch.cuda.synchronize()
     mgx_mod = convert_to_mgx(q_mod, [inp])
+    torch.cuda.synchronize()
+    
     verify_outputs(mod, q_mod, mgx_mod, inp)
     del mod, q_mod, mgx_mod
 
