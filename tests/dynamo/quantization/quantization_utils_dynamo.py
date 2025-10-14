@@ -1,3 +1,6 @@
+import os
+os.environ['MIGRAPHX_DISABLE_ASYNC'] = '1'
+
 from packaging import version
 import torch_migraphx
 import torch

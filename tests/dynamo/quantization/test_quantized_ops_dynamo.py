@@ -1,3 +1,6 @@
+import os
+os.environ['MIGRAPHX_DISABLE_ASYNC'] = '1'
+
 import pytest
 import torch_migraphx
 import torch
@@ -14,12 +17,17 @@ if not hasattr(torch_migraphx, "dynamo"):
 ])
 @pytest.mark.parametrize("asymm", [False, True])
 def test_quant_mm(op_alias, in_shape, other_shape, asymm, default_torch_seed):
+    torch.cuda.init()
+    torch.cuda.synchronize()
+    
     inp = torch.randn(in_shape)
     other = torch.randn(other_shape)
     mod = FuncModule(op_alias, other).eval()
     q_mod = quantize_module(mod, [in_shape], asymm=asymm)
     mgx_mod = convert_to_mgx(q_mod, [inp])
     verify_outputs(mod, q_mod, mgx_mod, inp)
+    
+    torch.cuda.synchronize()
     del mod, q_mod, mgx_mod
 
 
