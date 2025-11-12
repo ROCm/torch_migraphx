@@ -2,7 +2,7 @@ FROM rocm/pytorch:rocm6.4.4_ubuntu24.04_py3.12_pytorch_release_2.7.1
 
 ARG ROCM_PATH=/opt/rocm
 ARG MIGRAPHX_BRANCH=develop 
-ARG GPU_ARCH="gfx900;gfx906;gfx908;gfx90a;gfx1030;gfx1100;gfx1101;gfx1102;gfx940;gfx941;gfx942"
+ARG GPU_ARCH="gfx908;gfx90a;gfx1030;gfx1100;gfx1101;gfx1102;gfx950;gfx942;gfx1201"
 
 # Install Dependencies: MIGraphX
 # Install rbuild
