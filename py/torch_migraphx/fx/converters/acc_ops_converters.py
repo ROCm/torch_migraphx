@@ -2631,12 +2631,15 @@ def acc_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
 
         # Compute lse without normalization by maxx and convert to base 2
         lse_add = acc_ops_add(mgx_module, node, args, {'input': lse, 'other': maxx})
-        ln2_scale = MGXInstruction(mgx_module.add_literal(
-            torch.tensor([1.44269504089], dtype=attn_weight.torch_type()).numpy()))
-        lse_base2 = acc_ops_mul(mgx_module, node, args, {'input': lse_add, 'other': ln2_scale})
+
+        ## After Torch 2.8.0, PyTorch returns LSE in natural log (base e), not log2
+        if version.parse(torch.__version__) < version.parse("2.8.0"):
+            ln2_scale = MGXInstruction(mgx_module.add_literal(
+                torch.tensor([1.44269504089], dtype=attn_weight.torch_type()).numpy()))
+            lse_add = acc_ops_mul(mgx_module, node, args, {'input': lse_add, 'other': ln2_scale})
 
         # LSE output is squeezed on reduction dim and written out in fp32
-        lse = acc_ops_squeeze(mgx_module, node, args, {'input': lse_base2, 'dim': -1})
+        lse = acc_ops_squeeze(mgx_module, node, args, {'input': lse_add, 'dim': -1})
         lse = MGXInstruction(convert_arg(mgx_module, lse.instr_ref, torch.float32))
 
     # attn_weight = torch.softmax(attn_weight, dim=-1)
