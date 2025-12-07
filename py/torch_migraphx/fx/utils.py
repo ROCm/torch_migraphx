@@ -192,10 +192,10 @@ def get_qparams(tensor: torch.Tensor) -> tuple[torch.Tensor, dict]:
     return tensor.int_repr(), q_params
 
 
-# TODO: currently the migraphx api does not support directly interacting
-# with program bytes. To work around this, we let it create a dummy file
-# and read from it. Update this once it is supported by the api
 def mgx_program_to_bytearray(program: migraphx.program) -> bytearray:
+    if hasattr(migraphx, 'save_buffer'):
+        return migraphx.save_buffer(program)
+
     dummy_file_name = f'__temp_prog_{random.getrandbits(32)}.mxr'
     migraphx.save(program, dummy_file_name)
 
@@ -208,6 +208,9 @@ def mgx_program_to_bytearray(program: migraphx.program) -> bytearray:
 
 
 def mgx_program_from_bytearray(barray: bytearray) -> migraphx.program:
+    if hasattr(migraphx, 'load_buffer'):
+        return migraphx.load_buffer(barray)
+
     dummy_file_name = f'__temp_prog_{random.getrandbits(32)}.mxr'
 
     with open(dummy_file_name, 'wb') as f:
