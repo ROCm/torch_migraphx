@@ -30,7 +30,7 @@ Build and install from source
 ```
 git clone https://github.com/ROCmSoftwarePlatform/torch_migraphx.git
 cd ./torch_migraphx/py
-pip install . --no-build-isolation
+pip install .
 ```
 
 ## Example Usage

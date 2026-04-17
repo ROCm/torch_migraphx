@@ -14,5 +14,5 @@ sudo docker run -it --network=host --device=/dev/kfd --device=/dev/dri --group-a
 
 #3. Install torch_migraphx in dev mode:
 cd /workspace/torch_migraphx/py
-pip install -e . --no-build-isolation
+pip install -e .
 ```

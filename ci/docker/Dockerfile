@@ -25,5 +25,5 @@ ENV PYTHONPATH=${ROCM_PATH}/lib
 
 # Install TorchMIGX wheel
 RUN wget -r -nd -l1 ${WHL_URL} \
-    && pip3 install --no-build-isolation torch_migraphx*.whl \
+    && pip3 install torch_migraphx*.whl \
     && rm torch_migraphx*.whl 
