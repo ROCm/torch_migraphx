@@ -6,20 +6,21 @@ except ModuleNotFoundError:
     raise ModuleNotFoundError(
         "PyTorch (ROCm) is required but not found. "
         "Please install a ROCm-compatible version of PyTorch.\n"
-        "See: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/how-to/3rd-party/pytorch-install.html"
-    )
+        "See: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/how-to/3rd-party/pytorch-install.html",
+        name="torch",
+    ) from None
 
 try:
     import migraphx
-except ModuleNotFoundError as e:
-    print(e)
-    print(
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
         "Unable to import migraphx. Please ensure MIGraphX is installed.\n"
         "MIGraphX can be installed using standard linux package managers "
         "(eg. `apt install migraphx`),\n"
         "or refer to https://github.com/ROCm/AMDMIGraphX for advanced use cases.\n"
-        "If using a source based build, make sure to add the source build path to PYTHONPATH"
-    )
+        "If using a source based build, make sure to add the source build path to PYTHONPATH",
+        name="migraphx",
+    ) from None
 
 from torch_migraphx import fx, _C
 

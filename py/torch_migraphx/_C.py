@@ -1,6 +1,6 @@
 try:
     from _torch_migraphx import *
-except ImportError:
+except ModuleNotFoundError:
     import os
     import torch
     import torch.utils.cpp_extension

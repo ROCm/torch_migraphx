@@ -44,8 +44,15 @@ try:
     from torch.utils.cpp_extension import CppExtension, BuildExtension
     ext_modules = [CppExtension('_torch_migraphx', ['./torch_migraphx/csrc/torch_migraphx_py.cpp'])]
     cmdclass = {'build_ext': BuildExtension}
-except ImportError:
+except ModuleNotFoundError:
     pass
+except ImportError as e:
+    import warnings
+    warnings.warn(
+        f"PyTorch found but failed to import cpp_extension: {e}\n"
+        "The C++ extension will not be AOT-compiled. "
+        "It will be JIT-compiled at first import instead."
+    )
 
 setup(
     name='torch_migraphx',
