@@ -1,0 +1,74 @@
+def show_node_info() {
+    sh """
+        echo "NODE_NAME = \$NODE_NAME" || true
+        lsb_release -sd || true
+        uname -r || true
+        cat /sys/module/amdgpu/version || true
+        ls /opt/ -la || true
+    """
+}
+
+def get_nodes(arch){
+    if(arch == 'MI'){
+        return "migraphx && gfx90a"
+    } else if(arch == 'Navi') {
+        return "migraphx && gfx1101"
+    } else {
+        return "migraphx"
+    }
+}
+
+def runTests() {
+    def targetNode = get_nodes("${arch}")
+    echo "The value of targetNode is: ${targetNode}"
+
+    node(targetNode) {
+        show_node_info()
+        checkout scm
+
+        gitStatusWrapper(credentialsId: 'ROC_Repo_Management_API_5', gitHubContext: "Jenkins - pypi-validate-${arch}", account: 'ROCm', repo: 'torch_migraphx') {
+            sh """
+            docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined ${PYTORCH_IMAGE} bash -c '
+                apt-get update && apt-get install -y migraphx && \
+                export PYTHONPATH=/opt/rocm/lib:\$PYTHONPATH && \
+                pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ torch-migraphx==${PACKAGE_VERSION} && \
+                python -c "from torch_migraphx._C import from_blob; print(from_blob)" && \
+                pip install pytest && \
+                cd /tmp && \
+                git clone --depth 1 https://github.com/ROCm/torch_migraphx.git && \
+                cd torch_migraphx/tests && \
+                pytest
+            '
+            """
+        }
+    }
+}
+
+pipeline {
+    agent { label 'build-only' }
+    parameters {
+        string(name: 'PACKAGE_VERSION', description: 'Version to install from TestPyPI (e.g. 1.1)')
+        string(name: 'PYTORCH_IMAGE', defaultValue: 'rocm/pytorch:latest', description: 'ROCm PyTorch Docker image')
+    }
+    stages {
+        stage('matrix') {
+            matrix {
+                axes {
+                    axis {
+                        name 'arch'
+                        values 'Any'
+                    }
+                }
+                stages {
+                    stage('validate-pypi-wheel'){
+                        steps {
+                            script {
+                                runTests()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
