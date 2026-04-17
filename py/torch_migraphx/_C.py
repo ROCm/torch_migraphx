@@ -16,19 +16,11 @@ except ImportError:
                 "Please reinstall with: pip install torch_migraphx"
             )
 
-        # Include the PyTorch version in the build directory path so that
-        # upgrading PyTorch triggers a recompilation instead of loading a
-        # stale .so built against a different ABI.
-        base = torch.utils.cpp_extension._get_build_directory(name, verbose=False)
-        build_dir = os.path.join(base, "torch" + torch.__version__)
-        os.makedirs(build_dir, exist_ok=True)
-
         verbose = os.environ.get("TORCH_MIGRAPHX_VERBOSE_BUILD", "") == "1"
         try:
             return torch.utils.cpp_extension.load(
                 name=name,
                 sources=[src],
-                build_directory=build_dir,
                 verbose=verbose,
             )
         except Exception as e:
@@ -40,7 +32,6 @@ except ImportError:
                 "To debug, re-run with verbose build output:\n"
                 "  TORCH_MIGRAPHX_VERBOSE_BUILD=1 python -c 'import torch_migraphx'\n"
                 "\n"
-                f"Build directory: {build_dir}\n"
                 f"Source file:     {src}\n"
                 f"PyTorch version: {torch.__version__}"
             ) from e
