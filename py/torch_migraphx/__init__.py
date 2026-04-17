@@ -1,14 +1,25 @@
 from packaging import version
-from torch import __version__ as _torch_version
+
+try:
+    from torch import __version__ as _torch_version
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
+        "PyTorch (ROCm) is required but not found. "
+        "Please install a ROCm-compatible version of PyTorch.\n"
+        "See: https://rocm.docs.amd.com/projects/install-on-linux/en/latest/how-to/3rd-party/pytorch-install.html"
+    )
 
 try:
     import migraphx
 except ModuleNotFoundError as e:
     print(e)
-    print("""Unable to import migraphx. Please ensure MIGraphX is installed. 
-          MIGraphX can be installed using standard linux package managers (eg. `apt install migraphx`), 
-          or refer to https://github.com/ROCm/AMDMIGraphX for advanced use cases. If using a source
-          based build, make sure to add the souce build path to PYTHONPATH""")
+    print(
+        "Unable to import migraphx. Please ensure MIGraphX is installed.\n"
+        "MIGraphX can be installed using standard linux package managers "
+        "(eg. `apt install migraphx`),\n"
+        "or refer to https://github.com/ROCm/AMDMIGraphX for advanced use cases.\n"
+        "If using a source based build, make sure to add the source build path to PYTHONPATH"
+    )
 
 from torch_migraphx import fx, _C
 

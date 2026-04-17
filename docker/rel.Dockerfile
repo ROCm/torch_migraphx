@@ -33,5 +33,5 @@ RUN pip3 install pybind11-global
 
 RUN git clone --single-branch https://github.com/ROCm/torch_migraphx.git \
     && cd torch_migraphx/py \
-    && python3 -m pip install . --no-build-isolation
+    && python3 -m pip install .
 

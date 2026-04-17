@@ -15,7 +15,7 @@ RUN git clone https://github.com/ROCm/AMDMIGraphX.git \
     && cd build && make install
 
 # Install torch_migraphx
-RUN cd /workspace/torch_migraphx/py && python -m pip install . --no-build-isolation
+RUN cd /workspace/torch_migraphx/py && python -m pip install .
 
 WORKDIR /workspace
 ENV LD_LIBRARY_PATH=${ROCM_PATH}/lib
