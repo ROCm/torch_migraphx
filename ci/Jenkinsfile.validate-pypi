@@ -27,11 +27,13 @@ def runTests() {
         checkout scm
 
         gitStatusWrapper(credentialsId: 'ROC_Repo_Management_API_5', gitHubContext: "Jenkins - pypi-validate-${arch}", account: 'ROCm', repo: 'torch_migraphx') {
+            def pkg = params.PACKAGE_VERSION?.trim() ? "torch-migraphx==${params.PACKAGE_VERSION}" : "torch-migraphx"
+            def image = params.PYTORCH_IMAGE
             sh """
-            docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined ${PYTORCH_IMAGE} bash -c '
+            docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined ${image} bash -c '
                 apt-get update && apt-get install -y migraphx && \
                 export PYTHONPATH=/opt/rocm/lib:\$PYTHONPATH && \
-                pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ torch-migraphx${PACKAGE_VERSION:+==${PACKAGE_VERSION}} && \
+                pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ ${pkg} && \
                 python -c "from torch_migraphx._C import from_blob; print(from_blob)" && \
                 pip install pytest && \
                 cd /tmp && \
