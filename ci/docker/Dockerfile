@@ -8,6 +8,7 @@ ENV GPU_ARCH=${GPU_ARCH:-"gfx908;gfx90a;gfx940;gfx941;gfx942;gfx950;gfx1030;gfx1
 ARG WHL_URL
 
 # Install Dependencies: MIGraphX
+RUN apt-get update && apt-get install -y --no-install-recommends cmake && rm -rf /var/lib/apt/lists/*
 # Install rbuild
 RUN pip install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz
 # install migraphx from source

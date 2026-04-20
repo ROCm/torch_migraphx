@@ -5,6 +5,7 @@ ARG MIGRAPHX_BRANCH="rocm-7.2.1"
 ARG GPU_ARCH="gfx908;gfx90a;gfx940;gfx941;gfx942;gfx950;gfx1030;gfx1100;gfx1101;gfx1102;gfx1201"
 
 # Install Dependencies: MIGraphX
+RUN apt-get update && apt-get install -y --no-install-recommends cmake && rm -rf /var/lib/apt/lists/*
 # Install rbuild
 RUN pip install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz
 # install migraphx from source
