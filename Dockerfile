@@ -1,7 +1,7 @@
 FROM rocm/pytorch:rocm7.2.1_ubuntu24.04_py3.12_pytorch_release_2.9.1
 ARG ROCM_PATH=/opt/rocm
 ARG MIGRAPHX_BRANCH=master 
-ARG GPU_ARCH="gfx908;gfx90a;gfx940;gfx941;gfx942;gfx950;gfx1030;gfx1100;gfx1101;gfx1102;gfx1201"
+ARG GPU_ARCH="gfx908;gfx90a;gfx942;gfx950;gfx1030;gfx1100;gfx1101;gfx1102;gfx1201"
 
 COPY . /workspace/torch_migraphx
 
