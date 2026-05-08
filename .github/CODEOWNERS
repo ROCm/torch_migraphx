@@ -9,5 +9,5 @@
 /.github/ @shivadbhavsar
 
 # Documentation
-docs/* @ROCm/rocm-documentation
+docs/** @ROCm/rocm-documentation
 *.md @ROCm/rocm-documentation

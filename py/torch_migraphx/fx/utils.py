@@ -29,7 +29,7 @@
 import os
 import sys
 from enum import Enum
-from typing import List, Callable, Sequence
+from typing import List, Callable, Sequence, Tuple, Dict
 from packaging import version
 import random
 import torch
@@ -174,7 +174,7 @@ def tensors_from_mgx_arguments(
     ]
 
 
-def get_qparams(tensor: torch.Tensor) -> tuple[torch.Tensor, dict]:
+def get_qparams(tensor: torch.Tensor) -> Tuple[torch.Tensor, Dict]:
     if not tensor.is_quantized:
         return tensor, None
 

@@ -10,19 +10,20 @@ For general ROCm contribution guidelines, see the [ROCm contributing guide](http
 
 - [ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/) (with MIGraphX installed)
 - [PyTorch (ROCm version)](https://rocm.docs.amd.com/projects/install-on-linux/en/develop/how-to/3rd-party/pytorch-install.html#using-a-wheels-package)
-- Python 3.10+
+- Python 3.7+
 - A C++ compiler compatible with your PyTorch installation (for building the native extension)
 
 ### Using Docker (Recommended)
 
-The easiest way to get a working development environment is with the provided dev container:
+The easiest way to get a working development environment is with the provided dev container.
+
+Run these from the **repo root** so the whole repo is mounted into the container at `/workspace/torch_migraphx`:
 
 ```bash
-cd docker
-docker build -f dev.Dockerfile -t torch_migraphx_dev .
+docker build -f docker/dev.Dockerfile -t torch_migraphx_dev .
 docker run -it --network=host --device=/dev/kfd --device=/dev/dri \
     --group-add=video --ipc=host \
-    -v $(pwd):/workspace/torch_migraphx \
+    -v "$(pwd)":/workspace/torch_migraphx \
     torch_migraphx_dev
 ```
 
@@ -73,7 +74,7 @@ pytest dynamo/ -v
 2. **Create a branch** from `master`.
 3. **Make your changes** with appropriate test coverage.
 4. **Ensure tests pass** locally before submitting.
-5. **Open a pull request** targeting `develop` with a clear description of:
+5. **Open a pull request** targeting `master` with a clear description of:
    - What the change does and why
    - How it was tested
    - Any breaking changes or migration steps
