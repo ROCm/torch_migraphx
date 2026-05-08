@@ -35,9 +35,34 @@ ipython_config.py
 
 # Environments
 .env
+.env.*
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Credentials / secrets
+*.pem
+*.key
+credentials.json
+secrets.yaml
+secrets.yml
+.netrc
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# Build artifacts
+*.o
+*.obj
+*.log
+cmake-build-*/

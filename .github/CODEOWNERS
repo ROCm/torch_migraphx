@@ -1,0 +1,13 @@
+# Default owners for everything in the repo
+* @shivadbhavsar
+
+# CI and build infrastructure
+/ci/ @shivadbhavsar
+/docker/ @shivadbhavsar
+/Dockerfile @shivadbhavsar
+/Jenkinsfile @shivadbhavsar
+/.github/ @shivadbhavsar
+
+# Documentation
+docs/** @ROCm/rocm-documentation
+*.md @ROCm/rocm-documentation
