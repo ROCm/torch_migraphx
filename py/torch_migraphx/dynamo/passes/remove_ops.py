@@ -39,6 +39,30 @@ if DYNAMO_LOGLEVEL:
 
 
 @log_pass(_LOGGER, logging.DEBUG)
+def remove_assert_ops(gm: torch.fx.GraphModule):
+    """Remove no-op assert/metadata guard nodes inserted by torch.export.
+
+    PyTorch (>=2.6) inserts guard ops such as
+    ``aten._assert_tensor_metadata`` (recording a tensor's dtype/device/layout
+    around dtype conversions) and ``aten._assert_scalar``. These are Python-side
+    contracts with no MIGraphX equivalent. They return ``None`` and have no data
+    dependents, so they are safe to erase.
+    """
+    assert_ops = []
+    for op_name in ("_assert_tensor_metadata", "_assert_scalar"):
+        op = getattr(torch.ops.aten, op_name, None)
+        if op is not None and hasattr(op, "default"):
+            assert_ops.append(op.default)
+
+    for node in list(gm.graph.nodes):
+        if node.op == "call_function" and node.target in assert_ops:
+            gm.graph.erase_node(node)
+    gm.graph.eliminate_dead_code()
+    gm.recompile()
+    return gm
+
+
+@log_pass(_LOGGER, logging.DEBUG)
 def remove_clone_ops(gm: torch.fx.GraphModule):
     clone_ops = [
         torch.ops.aten.clone.default,
