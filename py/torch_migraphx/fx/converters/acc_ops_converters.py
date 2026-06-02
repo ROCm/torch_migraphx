@@ -521,24 +521,44 @@ def acc_ops_conv_transposend(mgx_module, node, args, kwargs):
     output_padding = extend_attr(kwargs['output_padding'], conv_dim)
     group = kwargs['groups']
 
+    # 'padding' has matching semantics in torch's transposed conv and in
+    # convolution_backwards: it crops p elements off each end of the output
+    # (the op subtracts 2*p from each spatial dim), so it is passed to the op
+    # directly.
+    #
+    # 'output_padding' cannot be expressed by the op: it makes the crop
+    # asymmetric, keeping op extra elements on the high side that symmetric
+    # padding would trim. Those elements are real deconv outputs, not zeros.
+    # When set, the op is run unpadded and the result is cropped per spatial
+    # dim to [p : full - p + op].
+    has_output_padding = any(o != 0 for o in output_padding)
+
     out_mgx = mgx_module.add_instruction(
-        migraphx.op('deconvolution',
+        migraphx.op('convolution_backwards',
                     stride=stride,
-                    padding=padding,
+                    padding=[0] * conv_dim if has_output_padding else padding,
                     dilation=dilation,
                     group=group), [inp, kernel])
 
-    if not all(i == 0 for i in output_padding):
-        pads = [0 for i in range(conv_dim)]
-        pads = pads + output_padding
-        out_mgx = mgx_module.add_instruction(migraphx.op('pad', pads=pads),
-                                             [out_mgx])
+    if has_output_padding:
+        full_spatial = out_mgx.shape().lens()[2:]
+        axes = list(range(2, 2 + conv_dim))
+        starts = [padding[i] for i in range(conv_dim)]
+        ends = [
+            full_spatial[i] - padding[i] + output_padding[i]
+            for i in range(conv_dim)
+        ]
+        out_mgx = mgx_module.add_instruction(
+            migraphx.op('slice', axes=axes, starts=starts, ends=ends),
+            [out_mgx])
 
     out_shape = out_mgx.shape().lens()
     if 'bias' in kwargs and kwargs['bias'] is not None:
+        bias = kwargs['bias']
+        assert not bias.is_quantized()
         bias_mgx = mgx_module.add_instruction(
             migraphx.op('broadcast', axis=1, out_lens=out_shape),
-            [kwargs['bias']])
+            [bias.instr_ref])
         out_mgx = mgx_module.add_instruction(migraphx.op('add'),
                                              [out_mgx, bias_mgx])
 
@@ -2040,6 +2060,37 @@ def acc_ops_batch_norm(mgx_module, node, args, kwargs):
 
     inp, weight, bias = kwargs['input'], kwargs['weight'], kwargs['bias']
     r_mean, r_var = kwargs['running_mean'], kwargs['running_var']
+
+    # No running statistics (track_running_stats=False): mean/var are computed
+    # from the input, pooled over the batch and spatial dims (every dim except
+    # channel dim 1). Covers nn.BatchNorm with track_running_stats=False and,
+    # after its [1, N*C, *] reshape, nn.InstanceNorm.
+    if r_mean is None and r_var is None:
+        assert not inp.is_quantized()
+        inp_ref = inp.instr_ref
+        out_shape = inp_ref.shape().lens()
+        axes = [0] + list(range(2, len(out_shape)))
+        norm = compute_norm(mgx_module, inp_ref, kwargs['eps'], axes)
+
+        unsq_dims = [i for i in range(len(out_shape)) if i != 1]
+        if weight is not None:
+            assert not weight.is_quantized()
+            weight_mgx = mgx_module.add_instruction(
+                migraphx.op('unsqueeze', axes=unsq_dims), [weight.instr_ref])
+            weight_mgx = mgx_module.add_instruction(
+                migraphx.op('multibroadcast', out_lens=out_shape), [weight_mgx])
+            norm = mgx_module.add_instruction(migraphx.op('mul'),
+                                              [norm, weight_mgx])
+        if bias is not None:
+            assert not bias.is_quantized()
+            bias_mgx = mgx_module.add_instruction(
+                migraphx.op('unsqueeze', axes=unsq_dims), [bias.instr_ref])
+            bias_mgx = mgx_module.add_instruction(
+                migraphx.op('multibroadcast', out_lens=out_shape), [bias_mgx])
+            norm = mgx_module.add_instruction(migraphx.op('add'),
+                                              [norm, bias_mgx])
+
+        return MGXInstruction(norm)
 
     if weight is None:
         weight = MGXInstruction(
