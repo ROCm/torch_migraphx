@@ -839,10 +839,11 @@ def aten_ops_convolution(mgx_module, node, args, kwargs):
     }
 
     if acc_kwargs["transposed"]:
-        # Transposed convolution lowers to a MIGraphX 'deconvolution' op.
+        # Transposed convolution lowers to a MIGraphX 'convolution_backwards' op.
         # acc_ops_conv_transposend does not take a 'transposed' kwarg.
         acc_kwargs.pop("transposed")
         return acc_ops_converters.acc_ops_conv_transposend(
+            mgx_module, node, (), acc_kwargs)
             mgx_module, node, (), acc_kwargs)
 
     if not all(i == 0 for i in acc_kwargs["output_padding"]):
