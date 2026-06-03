@@ -527,10 +527,10 @@ def acc_ops_conv_transposend(mgx_module, node, args, kwargs):
     # directly.
     #
     # 'output_padding' cannot be expressed by the op: it makes the crop
-    # asymmetric, keeping op extra elements on the high side that symmetric
-    # padding would trim. Those elements are real deconv outputs, not zeros.
-    # When set, the op is run unpadded and the result is cropped per spatial
-    # dim to [p : full - p + op].
+    # asymmetric, keeping output_padding extra elements on the high side that
+    # symmetric padding would trim. Those elements are real deconv outputs, not
+    # zeros. When set, the op is run unpadded and the result is cropped per
+    # spatial dim to [p : full - p + output_padding].
     has_output_padding = any(o != 0 for o in output_padding)
 
     out_mgx = mgx_module.add_instruction(
