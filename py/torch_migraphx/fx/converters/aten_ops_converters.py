@@ -844,7 +844,6 @@ def aten_ops_convolution(mgx_module, node, args, kwargs):
         acc_kwargs.pop("transposed")
         return acc_ops_converters.acc_ops_conv_transposend(
             mgx_module, node, (), acc_kwargs)
-            mgx_module, node, (), acc_kwargs)
 
     if not all(i == 0 for i in acc_kwargs["output_padding"]):
         raise RuntimeError(
