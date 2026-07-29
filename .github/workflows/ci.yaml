@@ -68,20 +68,44 @@ jobs:
             docker push $DOCKER_IMAGE:$DOCKER_TAG;
             docker push $DOCKER_IMAGE:latest;
     
-    # run_tests:
-    #   runs-on: ROCM-Ubuntu
-    #   needs: [ build_image, check_image ]
-    #   env:
-    #     DOCKER_TAG: ${{ needs.check_image.outputs.imagetag }}
-    #   if: ${{ !cancelled() && (needs.build_image.result == 'success' || needs.build_image.result == 'skipped') }}
-    #   steps: 
-    #     - uses: actions/checkout@v4.1.1
+    run_tests:
+      name: Test PyTorch 2.11
+      runs-on: ROCM-Ubuntu
+      needs: [ build_image, check_image ]
+      env:
+        DOCKER_TAG: ${{ needs.check_image.outputs.imagetag }}
+      if: ${{ !cancelled() && (needs.build_image.result == 'success' || needs.build_image.result == 'skipped') }}
+      steps:
+        - uses: actions/checkout@v4.1.1
 
-    #     - name: pytest
-    #       shell: bash -c "docker run -i --device=/dev/kfd --device=/dev/dri --group-add=video -v=$GITHUB_WORKSPACE:/data -w /data $DOCKER_IMAGE:$DOCKER_TAG bash < {0}"
-    #       run: |
-    #         cd py
-    #         export TORCH_CMAKE_PATH=$(python -c "import torch; print(torch.utils.cmake_prefix_path)")
-    #         python -m pip install .
-    #         cd ../tests
-    #         pytest
+        - name: pytest
+          shell: bash -c "docker run -i --device=/dev/kfd --device=/dev/dri --group-add=video -v=$GITHUB_WORKSPACE:/data -w /data $DOCKER_IMAGE:$DOCKER_TAG bash < {0}"
+          run: |
+            cd py
+            export TORCH_CMAKE_PATH=$(python -c "import torch; print(torch.utils.cmake_prefix_path)")
+            python -m pip install ".[quantization]"
+            cd ../tests
+            pytest
+
+    run_compat_tests:
+      name: Test PyTorch 2.9 compatibility
+      runs-on: ROCM-Ubuntu
+      steps:
+        - uses: actions/checkout@v4.1.1
+
+        - name: Build compatibility image
+          run: |
+            docker build . \
+              --file ./ci/base.Dockerfile \
+              --build-arg PYTORCH_IMAGE=rocm/pytorch:rocm7.2.1_ubuntu24.04_py3.12_pytorch_release_2.9.1 \
+              --build-arg MIGRAPHX_BRANCH=rocm-7.2.1 \
+              --tag torch-migraphx-compat:2.9.1
+
+        - name: pytest
+          shell: bash -c "docker run -i --device=/dev/kfd --device=/dev/dri --group-add=video -v=$GITHUB_WORKSPACE:/data -w /data torch-migraphx-compat:2.9.1 bash < {0}"
+          run: |
+            cd py
+            export TORCH_CMAKE_PATH=$(python -c "import torch; print(torch.utils.cmake_prefix_path)")
+            python -m pip install .
+            cd ../tests
+            pytest

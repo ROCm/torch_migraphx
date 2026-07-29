@@ -3,10 +3,16 @@
 # docker run -it -v$(pwd):/workspace/torch_migraphx tm_build /bin/bash /workspace/torch_migraphx/ci/wheel/build_whl.sh
 
 export PROJECT_DIR=/workspace/torch_migraphx
+export TORCH_VERSION=${TORCH_VERSION:-"2.11.0+rocm7.14.0"}
+export TORCHVISION_VERSION=${TORCHVISION_VERSION:-"0.26.0+rocm7.14.0"}
+export TORCH_INDEX_URL=${TORCH_INDEX_URL:-"https://repo.amd.com/rocm/whl-multi-arch/"}
 
 # PY_BUILD_CODE, PY_VERSION
 build_audit_whl() {
-    /opt/python/$1/bin/python -m pip install torch==2.7.1 torchvision==0.22.1 -f https://compute-artifactory.amd.com/artifactory/compute-pytorch-rocm/compute-rocm-dkms-no-npi-hipclang/16643/
+    /opt/python/$1/bin/python -m pip install \
+        --index-url "${TORCH_INDEX_URL}" \
+        "torch==${TORCH_VERSION}" \
+        "torchvision==${TORCHVISION_VERSION}"
     TORCH_LIB_DIR=/opt/python/$1/lib/python$2/site-packages/torch/lib/
 
     /opt/python/$1/bin/python setup.py clean bdist_wheel

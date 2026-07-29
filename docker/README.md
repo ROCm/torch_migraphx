@@ -1,9 +1,13 @@
 # Build Torch-MIGraphX Environments
 
-The suggested nightly build is provided in the main project directory. This directory provides additional environment setups such as for development.
+The primary PyTorch 2.11 / ROCm 7.14 build is provided in the main project
+directory. This directory provides additional environment setups such as for
+development.
 
 ## Development
-This is essentially identical to the nightly environment, however `dev.Dockerfile` installs a development version of MIGraphX. Torch-MIGraphX is left out for the user to install in development mode.
+This is essentially identical to the primary release environment, however
+`dev.Dockerfile` installs a development version of MIGraphX. Torch-MIGraphX is
+left out for the user to install in development mode.
 
 ```
 #1. Build dev.Dockerfile:
@@ -14,5 +18,5 @@ sudo docker run -it --network=host --device=/dev/kfd --device=/dev/dri --group-a
 
 #3. Install torch_migraphx in dev mode:
 cd /workspace/torch_migraphx/py
-pip install -e .
+pip install -e ".[quantization]"
 ```

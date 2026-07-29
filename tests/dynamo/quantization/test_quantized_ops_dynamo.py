@@ -41,8 +41,7 @@ def test_quant_addmm(op_alias, in_shape, m1_shape, m2_shape, asymm,
     del mod, q_mod, mgx_mod
 
 
-# Required for torch 2.6+ as export_for_training API is broken when
-# modules have non registered tensors
+# Export APIs require tensor state to be registered as module parameters.
 class ConvModule(torch.nn.Module):
 
     def __init__(self, func, weight, bias, *args):

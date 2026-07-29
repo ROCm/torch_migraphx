@@ -1,35 +1,29 @@
-## Use as reference for installing torch_migraphx on top of package manager installed deps
-FROM ubuntu:24.04
+## Reference release environment for PyTorch 2.11 and ROCm 7.14.
+FROM rocm/pytorch:rocm7.14_ubuntu24.04_py3.12_pytorch_release_2.11.0
+
+ARG ROCM_PATH=/opt/rocm
+ARG MIGRAPHX_BRANCH=rocm-7.14
+ARG GPU_ARCH="gfx908;gfx90a;gfx942;gfx950;gfx1030;gfx1100;gfx1101;gfx1102;gfx1201"
 
 WORKDIR /workspace
 
-# Install rocm key
-RUN apt-get update && apt-get install -y software-properties-common gnupg2 --no-install-recommends curl && \
-    curl -sL http://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends cmake git \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN sh -c 'echo deb [arch=amd64 trusted=yes] http://repo.radeon.com/rocm/apt/7.2.1/ noble main > /etc/apt/sources.list.d/rocm.list'
-RUN sh -c "echo 'Package: *\nPin: release o=repo.radeon.com\nPin-priority: 600' > /etc/apt/preferences.d/rocm-pin-600"
+RUN pip install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.gz
+RUN git clone --single-branch --branch ${MIGRAPHX_BRANCH} --recursive \
+        https://github.com/ROCm/AMDMIGraphX.git \
+    && cd AMDMIGraphX \
+    && rbuild build -d depend -DBUILD_TESTING=Off \
+        -DCMAKE_INSTALL_PREFIX=${ROCM_PATH} \
+        --cxx=${ROCM_PATH}/llvm/bin/clang++ \
+        -DGPU_TARGETS=${GPU_ARCH} \
+    && cd build \
+    && make install
 
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    libjpeg-dev \
-    python3-dev \
-    python3-pip \
-    cmake \
-    hiprand-dev \
-    hipblas \
-    hipblaslt \
-    hipcub \
-    hipfft \
-    hipsolver \
-    hipsparse \
-    rccl-dev \
-    rocm-dev \
-    rocthrust \
-    migraphx-dev \
-    git
+RUN pip install pybind11-global "torchao>=0.17.0" torch-migraphx
 
-RUN pip3 install --break-system-packages --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/rocm7.2/
-RUN pip3 install --break-system-packages pybind11-global
-
-RUN pip3 install --break-system-packages torch-migraphx
+ENV LD_LIBRARY_PATH=${ROCM_PATH}/lib
+ENV PYTHONPATH=${ROCM_PATH}/lib
 

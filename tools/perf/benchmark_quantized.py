@@ -1,6 +1,5 @@
 import sys
 import copy
-from packaging import version
 from argparse import ArgumentParser
 import torch
 import torch_migraphx
@@ -8,8 +7,11 @@ import torchvision.models as models
 from utils import benchmark_module, print_bm_results, add_csv_result, stable_pre_aot_export
 
 import torch._dynamo
-from torch.ao.quantization.quantize_pt2e import prepare_pt2e, convert_pt2e
 from torch_migraphx.dynamo.quantization import MGXQuantizer
+from torch_migraphx.dynamo.quantization._compat import (
+    convert_pt2e_preserve_quantize,
+    prepare_pt2e,
+)
 
 try:
     import transformers
@@ -36,12 +38,8 @@ parser.add_argument('--csv', type=str, default="",
 
 
 def stable_convert_pt2e(model, use_reference_representation=False):
-    if version.parse(torch.__version__) < version.parse("2.2"):
-        return convert_pt2e(model, use_reference_representation)
-    else:
-        return convert_pt2e(model,
-                            use_reference_representation,
-                            fold_quantize=False)
+    return convert_pt2e_preserve_quantize(model,
+                                         use_reference_representation)
 
 
 def move_q_gm_to_device(gm, device="cuda"):
