@@ -33,7 +33,7 @@ docker run -it --network=host --device=/dev/kfd --device=/dev/dri \
 ```bash
 git clone https://github.com/ROCm/torch_migraphx.git
 cd torch_migraphx/py
-pip install -e ".[quantization]"
+pip install -e .
 ```
 
 The C++ extension is compiled ahead-of-time if PyTorch is available in the build environment. Otherwise, it will be compiled just-in-time on first import.

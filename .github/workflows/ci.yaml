@@ -98,6 +98,8 @@ jobs:
             docker build . \
               --file ./ci/base.Dockerfile \
               --build-arg PYTORCH_IMAGE=rocm/pytorch:rocm7.2.1_ubuntu24.04_py3.12_pytorch_release_2.9.1 \
+              --build-arg C_COMPILER=/opt/rocm/llvm/bin/clang \
+              --build-arg CXX_COMPILER=/opt/rocm/llvm/bin/clang++ \
               --build-arg MIGRAPHX_BRANCH=rocm-7.2.1 \
               --tag torch-migraphx-compat:2.9.1
 
