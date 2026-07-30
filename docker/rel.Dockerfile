@@ -2,6 +2,7 @@
 FROM rocm/pytorch:rocm7.14_ubuntu24.04_py3.12_pytorch_release_2.11.0
 
 ARG ROCM_PATH=/opt/rocm
+ARG ROCM_SDK_ROOT=/opt/venv/lib/python3.12/site-packages/_rocm_sdk_devel
 ARG ROCM_CMAKE_PREFIX=/opt/venv/lib/python3.12/site-packages/_rocm_sdk_devel/lib/cmake
 ARG ROCM_WHEEL_INDEX=https://repo.amd.com/rocm/whl-multi-arch/
 ARG C_COMPILER=/opt/venv/bin/amdclang
@@ -22,8 +23,10 @@ RUN git clone --single-branch --branch ${MIGRAPHX_BRANCH} --recursive \
         https://github.com/ROCm/AMDMIGraphX.git \
     && cd AMDMIGraphX \
     && CMAKE_PREFIX_PATH="${ROCM_CMAKE_PREFIX}" rbuild build -d depend -DBUILD_TESTING=Off \
+        -DMIGRAPHX_ENABLE_GPU=On \
         -DCMAKE_INSTALL_PREFIX=${ROCM_PATH} \
         -DCMAKE_PREFIX_PATH="${ROCM_CMAKE_PREFIX}" \
+        -DCMAKE_CXX_FLAGS="--rocm-path=${ROCM_SDK_ROOT}" \
         --cc=${C_COMPILER} \
         --cxx=${CXX_COMPILER} \
         -DGPU_TARGETS=${GPU_ARCH} \

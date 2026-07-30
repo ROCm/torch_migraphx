@@ -2,6 +2,7 @@ ARG PYTORCH_IMAGE=rocm/pytorch:rocm7.14_ubuntu24.04_py3.12_pytorch_release_2.11.
 FROM ${PYTORCH_IMAGE}
 
 ARG ROCM_PATH=/opt/rocm
+ARG ROCM_SDK_ROOT=/opt/venv/lib/python3.12/site-packages/_rocm_sdk_devel
 ARG ROCM_CMAKE_PREFIX=/opt/venv/lib/python3.12/site-packages/_rocm_sdk_devel/lib/cmake
 ARG ROCM_WHEEL_INDEX=https://repo.amd.com/rocm/whl-multi-arch/
 ARG C_COMPILER=/opt/venv/bin/amdclang
@@ -23,8 +24,10 @@ RUN pip install https://github.com/RadeonOpenCompute/rbuild/archive/master.tar.g
 RUN git clone --single-branch --branch ${MIGRAPHX_BRANCH} --recursive https://github.com/ROCm/AMDMIGraphX.git \
     && cd AMDMIGraphX \
     && if [ -d "${ROCM_CMAKE_PREFIX}" ]; then CMAKE_SEARCH_PATH="${ROCM_CMAKE_PREFIX}"; else CMAKE_SEARCH_PATH="${ROCM_PATH}"; fi \
-    && CMAKE_PREFIX_PATH="${CMAKE_SEARCH_PATH}" rbuild build -d depend -DBUILD_TESTING=Off -DCMAKE_INSTALL_PREFIX=${ROCM_PATH} -DCMAKE_PREFIX_PATH="${CMAKE_SEARCH_PATH}" --cc=${C_COMPILER} --cxx=${CXX_COMPILER} -DGPU_TARGETS=${GPU_ARCH} \
-    && cd build && make install
+    && if [ -d "${ROCM_SDK_ROOT}" ]; then CXX_FLAGS="--rocm-path=${ROCM_SDK_ROOT}"; else CXX_FLAGS=""; fi \
+    && CMAKE_PREFIX_PATH="${CMAKE_SEARCH_PATH}" rbuild build -d depend -DBUILD_TESTING=Off -DMIGRAPHX_ENABLE_GPU=On -DCMAKE_INSTALL_PREFIX=${ROCM_PATH} -DCMAKE_PREFIX_PATH="${CMAKE_SEARCH_PATH}" -DCMAKE_CXX_FLAGS="${CXX_FLAGS}" --cc=${C_COMPILER} --cxx=${CXX_COMPILER} -DGPU_TARGETS=${GPU_ARCH} \
+    && cd build \
+    && make install
 
 
 # Install Dependencies: pybind-global, transformers
