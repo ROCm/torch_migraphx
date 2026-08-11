@@ -57,10 +57,8 @@ def aten_ops_to_copy(mgx_module, node, args, kwargs):
         out = args[0]
     if "dtype" in kwargs:
         assert not out.is_quantized()
-        out = mgx_module.add_instruction(
-            migraphx.op("convert",
-                        target_type=torch_dtype_to_mgx_enum(kwargs["dtype"])),
-            [out.instr_ref])
+        out = add_op(mgx_module, "convert", [out.instr_ref],
+                     target_type=torch_dtype_to_mgx_enum(kwargs["dtype"]))
         out = MGXInstruction(out)
 
     return out

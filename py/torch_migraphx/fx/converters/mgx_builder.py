@@ -307,6 +307,38 @@ def build_std(mgx_module, args, axes, keepdim, correction):
     return squeeze_reduced(mgx_module, out, list(axes), keepdim)
 
 
+def build_scatter_reduce(mgx_module, args, dim, reduce, include_self):
+    """scatter_reduce: reduction scatter along `dim`. Kit path uses tm::scatter_reduce; raw path
+    maps the reduction to the matching scatter op and, for include_self=False, first overwrites the
+    scattered positions with the reduction identity so the original values do not participate."""
+    args = list(args)
+    if _kit_has("scatter_reduce"):
+        return _single(
+            mgx_module.add_macro(
+                migraphx.macro(TM_PREFIX + "scatter_reduce",
+                               dim=dim,
+                               reduce=reduce,
+                               include_self=include_self), args))
+
+    from .utils import get_min_max_val
+    reduce_map = {
+        "mean": "scatter_none",
+        "sum": "scatter_add",
+        "prod": "scatter_mul",
+        "amax": "scatter_max",
+        "amin": "scatter_min",
+    }
+    inp, idx, src = args
+    if not include_self and reduce != "mean":
+        dtype = torch_dtype_from_mgx(inp.shape().type_string())
+        neg_inf, pos_inf = get_min_max_val(dtype)
+        identity = {"sum": 0, "prod": 1, "amax": neg_inf, "amin": pos_inf}[reduce]
+        lit = mgx_module.add_literal(torch.tensor(identity, dtype=dtype).numpy())
+        lit = add_op(mgx_module, "multibroadcast", [lit], out_lens=idx.shape().lens())
+        inp = add_op(mgx_module, "scatter_none", [inp, idx, lit], axis=dim)
+    return add_op(mgx_module, reduce_map[reduce], [inp, idx, src], axis=dim)
+
+
 def build_gelu(mgx_module, args):
     """gelu (erf form): 0.5 * x * (1 + erf(x / sqrt(2))). Kit path uses tm::gelu_erf;
     raw path composes the erf formula."""
