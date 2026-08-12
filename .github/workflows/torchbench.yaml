@@ -4,9 +4,9 @@ on:
     workflow_dispatch:
         inputs:
             base_docker:
-                default: 'rocm/pytorch:rocm7.14_ubuntu24.04_py3.12_pytorch_release_2.11.0'
+                default: 'rocm/pytorch:rocm6.2_ubuntu22.04_py3.10_pytorch_release_2.3.0'
             torch_branch:
-                default: '2.11.0'
+                default: '2.3.0'
 
 env: 
     BASE_DOCKER: ${{ inputs.base_docker }}
@@ -33,7 +33,7 @@ jobs:
             - name: Build and publish
               run: |
                 echo $DOCKER_TOKEN | docker login -u $DOCKER_USER --password-stdin
-                docker build . --file ./docker/torchbench.Dockerfile --build-arg BASE_DOCKER="$BASE_DOCKER" --build-arg PYTORCH_VERSION="$TORCH_BRANCH"  --tag $DOCKER_IMAGE:$TORCH_BRANCH --tag $DOCKER_IMAGE:latest;
+                docker build . --file ./docker/torchbench.Dockerfile --build-arg BASE_DOCKER="$BASE_DOCKER" --build-arg PYTORCH_BRANCH="$TORCH_BRANCH"  --tag $DOCKER_IMAGE:$TORCH_BRANCH --tag $DOCKER_IMAGE:latest;
                 docker push $DOCKER_IMAGE:$TORCH_BRANCH;
                 docker push $DOCKER_IMAGE:latest;
                 
