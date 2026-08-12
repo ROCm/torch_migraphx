@@ -180,8 +180,7 @@ def add_output_scale(mgx_module, inp_scale, weight_scale):
     weight_scale = add_literal(mgx_module, weight_scale, dtype=torch.float32)
     inp_scale, weight_scale = broadcast_tensors(mgx_module, inp_scale,
                                                 weight_scale)
-    return mgx_module.add_instruction(migraphx.op("mul"),
-                                      [inp_scale, weight_scale])
+    return add_op(mgx_module, "mul", [inp_scale, weight_scale])
 
 
 def add_dequantize_fc(mgx_module, inp, weight, bias):
