@@ -60,23 +60,26 @@ def _single(outs):
     return outs[0] if len(outs) == 1 else outs
 
 
-def _split_tuple(mgx_module, out):
-    """Expand a tuple-typed result (e.g. topk) into its element refs via
-    get_tuple_elem; anything else passes through unchanged."""
+def _split_tuple(mgx_module, out, num_outputs=1):
+    """Expand a multi-output result into its element refs. Kit macros already
+    return a list; a raw multi-output op returns a single tuple-typed ref that we
+    split by known index via get_tuple_elem. The caller declares num_outputs, so
+    this avoids shape.sub_shapes() and works on older migraphx builds that lack
+    that binding."""
     if isinstance(out, list):
         return out
-    sub_shapes = out.shape().sub_shapes()
-    if not sub_shapes:
+    if num_outputs <= 1:
         return out
     return [
         mgx_module.add_instruction(migraphx.op("get_tuple_elem", index=i), [out])
-        for i in range(len(sub_shapes))
+        for i in range(num_outputs)
     ]
 
 
-def add_op(mgx_module, name, args, module_args=None, **opts):
+def add_op(mgx_module, name, args, module_args=None, num_outputs=1, **opts):
     """Drop-in for add_instruction(migraphx.op(name), args), via tm::<name> if
-    registered. A tuple-typed result is split into its element refs."""
+    registered. A multi-output op (num_outputs > 1) is split into its element
+    refs."""
     args = list(args)
     module_args = list(module_args) if module_args else []
     if _kit_has(name):
@@ -86,7 +89,7 @@ def add_op(mgx_module, name, args, module_args=None, **opts):
     else:
         out = mgx_module.add_instruction(migraphx.op(name, **opts), args,
                                          module_args)
-    return _split_tuple(mgx_module, out)
+    return _split_tuple(mgx_module, out, num_outputs)
 
 
 def add_common_op(mgx_module, name, args, common_type=True, **opts):

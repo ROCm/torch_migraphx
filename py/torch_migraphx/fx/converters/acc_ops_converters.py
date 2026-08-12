@@ -882,7 +882,8 @@ def acc_ops_topk(mgx_module, node, args, kwargs):
     if not kwargs['sorted']:
         raise RuntimeError("Currently only sorted=True is supported")
 
-    val, ind = add_op(mgx_module, 'topk', [inp], k=k, axis=dim, largest=largest)
+    val, ind = add_op(mgx_module, 'topk', [inp], k=k, axis=dim, largest=largest,
+                      num_outputs=2)
 
     return [MGXInstruction(val, qparams=qparams), MGXInstruction(ind)]
 
