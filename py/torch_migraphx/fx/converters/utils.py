@@ -34,6 +34,7 @@ from ..utils import (torch_qdtype_from_mgx, torch_qdtype_to_mgx,
                      torch_qdtype_to_mgx_enum, torch_dtype_from_mgx,
                      torch_dtype_to_mgx, torch_dtype_to_mgx_enum)
 from ..mgx_module import MGXInstruction
+from .mgx_builder import add_op, add_common_op
 
 
 def broadcast_tensors(mgx_module, *tensors):
@@ -42,9 +43,8 @@ def broadcast_tensors(mgx_module, *tensors):
     outs = []
     for t in tensors:
         if t.shape().lens() != out_shape:
-            outs.append(
-                mgx_module.add_instruction(
-                    migraphx.op('multibroadcast', out_lens=out_shape), [t]))
+            outs.append(add_op(mgx_module, 'multibroadcast', [t],
+                               out_lens=out_shape))
         else:
             outs.append(t)
 
@@ -52,25 +52,21 @@ def broadcast_tensors(mgx_module, *tensors):
 
 
 def insert_mbroadcast(mgx_module, ins, dims):
-    return mgx_module.add_instruction(
-        migraphx.op("multibroadcast", out_lens=dims), [ins])
+    return add_op(mgx_module, "multibroadcast", [ins], out_lens=dims)
 
 
 def normalize_neg_indices(mgx_module, idx_ins, dim_val):
     dtype = get_arg_dtype(idx_ins)
     # find locations of negative indices
     zeros = mgx_module.add_literal(torch.tensor(0, dtype=dtype).numpy())
-    zeros = insert_mbroadcast(mgx_module, zeros, idx_ins.shape().lens())
-    neg_idx = mgx_module.add_instruction(migraphx.op('less'), [idx_ins, zeros])
+    neg_idx = add_common_op(mgx_module, 'less', [idx_ins, zeros])
 
     dim_size = mgx_module.add_literal(
         torch.tensor(dim_val, dtype=dtype).numpy())
-    dim_size = insert_mbroadcast(mgx_module, dim_size, idx_ins.shape().lens())
-    offset_idx = mgx_module.add_instruction(migraphx.op('add'),
-                                            [idx_ins, dim_size])
+    offset_idx = add_common_op(mgx_module, 'add', [idx_ins, dim_size])
 
-    return mgx_module.add_instruction(migraphx.op('where'),
-                                      [neg_idx, offset_idx, idx_ins])
+    return add_common_op(mgx_module, 'where', [neg_idx, offset_idx, idx_ins],
+                         common_type=False)
 
 
 def get_arg_dtype(arg):
@@ -88,9 +84,8 @@ def convert_arg(mgx_module, arg, out_type):
     if not isinstance(arg, migraphx.instruction_ref):
         arg = mgx_module.add_literal(torch.tensor(arg, dtype=out_type).numpy())
     elif torch_dtype_from_mgx(arg.shape().type_string()) != out_type:
-        arg = mgx_module.add_instruction(
-            migraphx.op("convert",
-                        target_type=torch_dtype_to_mgx_enum(out_type)), [arg])
+        arg = add_op(mgx_module, "convert", [arg],
+                     target_type=torch_dtype_to_mgx_enum(out_type))
     return arg
 
 
@@ -135,14 +130,9 @@ def add_quantize_linear(mgx_module,
         zp_dtype = torch_dtype_from_mgx(zero_point.shape().type_string())
         zp_offset = mgx_module.add_literal(
             torch.tensor(zp_offset, dtype=zp_dtype).numpy())
-        zero_point, zp_offset = broadcast_tensors(mgx_module, zero_point,
-                                                  zp_offset)
-        zero_point = mgx_module.add_instruction(migraphx.op("add"),
-                                                [zero_point, zp_offset])
-    zero_point = mgx_module.add_instruction(
-        migraphx.op("convert",
-                    target_type=torch_qdtype_to_mgx_enum(target_type)),
-        [zero_point])
+        zero_point = add_common_op(mgx_module, "add", [zero_point, zp_offset])
+    zero_point = add_op(mgx_module, "convert", [zero_point],
+                        target_type=torch_qdtype_to_mgx_enum(target_type))
 
     if per_ch_axis is None:
         inp, mb_scale, mb_zero_point = broadcast_tensors(
@@ -150,21 +140,18 @@ def add_quantize_linear(mgx_module,
     else:
         inp_shape = inp.shape().lens()
         if inp_shape != scale.shape().lens():
-            mb_scale = mgx_module.add_instruction(
-                migraphx.op('broadcast', axis=per_ch_axis, out_lens=inp_shape),
-                [scale])
+            mb_scale = add_op(mgx_module, 'broadcast', [scale],
+                              axis=per_ch_axis, out_lens=inp_shape)
         else:
             mb_scale = scale
 
         if inp_shape != zero_point.shape().lens():
-            mb_zero_point = mgx_module.add_instruction(
-                migraphx.op('broadcast', axis=per_ch_axis, out_lens=inp_shape),
-                [zero_point])
+            mb_zero_point = add_op(mgx_module, 'broadcast', [zero_point],
+                                   axis=per_ch_axis, out_lens=inp_shape)
         else:
             mb_zero_point = zero_point
 
-    q_ins = mgx_module.add_instruction(migraphx.op("quantizelinear"),
-                                       [inp, mb_scale, mb_zero_point])
+    q_ins = add_op(mgx_module, "quantizelinear", [inp, mb_scale, mb_zero_point])
 
     qparams = {"scale": scale, "zero_point": zero_point, "axis": per_ch_axis}
 
@@ -195,15 +182,12 @@ def add_dequantize_linear(mgx_module,
                                                    zero_point)
     else:
         inp_shape = inp.shape().lens()
-        scale = mgx_module.add_instruction(
-            migraphx.op('broadcast', axis=per_ch_axis, out_lens=inp_shape),
-            [scale])
-        zero_point = mgx_module.add_instruction(
-            migraphx.op('broadcast', axis=per_ch_axis, out_lens=inp_shape),
-            [zero_point])
+        scale = add_op(mgx_module, 'broadcast', [scale], axis=per_ch_axis,
+                       out_lens=inp_shape)
+        zero_point = add_op(mgx_module, 'broadcast', [zero_point],
+                            axis=per_ch_axis, out_lens=inp_shape)
 
-    return mgx_module.add_instruction(migraphx.op("dequantizelinear"),
-                                      [inp, scale, zero_point])
+    return add_op(mgx_module, "dequantizelinear", [inp, scale, zero_point])
 
 
 def extend_attr(val, num_elem):

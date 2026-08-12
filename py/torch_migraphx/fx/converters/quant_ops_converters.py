@@ -45,8 +45,13 @@ from ..utils import (
 from ..mgx_module import MGXInstruction
 from torch_migraphx.fx.converters import acc_ops_converters
 
-# Import required to populate torch.ops.quantized_decomposed
-import torch.ao.quantization.quantize_pt2e
+# Import required to populate torch.ops.quantized_decomposed.
+# torch>=2.12 removed torch.ao.quantization.quantize_pt2e; the quantized_decomposed ops are now
+# registered by torch.ao.quantization.fx._decomposed instead.
+try:
+    import torch.ao.quantization.quantize_pt2e  # noqa: F401  (torch < 2.12)
+except ModuleNotFoundError:
+    import torch.ao.quantization.fx._decomposed  # noqa: F401  (torch >= 2.12)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -175,8 +180,7 @@ def add_output_scale(mgx_module, inp_scale, weight_scale):
     weight_scale = add_literal(mgx_module, weight_scale, dtype=torch.float32)
     inp_scale, weight_scale = broadcast_tensors(mgx_module, inp_scale,
                                                 weight_scale)
-    return mgx_module.add_instruction(migraphx.op("mul"),
-                                      [inp_scale, weight_scale])
+    return add_op(mgx_module, "mul", [inp_scale, weight_scale])
 
 
 def add_dequantize_fc(mgx_module, inp, weight, bias):

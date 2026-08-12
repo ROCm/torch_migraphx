@@ -41,44 +41,52 @@ from ..converter_registry import migraphx_converter, MIGRAPHX_VERSION
 from ..tracer.acc_tracer import acc_ops
 from torch.fx.node import Argument, Target
 from .utils import *
+from .mgx_builder import (add_op, add_common_op, add_reduce_op,
+                          squeeze_reduced, get_pooling_mode, build_floor_div,
+                          build_batchnorm,
+                          build_layer_norm, build_group_norm,
+                          build_instance_norm, build_vector_norm, build_gelu,
+                          build_glu, build_selu, build_softsign,
+                          build_hardsigmoid, build_nan_to_num, build_matmul,
+                          build_linear, build_conv, build_conv_transpose,
+                          build_std, build_scatter_reduce)
 from ..utils import torch_dtype_from_mgx, torch_dtype_to_mgx_enum
 from ..mgx_module import MGXInstruction
 
 logger = logging.getLogger(__name__)
 
 
-def broadcast_for_elemwise_op(mgx_module,
-                              node,
-                              inp,
-                              other,
-                              use_node_dtype=True):
+def elemwise_operands(mgx_module, node, inp, other, use_node_dtype=True):
+    """Resolve elementwise operands to instruction_refs, materializing Python scalars
+    as literals. A scalar's dtype comes from the node output (use_node_dtype) or from
+    the tensor operand (e.g. comparisons, whose node dtype is bool). Broadcasting and
+    promotion are left to add_common_op."""
     inp = inp.instr_ref if isinstance(inp, MGXInstruction) else inp
     other = other.instr_ref if isinstance(other, MGXInstruction) else other
 
-    if (inp == other):
+    inp_is_ref = isinstance(inp, migraphx.instruction_ref)
+    other_is_ref = isinstance(other, migraphx.instruction_ref)
+    if inp_is_ref and other_is_ref:
         return inp, other
 
-    if node is not None and "tensor_meta" in node.meta and use_node_dtype:
+    if use_node_dtype and node is not None and "tensor_meta" in node.meta:
         dtype = node.meta['tensor_meta'].dtype
     else:
         dtype = get_arg_dtype(inp) or get_arg_dtype(other)
 
-    inp = convert_arg(mgx_module, inp, dtype)
-    other = convert_arg(mgx_module, other, dtype)
-    inp_shape = inp.shape().lens()
-    other_shape = other.shape().lens()
-
-    out_shape = np.broadcast_shapes(inp_shape, other_shape)
-    if len(out_shape) == 0 or inp_shape == other_shape:
-        return inp, other
-
-    inp = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=list(out_shape)), [inp])
-
-    other = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=list(out_shape)), [other])
+    if not inp_is_ref:
+        inp = convert_arg(mgx_module, inp, dtype)
+    if not other_is_ref:
+        other = convert_arg(mgx_module, other, dtype)
 
     return inp, other
+
+
+def cast_to_bool(mgx_module, inp):
+    """Cast inp to bool for logical reductions (any/all); bool/uint8 pass through."""
+    if get_arg_dtype(inp) in (torch.bool, torch.uint8):
+        return inp
+    return convert_arg(mgx_module, inp, torch.bool)
 
 
 @migraphx_converter(acc_ops.linear)
@@ -87,31 +95,11 @@ def acc_ops_linear(mgx_module, node, args, kwargs):
     inp, weight = kwargs['input'], kwargs['weight']
     assert not inp.is_quantized() and not weight.is_quantized()
 
-    in_mgx, A_mgx = inp.instr_ref, weight.instr_ref
-    in_shape = in_mgx.shape().lens()
-    A_shape = A_mgx.shape().lens()
-
-    perm = list(range(len(A_shape)))[::-1]
-
-    A_T_mgx = mgx_module.add_instruction(
-        migraphx.op('transpose', permutation=perm), [A_mgx])
-
-    A_T_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=in_shape[:-2] + A_shape[::-1]),
-        [A_T_mgx])
-
-    out_mgx = mgx_module.add_instruction(migraphx.op('dot'), [in_mgx, A_T_mgx])
-    out_shape = out_mgx.shape().lens()
-
+    build_args = [inp.instr_ref, weight.instr_ref]
     if kwargs['bias'] is not None:
-        b_mgx = mgx_module.add_instruction(
-            migraphx.op('multibroadcast', out_lens=out_shape),
-            [kwargs['bias'].instr_ref])
+        build_args.append(kwargs['bias'].instr_ref)
 
-        out_mgx = mgx_module.add_instruction(migraphx.op('add'),
-                                             [out_mgx, b_mgx])
-
-    return MGXInstruction(out_mgx)
+    return MGXInstruction(build_linear(mgx_module, build_args))
 
 
 # NLL (negative log likelihood loss) converter.  This op assumes data has already been normalized with log_softmax
@@ -130,11 +118,9 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
 
     if len(inp_lens) == 1:
         # The single dimension is C.  Insert a 0'th dimension
-        inp_ref =  mgx_module.add_instruction(
-            migraphx.op('unsqueeze', axes=[0]), [inp_ref])
+        inp_ref = add_op(mgx_module, 'unsqueeze', [inp_ref], axes=[0])
         inp_lens = inp_ref.shape().lens()
-        target_ref = mgx_module.add_instruction(
-            migraphx.op('unsqueeze', axes=[0]), [target_ref])
+        target_ref = add_op(mgx_module, 'unsqueeze', [target_ref], axes=[0])
 
     C = inp_lens[1]
     # weight should be a vector of 1's if not given
@@ -145,20 +131,18 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
     if 0 <= ignore_idx < C:
         ignore_idx_mgx = mgx_module.add_literal(torch.tensor([ignore_idx], dtype=dtype).numpy())
         zero_mgx = mgx_module.add_literal(torch.tensor([0], dtype=dtype).numpy())
-        weight = mgx_module.add_instruction(migraphx.op('scatter_none', axis=0), [weight, ignore_idx_mgx, zero_mgx])
+        weight = add_op(mgx_module, 'scatter_none', [weight, ignore_idx_mgx, zero_mgx], axis=0)
 
     # Prepare to select weight for each target
     # unsqueeze the weight and broadcast to match input shape
     # Insert 1 dimension (batch) before the C value and
     # k dimensions, if any, after.
     axis_list = [0] + list(range(2, len(inp_lens)))
-    weight_unsquoze = mgx_module.add_instruction(
-            migraphx.op('unsqueeze', axes=axis_list), [weight])
-    weight_bcst = mgx_module.add_instruction(
-            migraphx.op('multibroadcast', out_lens=inp_lens), [weight_unsquoze])
+    weight_unsquoze = add_op(mgx_module, 'unsqueeze', [weight], axes=axis_list)
+    weight_bcst = add_op(mgx_module, 'multibroadcast', [weight_unsquoze], out_lens=inp_lens)
 
     # use torch.gather converter to gather the correct elements from the input tensor
-    target_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[1]), [target_ref])
+    target_unsq = add_op(mgx_module, 'unsqueeze', [target_ref], axes=[1])
 
     inp_gather_kwargs = {"input": MGXInstruction(inp_ref), "dim": 1, "index": MGXInstruction(target_unsq)}
     gathered_inp = acc_ops_gather(mgx_module, node, (), inp_gather_kwargs).instr_ref
@@ -166,35 +150,35 @@ def acc_ops_nll_loss(mgx_module, node, args, kwargs):
     weight_gather_kwargs = {"input": MGXInstruction(weight_bcst), "dim": 1, "index": MGXInstruction(target_unsq)}
     gathered_weights = acc_ops_gather(mgx_module, node, (), weight_gather_kwargs).instr_ref
 
-    neg_inp = mgx_module.add_instruction(migraphx.op('neg'), [gathered_inp])
-    weighted_inp = mgx_module.add_instruction(migraphx.op('mul'), [gathered_weights, neg_inp])
+    neg_inp = add_op(mgx_module, 'neg', [gathered_inp])
+    weighted_inp = add_op(mgx_module, 'mul', [gathered_weights, neg_inp])
 
     # reduction type.  'none' must be specified; an empty value of Python None defaults to 'mean'
     if kwargs.get('reduction') == 'none':
         # Don't reduce; return a 1-d vector
-        loss =  mgx_module.add_instruction(migraphx.op('squeeze'), [weighted_inp])
+        loss = add_op(mgx_module, 'squeeze', [weighted_inp])
         weight_sum = mgx_module.add_literal(torch.tensor(0, dtype=dtype).numpy())
     else:
         # sum- or mean-reduction case.  Sum W * X, divide by sum of weights, and return a scalar
         # Reduce, i.e. take the sum of all values
-        reduce_ins =  mgx_module.add_instruction(
-            migraphx.op('reduce_sum', axes=list(range(weighted_inp.shape().ndim()))), [weighted_inp])
+        reduce_ins = add_op(mgx_module, 'reduce_sum', [weighted_inp],
+                            axes=list(range(weighted_inp.shape().ndim())))
         # squeeze the number of dimensions down to none (i.e. scalar)
-        reduce_ins =  mgx_module.add_instruction(migraphx.op('squeeze'), [reduce_ins])
+        reduce_ins = add_op(mgx_module, 'squeeze', [reduce_ins])
 
         # Calculate the sum of weights
-        weight_sum = mgx_module.add_instruction(migraphx.op('reduce_sum',
-                axes=list(range(gathered_weights.shape().ndim()))), [gathered_weights])
+        weight_sum = add_op(mgx_module, 'reduce_sum', [gathered_weights],
+                           axes=list(range(gathered_weights.shape().ndim())))
 
         # squeeze the sum of weights to scalar
-        weight_sum =  mgx_module.add_instruction(migraphx.op('squeeze'), [weight_sum])
+        weight_sum = add_op(mgx_module, 'squeeze', [weight_sum])
 
         if kwargs.get('reduction') == 'sum':
             loss = reduce_ins
 
         # the default reduction type is 'mean'
         else:
-            loss = mgx_module.add_instruction(migraphx.op('div'), [reduce_ins, weight_sum])
+            loss = add_op(mgx_module, 'div', [reduce_ins, weight_sum])
 
     if "weight_sum" in kwargs:
         return MGXInstruction(loss), MGXInstruction(weight_sum)
@@ -209,7 +193,6 @@ def acc_ops_clamp(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     inp_instr_ref = inp.instr_ref
     dtype = get_arg_dtype(inp_instr_ref)
-    out_lens = inp_instr_ref.shape().lens()
     # TODO: fix upper and lower bounds to 'inf' once migraphx supports it
     if node.target == acc_ops.hardtanh:
         min_val, max_val = kwargs['min_val'], kwargs['max_val']
@@ -231,13 +214,7 @@ def acc_ops_clamp(mgx_module, node, args, kwargs):
         max_mgx = mgx_module.add_literal(
             torch.tensor([max_val], dtype=dtype).numpy())
 
-    min_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_lens), [min_mgx])
-    max_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_lens), [max_mgx])
-
-    out = mgx_module.add_instruction(migraphx.op('clip'),
-                                     [inp_instr_ref, min_mgx, max_mgx])
+    out = add_common_op(mgx_module, 'clip', [inp_instr_ref, min_mgx, max_mgx])
 
     return MGXInstruction(out, qparams=inp.qparams)
 
@@ -254,10 +231,9 @@ def acc_ops_add(mgx_module, node, args, kwargs):
         isinstance(a, MGXInstruction) and a.is_quantized()
         for a in (inp, other))
 
-    inp, other = broadcast_for_elemwise_op(mgx_module, node, inp, other)
+    inp, other = elemwise_operands(mgx_module, node, inp, other)
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('add'), [inp, other]))
+    return MGXInstruction(add_common_op(mgx_module, 'add', [inp, other]))
 
 
 @migraphx_converter(acc_ops.sub)
@@ -271,10 +247,9 @@ def acc_ops_sub(mgx_module, node, args, kwargs):
         isinstance(a, MGXInstruction) and a.is_quantized()
         for a in (inp, other))
 
-    inp, other = broadcast_for_elemwise_op(mgx_module, node, inp, other)
+    inp, other = elemwise_operands(mgx_module, node, inp, other)
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('sub'), [inp, other]))
+    return MGXInstruction(add_common_op(mgx_module, 'sub', [inp, other]))
 
 
 @migraphx_converter(acc_ops.mul)
@@ -288,10 +263,9 @@ def acc_ops_mul(mgx_module, node, args, kwargs):
         isinstance(a, MGXInstruction) and a.is_quantized()
         for a in (inp, other))
 
-    inp, other = broadcast_for_elemwise_op(mgx_module, node, inp, other)
+    inp, other = elemwise_operands(mgx_module, node, inp, other)
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('mul'), [inp, other]))
+    return MGXInstruction(add_common_op(mgx_module, 'mul', [inp, other]))
 
 
 @migraphx_converter(acc_ops.pow)
@@ -305,10 +279,9 @@ def acc_ops_pow(mgx_module, node, args, kwargs):
         isinstance(a, MGXInstruction) and a.is_quantized()
         for a in (inp, other))
 
-    inp, other = broadcast_for_elemwise_op(mgx_module, node, inp, other)
+    inp, other = elemwise_operands(mgx_module, node, inp, other)
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('pow'), [inp, other]))
+    return MGXInstruction(add_common_op(mgx_module, 'pow', [inp, other]))
 
 
 @migraphx_converter(acc_ops.fmod)
@@ -320,10 +293,9 @@ def acc_ops_fmod(mgx_module, node, args, kwargs):
         isinstance(a, MGXInstruction) and a.is_quantized()
         for a in (inp, other))
 
-    inp, other = broadcast_for_elemwise_op(mgx_module, node, inp, other)
+    inp, other = elemwise_operands(mgx_module, node, inp, other)
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('fmod'), [inp, other]))
+    return MGXInstruction(add_common_op(mgx_module, 'fmod', [inp, other]))
 
 
 
@@ -333,40 +305,33 @@ def acc_ops_log2(mgx_module, node, args, kwargs):
     assert not inp.is_quantized()
 
     if version.parse(MIGRAPHX_VERSION) > version.parse("2.11.0"):
-        return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('log2'), [inp.instr_ref]))
+        return MGXInstruction(add_op(mgx_module, 'log2', [inp.instr_ref]))
     else:
         ln2_value = torch.tensor(0.693147180559945309)
-        log_inp = MGXInstruction(
-            mgx_module.add_instruction(migraphx.op('log'), [inp.instr_ref]))
-
+        log_inp = add_op(mgx_module, 'log', [inp.instr_ref])
         ln2_instr = mgx_module.add_literal(ln2_value.numpy())
-        ln2_instr = mgx_module.add_instruction(
-            migraphx.op('multibroadcast', out_lens=log_inp.shape().lens()), [ln2_instr])
-
-        return MGXInstruction(
-            mgx_module.add_instruction(migraphx.op('div'), [log_inp.instr_ref, ln2_instr]))
+        ln2_instr = add_op(mgx_module, 'multibroadcast', [ln2_instr],
+                           out_lens=log_inp.shape().lens())
+        return MGXInstruction(add_op(mgx_module, 'div', [log_inp, ln2_instr]))
 
 @migraphx_converter(acc_ops.abs)
 def acc_ops_abs(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('abs'),
-                                                     [inp.instr_ref]),
+    return MGXInstruction(add_op(mgx_module, 'abs', [inp.instr_ref]),
                           qparams=inp.qparams)
 
 
 @migraphx_converter(acc_ops.logical_not)
 def acc_ops_logical_not(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'), [inp.instr_ref]),
+    return MGXInstruction(add_op(mgx_module, 'not', [inp.instr_ref]),
                           bool_output=True)
 
 
 @migraphx_converter(acc_ops.neg)
 def acc_ops_neg(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('neg'),
-                                                     [inp.instr_ref]),
+    return MGXInstruction(add_op(mgx_module, 'neg', [inp.instr_ref]),
                           qparams=inp.qparams)
 
 
@@ -374,16 +339,14 @@ def acc_ops_neg(mgx_module, node, args, kwargs):
 def acc_ops_floor(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('floor'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'floor', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.ceil)
 def acc_ops_ceil(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('ceil'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'ceil', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.div)
@@ -397,10 +360,9 @@ def acc_ops_div(mgx_module, node, args, kwargs):
         isinstance(a, MGXInstruction) and a.is_quantized()
         for a in (inp, other))
 
-    inp, other = broadcast_for_elemwise_op(mgx_module, node, inp, other)
+    inp, other = elemwise_operands(mgx_module, node, inp, other)
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('div'), [inp, other]))
+    return MGXInstruction(add_common_op(mgx_module, 'div', [inp, other]))
 
 
 @migraphx_converter(acc_ops.floor_div)
@@ -414,11 +376,9 @@ def acc_ops_floor_div(mgx_module, node, args, kwargs):
         isinstance(a, MGXInstruction) and a.is_quantized()
         for a in (inp, other))
 
-    inp, other = broadcast_for_elemwise_op(mgx_module, node, inp, other)
+    inp, other = elemwise_operands(mgx_module, node, inp, other)
 
-    div = mgx_module.add_instruction(migraphx.op('div'), [inp, other])
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('floor'), [div]))
+    return MGXInstruction(build_floor_div(mgx_module, [inp, other]))
 
 
 @migraphx_converter(acc_ops.trunc_div)
@@ -431,30 +391,15 @@ def acc_ops_trunc_div(mgx_module, node, args, kwargs):
 def acc_ops_log(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('log'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'log', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.matmul)
 def acc_ops_matmul(mgx_module, node, args, kwargs):
-
     inp, other = kwargs['input'], kwargs['other']
     assert not inp.is_quantized() and not other.is_quantized()
-
-    inp, other = inp.instr_ref, other.instr_ref
-    inp_shape = inp.shape().lens()
-    other_shape = other.shape().lens()
-    out_shape_prefix = np.broadcast_shapes(inp_shape[:-2], other_shape[:-2])
-
-    inp_bc_shape = list(out_shape_prefix) + inp_shape[-2:]
-    other_bc_shape = list(out_shape_prefix) + other_shape[-2:]
-
-    inp_bc = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=inp_bc_shape), [inp])
-    other_bc = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=other_bc_shape), [other])
     return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('dot'), [inp_bc, other_bc]))
+        build_matmul(mgx_module, [inp.instr_ref, other.instr_ref]))
 
 
 @migraphx_converter(acc_ops.conv1d)
@@ -485,22 +430,12 @@ def acc_ops_convnd(mgx_module, node, args, kwargs):
     else:
         raise RuntimeError(f'Unexpected value for padding: {padding}')
 
-    out_mgx = mgx_module.add_instruction(
-        migraphx.op('convolution',
-                    stride=stride,
-                    padding=padding,
-                    dilation=dilation,
-                    group=group), [inp, kernel])
-
-    out_shape = out_mgx.shape().lens()
+    build_args = [inp, kernel]
     if 'bias' in kwargs and kwargs['bias'] is not None:
-        bias_mgx = mgx_module.add_instruction(
-            migraphx.op('broadcast', axis=1, out_lens=out_shape),
-            [kwargs['bias'].instr_ref])
-        out_mgx = mgx_module.add_instruction(migraphx.op('add'),
-                                             [out_mgx, bias_mgx])
+        build_args.append(kwargs['bias'].instr_ref)
 
-    return MGXInstruction(out_mgx)
+    return MGXInstruction(
+        build_conv(mgx_module, build_args, stride, padding, dilation, group))
 
 
 @migraphx_converter(acc_ops.conv_transpose2d)
@@ -511,45 +446,28 @@ def acc_ops_conv_transposend(mgx_module, node, args, kwargs):
     assert not inp.is_quantized() and not kernel.is_quantized()
 
     inp, kernel = inp.instr_ref, kernel.instr_ref
-    in_shape = inp.shape().lens()
-    kernel_size = kernel.shape().lens()[2:]
-    conv_dim = len(kernel_size)
+    conv_dim = len(kernel.shape().lens()[2:])
     stride = extend_attr(kwargs['stride'], conv_dim)
     dilation = extend_attr(kwargs['dilation'], conv_dim)
-    kernel_size = extend_attr(kernel_size, conv_dim)
     padding = extend_attr(kwargs['padding'], conv_dim)
     output_padding = extend_attr(kwargs['output_padding'], conv_dim)
     group = kwargs['groups']
 
-    out_mgx = mgx_module.add_instruction(
-        migraphx.op('deconvolution',
-                    stride=stride,
-                    padding=padding,
-                    dilation=dilation,
-                    group=group), [inp, kernel])
-
-    if not all(i == 0 for i in output_padding):
-        pads = [0 for i in range(conv_dim)]
-        pads = pads + output_padding
-        out_mgx = mgx_module.add_instruction(migraphx.op('pad', pads=pads),
-                                             [out_mgx])
-
-    out_shape = out_mgx.shape().lens()
+    build_args = [inp, kernel]
     if 'bias' in kwargs and kwargs['bias'] is not None:
-        bias_mgx = mgx_module.add_instruction(
-            migraphx.op('broadcast', axis=1, out_lens=out_shape),
-            [kwargs['bias']])
-        out_mgx = mgx_module.add_instruction(migraphx.op('add'),
-                                             [out_mgx, bias_mgx])
+        bias = kwargs['bias']
+        assert not bias.is_quantized()
+        build_args.append(bias.instr_ref)
 
-    return MGXInstruction(out_mgx)
+    return MGXInstruction(
+        build_conv_transpose(mgx_module, build_args, stride, padding, dilation,
+                             group, output_padding))
 
 
 @migraphx_converter(acc_ops.sign)
 def acc_ops_sign(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('sign'),
-                                                     [inp.instr_ref]),
+    return MGXInstruction(add_op(mgx_module, 'sign', [inp.instr_ref]),
                           qparams=inp.qparams)
 
 
@@ -564,7 +482,7 @@ def acc_ops_relu(mgx_module, node, args, kwargs):
     else:
         inp = node_inp.instr_ref
 
-    out = mgx_module.add_instruction(migraphx.op('relu'), [inp])
+    out = add_op(mgx_module, 'relu', [inp])
 
     if node_inp.is_quantized():
         return add_quantize_linear(mgx_module,
@@ -582,9 +500,8 @@ def acc_ops_leaky_relu(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
     assert not inp.is_quantized()
     return MGXInstruction(
-        mgx_module.add_instruction(
-            migraphx.op('leaky_relu', alpha=kwargs['negative_slope']),
-            [inp.instr_ref]))
+        add_op(mgx_module, 'leaky_relu', [inp.instr_ref],
+               alpha=kwargs['negative_slope']))
 
 
 @migraphx_converter(acc_ops.elu)
@@ -592,8 +509,7 @@ def acc_ops_elu(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
     assert not inp.is_quantized()
     return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('elu', alpha=kwargs['alpha']),
-                                   [inp.instr_ref]))
+        add_op(mgx_module, 'elu', [inp.instr_ref], alpha=kwargs['alpha']))
 
 
 @migraphx_converter(acc_ops.glu)
@@ -601,270 +517,135 @@ def acc_ops_glu(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
     dim = kwargs['dim'] if 'dim' in kwargs else -1
 
-    inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
-    inp_shape = inp_ref.shape().lens()
-
-    mid_point = inp_shape[dim] //2
-    first_half_start, first_half_end = 0, mid_point
-    second_half_start, second_half_end = mid_point , inp_shape[dim]
-
-    first_half = mgx_module.add_instruction(migraphx.op('slice', axes=[dim], starts=[first_half_start], ends=[first_half_end]), [inp_ref])
-
-    second_half = mgx_module.add_instruction(migraphx.op('slice', axes=[dim], starts=[second_half_start], ends=[second_half_end]), [inp_ref])
-
-    sigmoid_second_half = mgx_module.add_instruction(migraphx.op('sigmoid'), [second_half])
-
-    glu_out = mgx_module.add_instruction(migraphx.op('mul'), [first_half, sigmoid_second_half])
-
-    return MGXInstruction(glu_out, qparams=qparams, bool_output=bool_output)
+    return MGXInstruction(build_glu(mgx_module, [inp.instr_ref], dim),
+                          qparams=inp.qparams,
+                          bool_output=inp.bool_output)
 
 
 @migraphx_converter(acc_ops.selu)
 def acc_ops_selu(mgx_module, node, args, kwargs):
-
     inp = kwargs['input']
     assert not inp.is_quantized()
-    inp = inp.instr_ref
-    dtype = get_arg_dtype(inp)
-    inp_shape = inp.shape().lens()
-
-    alpha_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=inp_shape), [
-            mgx_module.add_literal(
-                torch.tensor([1.673263242354], dtype=dtype).numpy())
-        ])
-
-    scale_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=inp_shape), [
-            mgx_module.add_literal(
-                torch.tensor([1.050700987355], dtype=dtype).numpy())
-        ])
-
-    zero_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=inp_shape),
-        [mgx_module.add_literal(torch.tensor([0], dtype=dtype).numpy())])
-
-    one_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=inp_shape),
-        [mgx_module.add_literal(torch.tensor([1.0], dtype=dtype).numpy())])
-
-    max_mgx = mgx_module.add_instruction(migraphx.op('max'), [zero_mgx, inp])
-
-    exp_mgx = mgx_module.add_instruction(migraphx.op('exp'), [inp])
-    sub_mgx = mgx_module.add_instruction(migraphx.op('sub'),
-                                         [exp_mgx, one_mgx])
-    mul_mgx = mgx_module.add_instruction(migraphx.op('mul'),
-                                         [alpha_mgx, sub_mgx])
-    min_mgx = mgx_module.add_instruction(migraphx.op('min'),
-                                         [zero_mgx, mul_mgx])
-
-    sum_mgx = mgx_module.add_instruction(migraphx.op('add'),
-                                         [max_mgx, min_mgx])
-
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('mul'), [scale_mgx, sum_mgx]))
+    return MGXInstruction(build_selu(mgx_module, [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.softsign)
 def acc_ops_softsign(mgx_module, node, args, kwargs):
-
     inp = kwargs['input']
     assert not inp.is_quantized()
-    inp = inp.instr_ref
-    dtype = get_arg_dtype(inp)
-    inp_shape = inp.shape().lens()
-
-    one_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=inp_shape),
-        [mgx_module.add_literal(torch.tensor([1.0], dtype=dtype).numpy())])
-
-    abs_mgx = mgx_module.add_instruction(migraphx.op('abs'), [inp])
-    add_mgx = mgx_module.add_instruction(migraphx.op('add'),
-                                         [abs_mgx, one_mgx])
-
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('div'), [inp, add_mgx]))
+    return MGXInstruction(build_softsign(mgx_module, [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.sin)
 def acc_ops_sin(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('sin'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'sin', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.cos)
 def acc_ops_cos(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('cos'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'cos', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.tan)
 def acc_ops_tan(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('tan'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'tan', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.sinh)
 def acc_ops_sinh(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('sinh'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'sinh', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.cosh)
 def acc_ops_cosh(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('cosh'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'cosh', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.tanh)
 def acc_ops_tanh(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('tanh'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'tanh', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.asin)
 def acc_ops_asin(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('asin'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'asin', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.acos)
 def acc_ops_acos(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('acos'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'acos', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.atan)
 def acc_ops_atan(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('atan'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'atan', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.exp)
 def acc_ops_exp(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('exp'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'exp', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.sqrt)
 def acc_ops_sqrt(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('sqrt'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'sqrt', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.rsqrt)
 def acc_ops_rsqrt(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('rsqrt'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'rsqrt', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.reciprocal)
 def acc_ops_reciprocal(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('recip'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'recip', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.gelu)
 def acc_ops_gelu(mgx_module, node, args, kwargs):
-
     inp = kwargs['input']
     assert not inp.is_quantized()
-    inp = inp.instr_ref
-    dtype = get_arg_dtype(inp)
-    inp_shape = inp.shape().lens()
-    half_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=inp_shape),
-        [mgx_module.add_literal(torch.tensor([0.5], dtype=dtype).numpy())])
-
-    one_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=inp_shape),
-        [mgx_module.add_literal(torch.tensor([1.0], dtype=dtype).numpy())])
-
-    sqrt2_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=inp_shape), [
-            mgx_module.add_literal(
-                torch.tensor([np.sqrt(2)], dtype=dtype).numpy())
-        ])
-
-    mul_half_mgx = mgx_module.add_instruction(migraphx.op('mul'),
-                                              [inp, half_mgx])
-
-    div_mgx = mgx_module.add_instruction(migraphx.op('div'), [inp, sqrt2_mgx])
-
-    erf_mgx = mgx_module.add_instruction(migraphx.op('erf'), [div_mgx])
-
-    add_one_mgx = mgx_module.add_instruction(migraphx.op('add'),
-                                             [erf_mgx, one_mgx])
-
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('mul'),
-                                   [mul_half_mgx, add_one_mgx]))
+    return MGXInstruction(build_gelu(mgx_module, [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.sigmoid)
 def acc_ops_sigmoid(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('sigmoid'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'sigmoid', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.hardsigmoid)
 def acc_ops_hard_sigmoid(mgx_module, node, args, kwargs):
-
     inp = kwargs['input']
     assert not inp.is_quantized()
-    inp = inp.instr_ref
-    dtype = get_arg_dtype(inp)
-    shape = inp.shape().lens()
-
-    alpha = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=shape),
-        [mgx_module.add_literal(torch.tensor([1 / 6], dtype=dtype).numpy())])
-
-    beta = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=shape),
-        [mgx_module.add_literal(torch.tensor([1 / 2], dtype=dtype).numpy())])
-
-    ones = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=shape),
-        [mgx_module.add_literal(torch.tensor([1], dtype=dtype).numpy())])
-
-    zeros = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=shape),
-        [mgx_module.add_literal(torch.tensor([0], dtype=dtype).numpy())])
-
-    mul = mgx_module.add_instruction(migraphx.op('mul'), [alpha, inp])
-    add = mgx_module.add_instruction(migraphx.op('add'), [beta, mul])
-
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('clip'), [add, zeros, ones]))
+    return MGXInstruction(build_hardsigmoid(mgx_module, [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.softmax)
@@ -872,18 +653,15 @@ def acc_ops_softmax(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
     return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('softmax', axis=kwargs['dim']),
-                                   [inp.instr_ref]))
+        add_op(mgx_module, 'softmax', [inp.instr_ref], axis=kwargs['dim']))
 
 
 @migraphx_converter(acc_ops.log_softmax)
 def acc_ops_log_softmax(mgx_module, node, _args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    softmax_ins = mgx_module.add_instruction(
-        migraphx.op('softmax', axis=kwargs['dim']), [inp.instr_ref])
     return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('log'), [softmax_ins]))
+        add_op(mgx_module, 'logsoftmax', [inp.instr_ref], axis=kwargs['dim']))
 
 
 @migraphx_converter(acc_ops.tile)
@@ -901,8 +679,7 @@ def acc_ops_tile(mgx_module, node, args, kwargs):
     for i, d in enumerate(dims):
         orig = inp
         for _ in range(d - 1):
-            inp = mgx_module.add_instruction(migraphx.op('concat', axis=i),
-                                             [inp, orig])
+            inp = add_op(mgx_module, 'concat', [inp, orig], axis=i)
 
     return MGXInstruction(inp, bool_output=bool_output)
 
@@ -962,17 +739,11 @@ def acc_ops_adaptive_avg_pool2d(mgx_module, node, args, kwargs):
     ]
     padding = [0, 0]
 
-    # MIGraphX is using an older version of pybind11 which does not add
-    # the index dunder method for enums when using python < 3.8
-    mode = migraphx.op.pooling_mode.average
-    mode = int(mode) if not hasattr(mode, '__index__') else mode
-
-    out = mgx_module.add_instruction(
-        migraphx.op('pooling',
-                    mode=mode,
-                    padding=padding,
-                    stride=strides,
-                    lengths=kernel_size), [inp])
+    out = add_op(mgx_module, 'pooling', [inp],
+                 mode=get_pooling_mode('average'),
+                 padding=padding,
+                 stride=strides,
+                 lengths=kernel_size)
 
     if node_inp.is_quantized():
         return add_quantize_linear(mgx_module,
@@ -1006,18 +777,12 @@ def acc_ops_max_pool2d(mgx_module, node, args, kwargs):
     if not all(i == 1 for i in dilation):
         raise RuntimeError('Dilations are currently not supported.')
 
-    # MIGraphX is using an older version of pybind11 which does not add
-    # the index dunder method for enums when using python < 3.8
-    mode = migraphx.op.pooling_mode.max
-    mode = int(mode) if not hasattr(mode, '__index__') else mode
-
-    out = mgx_module.add_instruction(
-        migraphx.op('pooling',
-                    mode=mode,
-                    padding=padding,
-                    stride=stride,
-                    lengths=lengths,
-                    ceil_mode=ceil_mode), [inp])
+    out = add_op(mgx_module, 'pooling', [inp],
+                 mode=get_pooling_mode('max'),
+                 padding=padding,
+                 stride=stride,
+                 lengths=lengths,
+                 ceil_mode=ceil_mode)
 
     if node_inp.is_quantized():
         return add_quantize_linear(mgx_module,
@@ -1050,20 +815,14 @@ def acc_ops_avg_pool2d(mgx_module, node, args, kwargs):
 
         padding = [0 for i in padding]
 
-        inp = mgx_module.add_instruction(migraphx.op('pad', pads=pads), [inp])
+        inp = add_op(mgx_module, 'pad', [inp], pads=pads)
 
-    # MIGraphX is using an older version of pybind11 which does not add
-    # the index dunder method for enums when using python < 3.8
-    mode = migraphx.op.pooling_mode.average
-    mode = int(mode) if not hasattr(mode, '__index__') else mode
-
-    out = mgx_module.add_instruction(
-        migraphx.op('pooling',
-                    mode=mode,
-                    padding=padding,
-                    stride=stride,
-                    lengths=lengths,
-                    ceil_mode=ceil_mode), [inp])
+    out = add_op(mgx_module, 'pooling', [inp],
+                 mode=get_pooling_mode('average'),
+                 padding=padding,
+                 stride=stride,
+                 lengths=lengths,
+                 ceil_mode=ceil_mode)
 
     return MGXInstruction(out, qparams=qparams)
 
@@ -1083,11 +842,8 @@ def acc_ops_flatten(mgx_module, node, args, kwargs):
         np.prod(in_shape[start_dim:end_dim + 1])
     ] + in_shape[end_dim + 1:]
 
-    std_input = mgx_module.add_instruction(migraphx.op('contiguous'),
-                                           [inp_ref])
-
-    return MGXInstruction(mgx_module.add_instruction(
-        migraphx.op('reshape', dims=out_shape), [std_input]),
+    return MGXInstruction(add_op(mgx_module, 'reshape', [inp_ref],
+                                 dims=out_shape),
                           qparams=qparams,
                           bool_output=bool_output)
 
@@ -1098,11 +854,9 @@ def acc_ops_squeeze(mgx_module, node, args, kwargs):
     dim = kwargs['dim'] if 'dim' in kwargs else None
     inp = kwargs['input']
     inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
-    if dim is None:
-        out = mgx_module.add_instruction(migraphx.op('squeeze'), [inp_ref])
-    else:
-        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=[dim]),
-                                         [inp_ref])
+    # Empty axes squeezes every size-1 dim, matching torch.squeeze() with no dim.
+    axes = [] if dim is None else [dim]
+    out = add_op(mgx_module, 'squeeze', [inp_ref], axes=axes)
 
     return MGXInstruction(out, qparams=qparams, bool_output=bool_output)
 
@@ -1111,8 +865,8 @@ def acc_ops_squeeze(mgx_module, node, args, kwargs):
 def acc_ops_unsqueeze(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
-    return MGXInstruction(mgx_module.add_instruction(
-        migraphx.op('unsqueeze', axes=[kwargs['dim']]), [inp_ref]),
+    return MGXInstruction(add_op(mgx_module, 'unsqueeze', [inp_ref],
+                                 axes=[kwargs['dim']]),
                           qparams=qparams,
                           bool_output=bool_output)
 
@@ -1128,17 +882,10 @@ def acc_ops_topk(mgx_module, node, args, kwargs):
     if not kwargs['sorted']:
         raise RuntimeError("Currently only sorted=True is supported")
 
-    topk = mgx_module.add_instruction(
-        migraphx.op('topk', k=k, axis=dim, largest=largest), [inp])
+    val, ind = add_op(mgx_module, 'topk', [inp], k=k, axis=dim, largest=largest,
+                      num_outputs=2)
 
-    val = MGXInstruction(mgx_module.add_instruction(
-        migraphx.op('get_tuple_elem', index=0), [topk]),
-                         qparams=qparams)
-    ind = MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('get_tuple_elem', index=1),
-                                   [topk]))
-
-    return [val, ind]
+    return [MGXInstruction(val, qparams=qparams), MGXInstruction(ind)]
 
 
 @migraphx_converter(acc_ops.argmax)
@@ -1153,13 +900,9 @@ def acc_ops_argmax(mgx_module, node, args, kwargs):
         dim = 0
 
     inp = inp.instr_ref
-    out = mgx_module.add_instruction(migraphx.op('argmax', axis=dim), [inp])
+    out = add_op(mgx_module, 'argmax', [inp], axis=dim)
 
-    if not keepdim:
-        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=[dim]),
-                                         [out])
-
-    return MGXInstruction(out)
+    return MGXInstruction(squeeze_reduced(mgx_module, out, [dim], keepdim))
 
 
 @migraphx_converter(acc_ops.argmin)
@@ -1174,13 +917,9 @@ def acc_ops_argmin(mgx_module, node, args, kwargs):
         dim = 0
 
     inp = inp.instr_ref
-    out = mgx_module.add_instruction(migraphx.op('argmin', axis=dim), [inp])
+    out = add_op(mgx_module, 'argmin', [inp], axis=dim)
 
-    if not keepdim:
-        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=[dim]),
-                                         [out])
-
-    return MGXInstruction(out)
+    return MGXInstruction(squeeze_reduced(mgx_module, out, [dim], keepdim))
 
 
 @migraphx_converter(acc_ops.embedding)
@@ -1190,8 +929,8 @@ def acc_ops_embedding(mgx_module, node, args, kwargs):
     assert not inp.is_quantized() and not weight.is_quantized()
 
     return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('gather', axis=0),
-                                   [weight.instr_ref, inp.instr_ref]))
+        add_op(mgx_module, 'gather', [weight.instr_ref, inp.instr_ref],
+               axis=0))
 
 ## MIGraphX cannot optimize gathernd well in some cases
 @migraphx_converter(acc_ops.gather, enabled=False)
@@ -1219,7 +958,8 @@ def acc_ops_gather_legacy(mgx_module, node, args, kwargs):
     coords = acc_ops_cat(mgx_module, node, (), {"tensors": cat_tensors, "dim": 1})
     new_shape = tuple(list(index_lens) + [len(index_lens)])
     coords = acc_ops_reshape(mgx_module, node, (), {"input": coords, "shape": new_shape})
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('gathernd'), [inp.instr_ref, coords.instr_ref]))
+    return MGXInstruction(
+        add_op(mgx_module, 'gathernd', [inp.instr_ref, coords.instr_ref]))
 
 
 @migraphx_converter(acc_ops.gather)
@@ -1278,9 +1018,8 @@ def acc_ops_reshape(mgx_module, node, args, kwargs):
     inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
     out_shape = kwargs["shape"]
 
-    cont_inp = mgx_module.add_instruction(migraphx.op('contiguous'), [inp_ref])
-    return MGXInstruction(mgx_module.add_instruction(
-        migraphx.op('reshape', dims=list(out_shape)), [cont_inp]),
+    return MGXInstruction(add_op(mgx_module, 'reshape', [inp_ref],
+                                 dims=list(out_shape)),
                           qparams=qparams,
                           bool_output=bool_output)
 
@@ -1290,8 +1029,8 @@ def acc_ops_permute(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
     perm = normalize_permutation(kwargs['permutation'])
-    return MGXInstruction(mgx_module.add_instruction(
-        migraphx.op('transpose', permutation=perm), [inp_ref]),
+    return MGXInstruction(add_op(mgx_module, 'transpose', [inp_ref],
+                                 permutation=perm),
                           qparams=qparams,
                           bool_output=bool_output)
 
@@ -1325,8 +1064,8 @@ def acc_ops_pad(mgx_module, node, args, kwargs):
     assert len(pre_padding) == len(post_padding)
     pads = pre_padding + post_padding
 
-    return MGXInstruction(mgx_module.add_instruction(
-        (migraphx.op('pad', pads=pads, value=value)), [inp]),
+    return MGXInstruction(add_op(mgx_module, 'pad', [inp], pads=pads,
+                                 value=value),
                           qparams=qparams)
 
 
@@ -1334,8 +1073,7 @@ def acc_ops_pad(mgx_module, node, args, kwargs):
 def acc_ops_contiguous(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     inp_ref, qparams, bool_output = inp.instr_ref, inp.qparams, inp.bool_output
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('contiguous'),
-                                                     [inp_ref]),
+    return MGXInstruction(add_op(mgx_module, 'contiguous', [inp_ref]),
                           qparams=qparams,
                           bool_output=bool_output)
 
@@ -1365,9 +1103,11 @@ def acc_ops_chunk(mgx_module, node, args, kwargs):
 
     for start, end in zip(start_idxs, end_idxs):
         output.append(
-            MGXInstruction(mgx_module.add_instruction(
-                migraphx.op('slice', axes=[dim], starts=[start], ends=[end]),
-                [inp_ref]),
+            MGXInstruction(add_op(mgx_module,
+                                  'slice', [inp_ref],
+                                  axes=[dim],
+                                  starts=[start],
+                                  ends=[end]),
                            qparams=qparams,
                            bool_output=bool_output))
 
@@ -1389,9 +1129,11 @@ def acc_ops_split(mgx_module, node, args, kwargs):
 
     for start, end in zip(start_idxs, end_idxs):
         output.append(
-            MGXInstruction(mgx_module.add_instruction(
-                migraphx.op('slice', axes=[dim], starts=[start], ends=[end]),
-                [inp_ref]),
+            MGXInstruction(add_op(mgx_module,
+                                  'slice', [inp_ref],
+                                  axes=[dim],
+                                  starts=[start],
+                                  ends=[end]),
                            qparams=qparams,
                            bool_output=bool_output))
 
@@ -1410,8 +1152,9 @@ def acc_ops_expand_tensor(mgx_module, node, args, kwargs):
     out_shape = [
         s if s >= 0 else in_shape[i - offset] for i, s in enumerate(out_shape)
     ]
-    return MGXInstruction(mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=list(out_shape)), [inp_ref]),
+    return MGXInstruction(add_op(mgx_module,
+                                 'multibroadcast', [inp_ref],
+                                 out_lens=list(out_shape)),
                           qparams=qparams,
                           bool_output=bool_output)
 
@@ -1433,8 +1176,7 @@ def acc_ops_where(mgx_module, node, args, kwargs):
                 f"Error in parsing acc_ops.where, dtype mismatch: {inp.shape()}, {other.shape()}"
             )
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('where'), [cond, inp, other]))
+    return MGXInstruction(add_op(mgx_module, 'where', [cond, inp, other]))
 
 
 @migraphx_converter(acc_ops.masked_fill)
@@ -1488,8 +1230,7 @@ def acc_ops_cat(mgx_module, node, args, kwargs):
     tensors = [t.instr_ref for t in kwargs['tensors']]
     cat_dim = kwargs['dim']
 
-    return MGXInstruction(mgx_module.add_instruction(
-        migraphx.op('concat', axis=cat_dim), tensors),
+    return MGXInstruction(add_op(mgx_module, 'concat', tensors, axis=cat_dim),
                           bool_output=bool_output)
 
 
@@ -1509,8 +1250,7 @@ def acc_ops_maximum(mgx_module, node, args, kwargs):
                 f"Error in parsing acc_ops.maximum, dtype mismatch: {inp.shape()}, {other.shape()}"
             )
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('max'), [inp, other]))
+    return MGXInstruction(add_op(mgx_module, 'max', [inp, other]))
 
 
 @migraphx_converter(acc_ops.max)
@@ -1520,25 +1260,12 @@ def acc_ops_max(mgx_module, node, args, kwargs):
 
     if 'dim' not in kwargs:
         dims = list(range(len(in_shape)))
-        max_ = mgx_module.add_instruction(migraphx.op('reduce_max', axes=dims),
-                                          [inp])
-        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
-                                         [max_])
+        out = add_reduce_op(mgx_module, 'reduce_max', [inp], dims)
         return MGXInstruction(out, qparams=qparams)
     else:
-        dims = kwargs['dim']
         indicies = acc_ops_argmax(mgx_module, node, args, kwargs)
-        max_ = mgx_module.add_instruction(
-            migraphx.op('reduce_max', axes=[dims]), [inp])
-
-        if 'keepdim' in kwargs and kwargs['keepdim']:
-            return [MGXInstruction(max_, qparams=qparams), indicies]
-
-        max_ = mgx_module.add_instruction(
-            migraphx.op('reduce_max', axes=[dims]), [inp])
-
-        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=[dims]),
-                                         [max_])
+        out = add_reduce_op(mgx_module, 'reduce_max', [inp], [kwargs['dim']],
+                            kwargs.get('keepdim', False))
         return [MGXInstruction(out, qparams=qparams), indicies]
 
 
@@ -1549,25 +1276,12 @@ def acc_ops_min(mgx_module, node, args, kwargs):
 
     if 'dim' not in kwargs:
         dims = list(range(len(in_shape)))
-        min_ = mgx_module.add_instruction(migraphx.op('reduce_min', axes=dims),
-                                          [inp])
-        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
-                                         [min_])
+        out = add_reduce_op(mgx_module, 'reduce_min', [inp], dims)
         return MGXInstruction(out, qparams=qparams)
     else:
-        dims = kwargs['dim']
         indicies = acc_ops_argmin(mgx_module, node, args, kwargs)
-        min_ = mgx_module.add_instruction(
-            migraphx.op('reduce_min', axes=[dims]), [inp])
-
-        if 'keepdim' in kwargs and kwargs['keepdim']:
-            return [MGXInstruction(min_, qparams=qparams), indicies]
-
-        min_ = mgx_module.add_instruction(
-            migraphx.op('reduce_min', axes=[dims]), [inp])
-
-        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=[dims]),
-                                         [min_])
+        out = add_reduce_op(mgx_module, 'reduce_min', [inp], [kwargs['dim']],
+                            kwargs.get('keepdim', False))
         return [MGXInstruction(out, qparams=qparams), indicies]
 
 
@@ -1587,53 +1301,24 @@ def acc_ops_minimum(mgx_module, node, args, kwargs):
                 f"Error in parsing acc_ops.minimum, dtype mismatch: {inp.shape()}, {other.shape()}"
             )
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('min'), [inp, other]))
+    return MGXInstruction(add_op(mgx_module, 'min', [inp, other]))
 
 
 @migraphx_converter(acc_ops.mean)
 def acc_ops_mean(mgx_module, node, args, kwargs):
     inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
-    mean = mgx_module.add_instruction(
-        migraphx.op('reduce_mean', axes=list(kwargs['dim'])), [inp])
-
-    if not kwargs.get("keepdim", False):
-        mean = mgx_module.add_instruction(
-            migraphx.op('squeeze', axes=list(kwargs['dim'])), [mean])
+    mean = add_reduce_op(mgx_module, 'reduce_mean', [inp], list(kwargs['dim']),
+                         kwargs.get("keepdim", False))
 
     return MGXInstruction(mean, qparams=qparams)
 
 @migraphx_converter(acc_ops.std)
 def acc_ops_std(mgx_module, node, args, kwargs):
     inp = kwargs['input']
-    dim = kwargs['dim']
-    keepdim = kwargs['keepdim']
-    correction = kwargs['correction']
-
     assert not inp.is_quantized()
-
-    # mean = torch.mean(input, dim=dim, keepdim=True)
-    mean_kwargs = {'input': inp, 'dim': dim, 'keepdim': True}
-    mean = acc_ops_mean(mgx_module, node, args, mean_kwargs)
-
-    # sum_N = torch.sum((input - mean) ** 2, dim=dim, keepdim=keepdim)
-    sub_kwargs = {'input': inp, 'other': mean}
-    mean_sub = acc_ops_sub(mgx_module, node, args, sub_kwargs)
-
-    pow_kwargs = {'input': mean_sub, 'exponent': 2}
-    mean_sub_pow = acc_ops_pow(mgx_module, node, args, pow_kwargs)
-
-    sum_kwargs = {'input': mean_sub_pow, 'dim': dim, 'keepdim': keepdim}
-    sum_N = acc_ops_sum(mgx_module, node, args, sum_kwargs)
-
-    # variance = sum_N / (N - 1)
-    selected_dims = np.prod([mean_sub_pow.shape().lens()[i] for i in dim]) - correction
-    div_kwargs = {'input': sum_N, 'other': selected_dims}
-    variance = acc_ops_div(mgx_module, node, args, div_kwargs)
-
-    # std_dev = torch.sqrt(variance)
-    sqrt_kwargs = {'input': variance}
-    return acc_ops_sqrt(mgx_module, node, args, sqrt_kwargs)
+    return MGXInstruction(
+        build_std(mgx_module, [inp.instr_ref], list(kwargs['dim']),
+                  kwargs['keepdim'], kwargs['correction']))
 
 @migraphx_converter(acc_ops.sum)
 def acc_ops_sum(mgx_module, node, args, kwargs):
@@ -1645,16 +1330,10 @@ def acc_ops_sum(mgx_module, node, args, kwargs):
         range(len(in_shape)))
 
     if dtype == torch.bool:
-        inp = mgx_module.add_instruction(
-            migraphx.op("convert",
-                        target_type=migraphx.shape.type_t.int64_type), [inp])
+        inp = convert_arg(mgx_module, inp, torch.int64)
 
-    sum_ = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=dims),
-                                      [inp])
-
-    if not kwargs.get("keepdim", False):
-        sum_ = mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
-                                          [sum_])
+    sum_ = add_reduce_op(mgx_module, 'reduce_sum', [inp], dims,
+                         kwargs.get("keepdim", False))
 
     return MGXInstruction(sum_, qparams=qparams)
 
@@ -1666,12 +1345,8 @@ def acc_ops_prod(mgx_module, node, args, kwargs):
     in_shape = inp.shape().lens()
     dims = [kwargs['dim']] if 'dim' in kwargs else list(range(len(in_shape)))
 
-    prod = mgx_module.add_instruction(migraphx.op('reduce_prod', axes=dims),
-                                      [inp])
-
-    if not kwargs.get("keepdim", False):
-        prod = mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
-                                          [prod])
+    prod = add_reduce_op(mgx_module, 'reduce_prod', [inp], dims,
+                         kwargs.get("keepdim", False))
 
     return MGXInstruction(prod, qparams=qparams)
 
@@ -1679,8 +1354,8 @@ def acc_ops_prod(mgx_module, node, args, kwargs):
 @migraphx_converter(acc_ops.cumsum)
 def acc_ops_cumsum(mgx_module, node, args, kwargs):
     inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
-    return MGXInstruction(mgx_module.add_instruction(
-        migraphx.op('prefix_scan_sum', axis=kwargs['dim']), [inp]),
+    return MGXInstruction(add_op(mgx_module, 'prefix_scan_sum', [inp],
+                                 axis=kwargs['dim']),
                           qparams=qparams)
 
 
@@ -1746,8 +1421,8 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
 
     out_mgx = inp
     if dims_to_unsqueeze:
-        out_mgx = mgx_module.add_instruction(
-            migraphx.op('unsqueeze', axes=dims_to_unsqueeze), [out_mgx])
+        out_mgx = add_op(mgx_module, 'unsqueeze', [out_mgx],
+                         axes=dims_to_unsqueeze)
 
     num_tensor_dims = len(tensor_dims)
     if num_tensor_dims > 1:
@@ -1755,8 +1430,7 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
         perm = tensor_dims + [
             i for i in range(len(new_shape)) if i not in tensor_dims
         ]
-        out_mgx = mgx_module.add_instruction(
-            migraphx.op('transpose', permutation=perm), [out_mgx])
+        out_mgx = add_op(mgx_module, 'transpose', [out_mgx], permutation=perm)
         slices = [slices[i] for i in perm if i < len(slices)]
 
     unsq_perm_shape = out_mgx.shape().lens()
@@ -1786,17 +1460,15 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
             dims_to_squeeze.append(i)
 
     if axes:
-        out_mgx = mgx_module.add_instruction(
-            migraphx.op('slice', axes=axes, starts=starts, ends=ends),
-            [out_mgx])
+        out_mgx = add_op(mgx_module, 'slice', [out_mgx], axes=axes, starts=starts,
+                         ends=ends)
 
     if dims_to_step:
-        out_mgx = mgx_module.add_instruction(
-            migraphx.op('step', axes=dims_to_step, steps=steps), [out_mgx])
+        out_mgx = add_op(mgx_module, 'step', [out_mgx], axes=dims_to_step,
+                         steps=steps)
 
     if dims_to_squeeze:
-        out_mgx = mgx_module.add_instruction(
-            migraphx.op('squeeze', axes=dims_to_squeeze), [out_mgx])
+        out_mgx = add_op(mgx_module, 'squeeze', [out_mgx], axes=dims_to_squeeze)
 
     if num_tensor_dims == 1:
         ax = tensor_dims[0]
@@ -1804,8 +1476,7 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
         for sq_dim in dims_to_squeeze:
             if sq_dim < ax:
                 ax = ax - 1
-        out_mgx = mgx_module.add_instruction(migraphx.op('gather', axis=ax),
-                                             [out_mgx, idxs])
+        out_mgx = add_op(mgx_module, 'gather', [out_mgx, idxs], axis=ax)
     elif num_tensor_dims > 1:
         idx_tensors = [idx[ax] for ax in tensor_dims]
         idx_tensors = broadcast_tensors(mgx_module, *idx_tensors)
@@ -1821,18 +1492,16 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
             dim_offset = np.prod(lens[ax+1:])
             dim_offset = mgx_module.add_literal(torch.tensor(dim_offset, dtype=idx_dtype).numpy())
             ax_idx = idx_tensors[ax]
-            ax_idx = mgx_module.add_instruction(
-                migraphx.op('reshape', dims=rsp_lens), [ax_idx])
+            ax_idx = add_op(mgx_module, 'reshape', [ax_idx], dims=rsp_lens)
             ax_idx = normalize_neg_indices(mgx_module, ax_idx, lens[ax])
             dim_offset = insert_mbroadcast(mgx_module, dim_offset, rsp_lens)
-            ax_idx = mgx_module.add_instruction(migraphx.op("mul"), [ax_idx, dim_offset])
+            ax_idx = add_op(mgx_module, 'mul', [ax_idx, dim_offset])
             idx_offsets.append(ax_idx)
 
         gather_indices = insert_mbroadcast(mgx_module, idx_offsets[0], out_lens)
         for ins in idx_offsets[1:]:
             ins = insert_mbroadcast(mgx_module, ins, out_lens)
-            gather_indices = mgx_module.add_instruction(
-                migraphx.op("add"), [gather_indices, ins])
+            gather_indices = add_op(mgx_module, 'add', [gather_indices, ins])
 
         for i, dim in enumerate(lens[num_tensor_dims:]):
             ax = i + num_tensor_dims
@@ -1841,15 +1510,12 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
             shp[ax - len(lens)] = lens[ax]
             ax_idx = dim_offset * torch.arange(dim).reshape(shp).broadcast_to(out_lens)
             ax_idx = mgx_module.add_literal(ax_idx.to(idx_dtype).numpy())
-            gather_indices = mgx_module.add_instruction(
-                migraphx.op("add"), [gather_indices, ax_idx])
+            gather_indices = add_op(mgx_module, 'add', [gather_indices, ax_idx])
 
-        out_mgx = mgx_module.add_instruction(
-            migraphx.op('reshape', dims=[out_mgx.shape().elements()]),
-            [out_mgx])
+        out_mgx = add_op(mgx_module, 'reshape', [out_mgx],
+                         dims=[out_mgx.shape().elements()])
 
-        out_mgx = mgx_module.add_instruction(migraphx.op('gather', axis=0),
-                                             [out_mgx, gather_indices])
+        out_mgx = add_op(mgx_module, 'gather', [out_mgx, gather_indices], axis=0)
 
         offset = num_tensor_dims - idx_rank
 
@@ -1874,8 +1540,8 @@ def acc_ops_getitem(mgx_module, node, args, kwargs):
             for i, p in enumerate(new_pos):
                 new_perm[p] = i
 
-            out_mgx = mgx_module.add_instruction(
-                migraphx.op('transpose', permutation=new_perm), [out_mgx])
+            out_mgx = add_op(mgx_module, 'transpose', [out_mgx],
+                             permutation=new_perm)
 
     return MGXInstruction(out_mgx, qparams=qparams, bool_output=bool_output)
 
@@ -1931,8 +1597,7 @@ def acc_ops_select_scatter(mgx_module, node, args, kwargs):
     idx = idx if idx >= 0 else in_shape[dim] + idx
     start, end, step = idx, idx + 1, 1
 
-    src_unsq = mgx_module.add_instruction(migraphx.op('unsqueeze', axes=[dim]),
-                                          [src.instr_ref])
+    src_unsq = add_op(mgx_module, 'unsqueeze', [src.instr_ref], axes=[dim])
 
     new_kwargs = {
         "input": inp,
@@ -2001,29 +1666,7 @@ def acc_ops_scatter_reduce(mgx_module, node, args, kwargs):
     reduce = kwargs["reduce"]
     include_self = kwargs["include_self"]
 
-    reduce_map = {
-        "mean": "scatter_none",
-        "sum": "scatter_add",
-        "prod": "scatter_mul",
-        "amax": "scatter_max",
-        "amin": "scatter_min"
-    }
-
-    inp = inp.instr_ref
-    idx = idx.instr_ref
-    if not include_self and reduce != "mean":
-        dtype = get_arg_dtype(inp)
-        neg_inf, pos_inf = get_min_max_val(dtype)
-        base_literals = {"sum": 0, "prod": 1, "amax": neg_inf, "amin": pos_inf}
-
-        idx_shape = idx.shape().lens()
-        lit_mgx = mgx_module.add_literal(
-            torch.tensor(base_literals[reduce], dtype=dtype).numpy())
-        lit_mgx_bc = mgx_module.add_instruction(
-            migraphx.op("multibroadcast", out_lens=list(idx_shape)), [lit_mgx])
-        inp = mgx_module.add_instruction(migraphx.op("scatter_none", axis=dim),
-                                         [inp, idx, lit_mgx_bc])
-    elif reduce == "mean":
+    if reduce == "mean":
         logger.warning(
             """Model contains a scatter_reduce node with reduce="mean", """
             """this type of scatter reduction is not supported in migraphx. """
@@ -2031,8 +1674,9 @@ def acc_ops_scatter_reduce(mgx_module, node, args, kwargs):
             """is applied in this case.""")
 
     return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op(reduce_map[reduce], axis=dim),
-                                   [inp, idx, src.instr_ref]))
+        build_scatter_reduce(mgx_module,
+                             [inp.instr_ref, idx.instr_ref, src.instr_ref], dim,
+                             reduce, include_self))
 
 
 @migraphx_converter(acc_ops.batch_norm)
@@ -2040,6 +1684,26 @@ def acc_ops_batch_norm(mgx_module, node, args, kwargs):
 
     inp, weight, bias = kwargs['input'], kwargs['weight'], kwargs['bias']
     r_mean, r_var = kwargs['running_mean'], kwargs['running_var']
+
+    assert not inp.is_quantized()
+    inp_ref = inp.instr_ref
+    num_ch = inp_ref.shape().lens()[1]
+    dtype = get_arg_dtype(inp_ref)
+
+    # No running statistics (track_running_stats=False): tm::instance_norm computes
+    # mean/var from the input, pooled over the batch and spatial dims. Covers
+    # nn.BatchNorm with track_running_stats=False and, after its [1, N*C, *]
+    # reshape, nn.InstanceNorm. Absent affine params default to identity.
+    if r_mean is None and r_var is None:
+        assert weight is None or not weight.is_quantized()
+        assert bias is None or not bias.is_quantized()
+        weight_ref = weight.instr_ref if weight is not None else \
+            mgx_module.add_literal(torch.ones(num_ch, dtype=dtype).numpy())
+        bias_ref = bias.instr_ref if bias is not None else \
+            mgx_module.add_literal(torch.zeros(num_ch, dtype=dtype).numpy())
+        return MGXInstruction(
+            build_instance_norm(mgx_module, [inp_ref, weight_ref, bias_ref],
+                                kwargs['eps']))
 
     if weight is None:
         weight = MGXInstruction(
@@ -2069,77 +1733,9 @@ def acc_ops_batch_norm(mgx_module, node, args, kwargs):
         r_mean = convert_arg(mgx_module, r_mean, dtype)
         r_var = convert_arg(mgx_module, r_var, dtype)
 
-    out_shape = inp.shape().lens()
-    unsq_dims = [i for i in range(len(out_shape)) if i != 1]
-
-    eps_mgx = mgx_module.add_literal(
-        torch.tensor(kwargs['eps'], dtype=get_arg_dtype(r_var)).numpy())
-    eps_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [eps_mgx])
-
-    mean_mgx = mgx_module.add_instruction(
-        migraphx.op('unsqueeze', axes=unsq_dims), [r_mean])
-    mean_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [mean_mgx])
-
-    var_mgx = mgx_module.add_instruction(
-        migraphx.op('unsqueeze', axes=unsq_dims), [r_var])
-    var_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [var_mgx])
-
-    weight_mgx = mgx_module.add_instruction(
-        migraphx.op('unsqueeze', axes=unsq_dims), [weight])
-    weight_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [weight_mgx])
-
-    bias_mgx = mgx_module.add_instruction(
-        migraphx.op('unsqueeze', axes=unsq_dims), [bias])
-    bias_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [bias_mgx])
-
-    denom_mgx = mgx_module.add_instruction(migraphx.op('add'),
-                                           [var_mgx, eps_mgx])
-    denom_mgx = mgx_module.add_instruction(migraphx.op('sqrt'), [denom_mgx])
-
-    num_mgx = mgx_module.add_instruction(migraphx.op('sub'), [inp, mean_mgx])
-
-    div_mgx = mgx_module.add_instruction(migraphx.op('div'),
-                                         [num_mgx, denom_mgx])
-
-    mul_mgx = mgx_module.add_instruction(migraphx.op('mul'),
-                                         [weight_mgx, div_mgx])
-
     return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('add'), [mul_mgx, bias_mgx]))
-
-
-def compute_norm(mgx_module, x, eps, axes):
-    dtype = get_arg_dtype(x)
-    out_shape = x.shape().lens()
-
-    eps_mgx = mgx_module.add_literal(torch.tensor(eps, dtype=dtype).numpy())
-    eps_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [eps_mgx])
-
-    mean_mgx = mgx_module.add_instruction(
-        migraphx.op('reduce_mean', axes=axes), [x])
-    mean_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [mean_mgx])
-    sub_mgx = mgx_module.add_instruction(migraphx.op('sub'), [x, mean_mgx])
-    pow_mgx = mgx_module.add_instruction(migraphx.op('mul'), [sub_mgx, sub_mgx])
-    var_mgx = mgx_module.add_instruction(migraphx.op('reduce_mean', axes=axes),
-                                         [pow_mgx])
-
-    var_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [var_mgx])
-    add_eps_mgx = mgx_module.add_instruction(migraphx.op('add'),
-                                             [var_mgx, eps_mgx])
-
-    rsqrt_mgx = mgx_module.add_instruction(migraphx.op('rsqrt'), [add_eps_mgx])
-
-    out = mgx_module.add_instruction(migraphx.op('mul'), [sub_mgx, rsqrt_mgx])
-
-    return out
+        build_batchnorm(mgx_module, [inp, weight, bias, r_mean, r_var],
+                        kwargs['eps']))
 
 
 @migraphx_converter(acc_ops.layer_norm)
@@ -2160,24 +1756,12 @@ def acc_ops_layer_norm(mgx_module, node, args, kwargs):
             mgx_module.add_literal(torch.tensor(0, dtype=dtype).numpy()))
 
     assert all(not i.is_quantized() for i in (inp, weight, bias))
-    inp, weight, bias = inp.instr_ref, weight.instr_ref, bias.instr_ref
-
-    out_shape = inp.shape().lens()
     axes = list(range(-len(normalized_shape), 0))
 
-    norm_mgx = compute_norm(mgx_module, inp, eps, axes)
-
-    weight_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [weight])
-
-    mul_mgx = mgx_module.add_instruction(migraphx.op('mul'),
-                                         [weight_mgx, norm_mgx])
-
-    bias_mgx = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=out_shape), [bias])
-
     return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('add'), [mul_mgx, bias_mgx]))
+        build_layer_norm(mgx_module,
+                         [inp.instr_ref, weight.instr_ref, bias.instr_ref], eps,
+                         axes))
 
 
 @migraphx_converter(acc_ops.group_norm)
@@ -2192,40 +1776,10 @@ def acc_ops_group_norm(mgx_module, node, args, kwargs):
     inp, weight, bias = inp.instr_ref, weight.instr_ref, bias.instr_ref
 
     out_shape = inp.shape().lens()
-    unsq_dims = [i for i in range(len(out_shape)) if i != 1]
-    num_ch = out_shape[1]
-    assert len(out_shape) > 2 and num_ch % num_groups == 0
+    assert len(out_shape) > 2 and out_shape[1] % num_groups == 0
 
-    group_size = num_ch // num_groups
-    grouped_shape = [out_shape[0], num_groups, -1]
-    grouped_inp = mgx_module.add_instruction(
-        migraphx.op('reshape', dims=grouped_shape), [inp])
-
-    axes = [-1]
-
-    norm_mgx = compute_norm(mgx_module, grouped_inp, eps, axes)
-    norm_mgx = mgx_module.add_instruction(
-        migraphx.op('reshape', dims=out_shape), [norm_mgx])
-
-    if weight:
-        weight_mgx = mgx_module.add_instruction(
-            migraphx.op('unsqueeze', axes=unsq_dims), [weight])
-        weight_mgx = mgx_module.add_instruction(
-            migraphx.op('multibroadcast', out_lens=out_shape), [weight_mgx])
-
-        norm_mgx = mgx_module.add_instruction(migraphx.op('mul'),
-                                              [weight_mgx, norm_mgx])
-
-    if bias:
-        bias_mgx = mgx_module.add_instruction(
-            migraphx.op('unsqueeze', axes=unsq_dims), [bias])
-        bias_mgx = mgx_module.add_instruction(
-            migraphx.op('multibroadcast', out_lens=out_shape), [bias_mgx])
-
-        norm_mgx = mgx_module.add_instruction(migraphx.op('add'),
-                                              [norm_mgx, bias_mgx])
-
-    return MGXInstruction(norm_mgx)
+    return MGXInstruction(
+        build_group_norm(mgx_module, [inp, weight, bias], eps, num_groups))
 
 
 @migraphx_converter(acc_ops.linalg_vector_norm)
@@ -2235,46 +1789,10 @@ def acc_ops_linalg_vector_norm(mgx_module, node, args, kwargs):
     dim = kwargs["dim"]
     keepdim = kwargs["keepdim"]
 
-    dtype = get_arg_dtype(inp.instr_ref)
     axes = list(range(inp.shape().ndim())) if dim is None else [dim]
 
-    abs_x = mgx_module.add_instruction(migraphx.op('abs'), [inp.instr_ref])
-    ord_mgx = mgx_module.add_literal(torch.tensor(ord, dtype=dtype).numpy())
-    ord_bc = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=inp.shape().lens()), [ord_mgx])
-    if ord == 0:
-        # sum(x != 0)
-        non_zero_vals = mgx_module.add_instruction(migraphx.op('greater'),
-                                                   [abs_x, ord_bc])
-        non_zero_numeric = convert_arg(mgx_module, non_zero_vals, dtype)
-        out = mgx_module.add_instruction(migraphx.op('reduce_sum', axes=axes),
-                                         [non_zero_numeric])
-    elif ord == torch.inf:
-        # max(abs(x))
-        out = mgx_module.add_instruction(migraphx.op('reduce_max', axes=axes),
-                                         [abs_x])
-    elif ord == -torch.inf:
-        # min(abs(x))
-        out = mgx_module.add_instruction(migraphx.op('reduce_min', axes=axes),
-                                         [abs_x])
-    else:
-        # sum(abs(x)^{ord})^{(1 / ord)}
-        pow_x = mgx_module.add_instruction(migraphx.op('pow'), [abs_x, ord_bc])
-        sum_pow_x = mgx_module.add_instruction(
-            migraphx.op('reduce_sum', axes=axes), [pow_x])
-        recip_ord = mgx_module.add_instruction(migraphx.op('recip'), [ord_mgx])
-        recip_ord_bc = mgx_module.add_instruction(
-            migraphx.op('multibroadcast', out_lens=sum_pow_x.shape().lens()),
-            [recip_ord])
-
-        out = mgx_module.add_instruction(migraphx.op('pow'),
-                                         [sum_pow_x, recip_ord_bc])
-
-    if not keepdim:
-        out = mgx_module.add_instruction(migraphx.op('squeeze', axes=axes),
-                                         [out])
-
-    return MGXInstruction(out)
+    return MGXInstruction(
+        build_vector_norm(mgx_module, [inp.instr_ref], ord, axes, keepdim))
 
 
 @migraphx_converter(acc_ops.new_zeros)
@@ -2333,22 +1851,17 @@ def acc_ops_eq(mgx_module, node, args, kwargs):
         isinstance(a, MGXInstruction) and a.is_quantized()
         for a in (inp, other))
 
-    inp, other = broadcast_for_elemwise_op(mgx_module,
-                                           node,
-                                           inp,
-                                           other,
-                                           use_node_dtype=False)
+    inp, other = elemwise_operands(mgx_module, node, inp, other,
+                                   use_node_dtype=False)
 
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('equal'),
-                                                     [inp, other]),
+    return MGXInstruction(add_common_op(mgx_module, 'equal', [inp, other]),
                           bool_output=True)
 
 
 @migraphx_converter(acc_ops.ne)
 def acc_ops_ne(mgx_module, node, args, kwargs):
     eq = acc_ops_eq(mgx_module, node, args, kwargs)
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'),
-                                                     [eq.instr_ref]),
+    return MGXInstruction(add_op(mgx_module, 'not', [eq.instr_ref]),
                           bool_output=True)
 
 
@@ -2361,14 +1874,10 @@ def acc_ops_gt(mgx_module, node, args, kwargs):
         isinstance(a, MGXInstruction) and a.is_quantized()
         for a in (inp, other))
 
-    inp, other = broadcast_for_elemwise_op(mgx_module,
-                                           node,
-                                           inp,
-                                           other,
-                                           use_node_dtype=False)
+    inp, other = elemwise_operands(mgx_module, node, inp, other,
+                                   use_node_dtype=False)
 
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('greater'),
-                                                     [inp, other]),
+    return MGXInstruction(add_common_op(mgx_module, 'greater', [inp, other]),
                           bool_output=True)
 
 
@@ -2381,30 +1890,24 @@ def acc_ops_lt(mgx_module, node, args, kwargs):
         isinstance(a, MGXInstruction) and a.is_quantized()
         for a in (inp, other))
 
-    inp, other = broadcast_for_elemwise_op(mgx_module,
-                                           node,
-                                           inp,
-                                           other,
-                                           use_node_dtype=False)
+    inp, other = elemwise_operands(mgx_module, node, inp, other,
+                                   use_node_dtype=False)
 
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('less'),
-                                                     [inp, other]),
+    return MGXInstruction(add_common_op(mgx_module, 'less', [inp, other]),
                           bool_output=True)
 
 
 @migraphx_converter(acc_ops.ge)
 def acc_ops_ge(mgx_module, node, args, kwargs):
     lt = acc_ops_lt(mgx_module, node, args, kwargs)
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'),
-                                                     [lt.instr_ref]),
+    return MGXInstruction(add_op(mgx_module, 'not', [lt.instr_ref]),
                           bool_output=True)
 
 
 @migraphx_converter(acc_ops.le)
 def acc_ops_le(mgx_module, node, args, kwargs):
     gt = acc_ops_gt(mgx_module, node, args, kwargs)
-    return MGXInstruction(mgx_module.add_instruction(migraphx.op('not'),
-                                                     [gt.instr_ref]),
+    return MGXInstruction(add_op(mgx_module, 'not', [gt.instr_ref]),
                           bool_output=True)
 
 
@@ -2412,29 +1915,20 @@ def acc_ops_le(mgx_module, node, args, kwargs):
 def acc_ops_isinf(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('isinf'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'isinf', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.any, min_migraphx_ver="2.11.0")
 def acc_ops_any(mgx_module, node, _args, kwargs):
     inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
     in_shape = inp.shape().lens()
-    dtype = get_arg_dtype(inp)
     dims = [kwargs['dim']] if kwargs.get("dim") else list(
         range(len(in_shape)))
 
-    if dtype not in [torch.bool, torch.uint8]:
-        inp = mgx_module.add_instruction(
-            migraphx.op("convert",
-                        target_type=migraphx.shape.type_t.bool_type), [inp])
+    inp = cast_to_bool(mgx_module, inp)
 
-    reduce_any = mgx_module.add_instruction(migraphx.op('reduce_any', axes=dims),
-                                      [inp])
-
-    if not kwargs.get("keepdim", False):
-        reduce_any = mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
-                                          [reduce_any])
+    reduce_any = add_reduce_op(mgx_module, 'reduce_any', [inp], dims,
+                               kwargs.get("keepdim", False))
 
     return MGXInstruction(reduce_any, qparams=qparams)
 
@@ -2443,21 +1937,13 @@ def acc_ops_any(mgx_module, node, _args, kwargs):
 def acc_ops_all(mgx_module, node, _args, kwargs):
     inp, qparams = kwargs['input'].instr_ref, kwargs['input'].qparams
     in_shape = inp.shape().lens()
-    dtype = get_arg_dtype(inp)
     dims = [kwargs['dim']] if kwargs.get("dim") else list(
         range(len(in_shape)))
 
-    if dtype not in [torch.bool, torch.uint8]:
-        inp = mgx_module.add_instruction(
-            migraphx.op("convert",
-                        target_type=migraphx.shape.type_t.bool_type), [inp])
+    inp = cast_to_bool(mgx_module, inp)
 
-    reduce_all = mgx_module.add_instruction(migraphx.op('reduce_all', axes=dims),
-                                      [inp])
-
-    if not kwargs.get("keepdim", False):
-        reduce_all = mgx_module.add_instruction(migraphx.op('squeeze', axes=dims),
-                                          [reduce_all])
+    reduce_all = add_reduce_op(mgx_module, 'reduce_all', [inp], dims,
+                               kwargs.get("keepdim", False))
 
     return MGXInstruction(reduce_all, qparams=qparams)
 
@@ -2466,74 +1952,28 @@ def acc_ops_all(mgx_module, node, _args, kwargs):
 def acc_ops_isnan(mgx_module, node, args, kwargs):
     inp = kwargs["input"]
 
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('isnan'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'isnan', [inp.instr_ref]))
 
 
 @migraphx_converter(acc_ops.nan_to_num)
 def acc_ops_nan_to_num(mgx_module, node, args, kwargs):
     inp = kwargs['input']
+    dtype = get_arg_dtype(inp.instr_ref)
+
     nan_val = kwargs.get('nan', None)
     posinf_val = kwargs.get('posinf', None)
     neginf_val = kwargs.get('neginf', None)
-    input_instr_ref = inp.instr_ref
-    output_dtype = get_arg_dtype(input_instr_ref)
-    output_lens = inp.shape().lens()
-    # where(isnan(x), nan_val, x)
+    dtype_min, dtype_max = get_min_max_val(dtype)
     if nan_val is None:
         nan_val = 0.0
     if posinf_val is None:
-        _, posinf_val = get_min_max_val(output_dtype)
-
+        posinf_val = dtype_max
     if neginf_val is None:
-        neginf_val, _ = get_min_max_val(output_dtype)
+        neginf_val = dtype_min
 
-    # add all the literals we need
-    nan_val_lit = mgx_module.add_literal(
-        torch.tensor([nan_val], dtype=output_dtype).numpy())
-    mb_nan_val = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=output_lens), [nan_val_lit])
-    zero_lit = mgx_module.add_literal(
-        torch.tensor([0.], dtype=output_dtype).numpy())
-    mb_zero = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=output_lens), [zero_lit])
-    posinf_val_lit = mgx_module.add_literal(
-        torch.tensor([posinf_val], dtype=output_dtype).numpy())
-    mb_posinf_val = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=output_lens), [posinf_val_lit])
-    neginf_val_lit = mgx_module.add_literal(
-        torch.tensor([neginf_val], dtype=output_dtype).numpy())
-    mb_neginf_val = mgx_module.add_instruction(
-        migraphx.op('multibroadcast', out_lens=output_lens), [neginf_val_lit])
-
-    # make NaN mask and replace NaN with nan_val
-    isnan = mgx_module.add_instruction(migraphx.op('isnan'), [input_instr_ref])
-    result = mgx_module.add_instruction(migraphx.op('where'),
-                                        [isnan, mb_nan_val, input_instr_ref])
-    # make +inf and -inf masks. Change +inf to posinf_val and -inf to neginf_val
-    isinf = mgx_module.add_instruction(migraphx.op('isinf'), [input_instr_ref])
-    less = mgx_module.add_instruction(migraphx.op('less'),
-                                      [input_instr_ref, mb_zero])
-    greater = mgx_module.add_instruction(migraphx.op('greater'),
-                                         [input_instr_ref, mb_zero])
-    if less.shape().type() != migraphx.shape.type_t.bool_type:
-        less = mgx_module.add_instruction(
-            migraphx.op('convert',
-                        target_type=migraphx.shape.type_t.bool_type), [less])
-    if greater.shape().type() != migraphx.shape.type_t.bool_type:
-        greater = mgx_module.add_instruction(
-            migraphx.op('convert',
-                        target_type=migraphx.shape.type_t.bool_type),
-            [greater])
-    neginf_mask = mgx_module.add_instruction(migraphx.op('logical_and'),
-                                             [less, isinf])
-    posinf_mask = mgx_module.add_instruction(migraphx.op('logical_and'),
-                                             [greater, isinf])
-    result = mgx_module.add_instruction(migraphx.op('where'),
-                                        [neginf_mask, mb_neginf_val, result])
-    result = mgx_module.add_instruction(migraphx.op('where'),
-                                        [posinf_mask, mb_posinf_val, result])
-    return MGXInstruction(result)
+    return MGXInstruction(
+        build_nan_to_num(mgx_module, [inp.instr_ref], nan_val, posinf_val,
+                         neginf_val))
 
 
 @migraphx_converter(acc_ops.bitwise_and, min_migraphx_ver="2.11.0")
@@ -2544,13 +1984,13 @@ def acc_ops_bitwise_and(mgx_module, node, _args, kwargs):
         return inp & other
 
     dtype = get_arg_dtype(inp)
-    inp, other = broadcast_for_elemwise_op(mgx_module, node, inp, other)
+    inp, other = elemwise_operands(mgx_module, node, inp, other)
 
     if dtype == torch.bool:
-        return MGXInstruction(
-            mgx_module.add_instruction(migraphx.op('logical_and'), [inp, other]))
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('bitwise_and'), [inp, other]))
+        return MGXInstruction(add_common_op(mgx_module, 'logical_and',
+                                            [inp, other]))
+    return MGXInstruction(add_common_op(mgx_module, 'bitwise_and',
+                                        [inp, other]))
 
 
 @migraphx_converter(acc_ops.scaled_dot_product_attention)
@@ -2661,5 +2101,4 @@ def acc_ops_scaled_dot_product_attention(mgx_module, node, args, kwargs):
 def acc_ops_erf(mgx_module, node, args, kwargs):
     inp = kwargs['input']
     assert not inp.is_quantized()
-    return MGXInstruction(
-        mgx_module.add_instruction(migraphx.op('erf'), [inp.instr_ref]))
+    return MGXInstruction(add_op(mgx_module, 'erf', [inp.instr_ref]))

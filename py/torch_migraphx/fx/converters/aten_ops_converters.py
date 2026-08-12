@@ -57,10 +57,8 @@ def aten_ops_to_copy(mgx_module, node, args, kwargs):
         out = args[0]
     if "dtype" in kwargs:
         assert not out.is_quantized()
-        out = mgx_module.add_instruction(
-            migraphx.op("convert",
-                        target_type=torch_dtype_to_mgx_enum(kwargs["dtype"])),
-            [out.instr_ref])
+        out = add_op(mgx_module, "convert", [out.instr_ref],
+                     target_type=torch_dtype_to_mgx_enum(kwargs["dtype"]))
         out = MGXInstruction(out)
 
     return out
@@ -771,6 +769,28 @@ def aten_ops_group_norm(mgx_module, node, args, kwargs):
 
     return acc_ops_converters.acc_ops_group_norm(mgx_module, node, (),
                                                  acc_kwargs), None, None
+
+
+@migraphx_converter(torch.ops.aten._native_batch_norm_legit.no_stats)
+def aten_ops_batch_norm_no_stats(mgx_module, node, args, kwargs):
+    # Signature: (input, weight, bias, training, momentum, eps). The no_stats
+    # variant carries no running mean/var, so stats are computed from the input
+    # (pooled over batch + spatial). Covers BatchNorm with
+    # track_running_stats=False and InstanceNorm (reshaped to [1, N*C, *]).
+    assert len(args) == 6
+
+    acc_kwargs = {
+        "input": args[0],
+        "weight": args[1],
+        "bias": args[2],
+        "running_mean": None,
+        "running_var": None,
+        "momentum": args[4],
+        "eps": args[5],
+    }
+
+    bn = acc_ops_converters.acc_ops_batch_norm(mgx_module, node, (), acc_kwargs)
+    return bn, None, None
     
 
 @migraphx_converter(torch.ops.aten.linalg_vector_norm.default)
@@ -817,7 +837,11 @@ def aten_ops_convolution(mgx_module, node, args, kwargs):
     }
 
     if acc_kwargs["transposed"]:
-        raise RuntimeError("'transposed' parameter not supported.")
+        # Transposed convolution lowers to a MIGraphX 'convolution_backwards' op.
+        # acc_ops_conv_transposend does not take a 'transposed' kwarg.
+        acc_kwargs.pop("transposed")
+        return acc_ops_converters.acc_ops_conv_transposend(
+            mgx_module, node, (), acc_kwargs)
 
     if not all(i == 0 for i in acc_kwargs["output_padding"]):
         raise RuntimeError(
