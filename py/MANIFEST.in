@@ -2,3 +2,4 @@ include version.txt
 include LICENSE
 include requirements.txt
 recursive-include torch_migraphx/csrc *.cpp
+recursive-include torch_migraphx/executorch/csrc *.cpp *.h

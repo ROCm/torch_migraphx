@@ -1,0 +1,7 @@
+accelerate
+executorch==1.0.1
+huggingface-hub
+librosa
+mistral-common[audio]>=1.8.1
+soundfile
+transformers>=4.57.3

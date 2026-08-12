@@ -30,6 +30,8 @@ import logging
 import os
 import torch
 import operator
+from torch.fx.node import map_aggregate
+from torch.fx.passes.shape_prop import _extract_tensor_metadata
 from .utils import log_pass
 
 _LOGGER = logging.getLogger(__name__)
@@ -41,25 +43,46 @@ if DYNAMO_LOGLEVEL:
 @log_pass(_LOGGER, logging.DEBUG)
 def fix_tensor_meta(gm: torch.fx.GraphModule):
     for node in gm.graph.nodes:
-        # This is only true for functions with multiple outputs
-        if node.op == "call_function" and not "tensor_meta" in node.meta and node.target != operator.getitem:
-            max_idx = -1
-            output_metas = {}
-            # Grab the output tensor metadata from following getitem nodes
-            for user, _ in node.users.items():
-                assert user.target == operator.getitem
-                getitem_idx = user.args[1]
-                max_idx = getitem_idx if getitem_idx > max_idx else max_idx
-                output_metas[getitem_idx] = user.meta["tensor_meta"]
+        if "tensor_meta" in node.meta:
+            continue
 
-            # Construct a list of tensor metadata in the correct order
-            new_metas = [None for i in range(max_idx + 1)]
-            for i, meta in output_metas.items():
-                new_metas[i] = meta
+        # Newer torch.export versions preserve FakeTensor values in ``val``
+        # instead of populating ``tensor_meta``. Convert both single- and
+        # multiple-output values to the metadata format expected by converters.
+        if "val" in node.meta:
+            found_tensor = False
 
-            # Add the metadata for each output as a tuple. This is not supported
-            # by the partitioner, so this transform should be done after
-            # using the partitioner to split the graph for partitions that need
-            # to be lowered to migraphx
-            node.meta["tensor_meta"] = tuple(new_metas)
+            def extract(value):
+                nonlocal found_tensor
+                if isinstance(value, torch.Tensor):
+                    found_tensor = True
+                    return _extract_tensor_metadata(value)
+                return value
+
+            tensor_meta = map_aggregate(node.meta["val"], extract)
+            if found_tensor:
+                node.meta["tensor_meta"] = tensor_meta
+                continue
+
+        # Legacy Dynamo graphs may omit metadata on a multiple-output function
+        # while retaining it on the following getitem nodes.
+        if node.op != "call_function" or node.target == operator.getitem:
+            continue
+
+        users = list(node.users)
+        if not users or any(
+            user.op != "call_function"
+            or user.target != operator.getitem
+            or "tensor_meta" not in user.meta
+            for user in users
+        ):
+            continue
+
+        output_metas = {
+            user.args[1]: user.meta["tensor_meta"] for user in users
+        }
+        max_idx = max(output_metas)
+        node.meta["tensor_meta"] = tuple(
+            output_metas.get(index) for index in range(max_idx + 1)
+        )
     return gm

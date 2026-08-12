@@ -71,7 +71,14 @@ setup(
     ],
     packages=find_packages(),
     package_dir={'torch_migraphx': 'torch_migraphx'},
-    package_data={'torch_migraphx': ['csrc/*.cpp']},
+    package_data={
+        'torch_migraphx': ['csrc/*.cpp'],
+        'torch_migraphx.executorch': [
+            'csrc/src/*.cpp',
+            'csrc/include/torch_migraphx/executorch/*.h',
+            'csrc/include/executorch/runtime/backend/*.h',
+        ],
+    },
     ext_modules=ext_modules,
     cmdclass=cmdclass,
     license="BSD",
