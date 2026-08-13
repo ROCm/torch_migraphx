@@ -35,6 +35,7 @@ from ..converter_registry import migraphx_converter
 from ..tracer.acc_tracer import acc_ops
 from torch.fx.node import Argument, Target
 from .utils import *
+from .mgx_builder import add_op, build_lstm
 from ..mgx_module import MGXInstruction
 
 
@@ -51,7 +52,7 @@ def add_lstm_layer(
 ):
     ih_weights_mgx = mgx_module.add_literal(ih_weights.detach().cpu().numpy())
     hh_weights_mgx = mgx_module.add_literal(hh_weights.detach().cpu().numpy())
-    undef_ins = mgx_module.add_instruction(migraphx.op('undefined'), [])
+    undef_ins = add_op(mgx_module, 'undefined', [])
     bias_mgx = mgx_module.add_literal(
         biases.detach().cpu().numpy()) if biases is not None else undef_ins
     seq_lens = P = undef_ins
@@ -59,8 +60,11 @@ def add_lstm_layer(
     h0_mgx = undef_ins if h0 is None else h0
     c0_mgx = undef_ins if c0 is None else c0
 
-    hidden_states = mgx_module.add_instruction(
-        migraphx.op('lstm', hidden_size=hidden_size, direction=direction), [
+    # Returns (hidden_states, last_hs, last_cell); hidden_states has shape
+    # [seq_length, num_directions, batch_size, hidden_size].
+    return build_lstm(
+        mgx_module,
+        [
             input_seq,
             ih_weights_mgx,
             hh_weights_mgx,
@@ -69,9 +73,10 @@ def add_lstm_layer(
             h0_mgx,
             c0_mgx,
             P,
-        ])
-
-    return hidden_states
+        ],
+        hidden_size,
+        direction,
+    )
 
 
 def fix_lstm_weight_orders(tensor):
@@ -130,8 +135,7 @@ def module_lstm(mgx_module, torch_mod, node, args, kwargs):
 
     if torch_mod.batch_first:
         # Need shape [seq_length, batch_size, input_size]
-        inp = mgx_module.add_instruction(
-            migraphx.op('transpose', permutation=[1, 0, 2]), [inp])
+        inp = add_op(mgx_module, 'transpose', [inp], permutation=[1, 0, 2])
 
     hidden_size = torch_mod.hidden_size
     has_bias = torch_mod.bias
@@ -170,14 +174,12 @@ def module_lstm(mgx_module, torch_mod, node, args, kwargs):
 
         start_idx, end_idx = num_directions * n, num_directions * (n + 1)
 
-        h0_n = mgx_module.add_instruction(
-            migraphx.op('slice', axes=[0], starts=[start_idx], ends=[end_idx]),
-            [h0]) if h0 is not None else None
-        c0_n = mgx_module.add_instruction(
-            migraphx.op('slice', axes=[0], starts=[start_idx], ends=[end_idx]),
-            [c0]) if c0 is not None else None
+        h0_n = add_op(mgx_module, 'slice', [h0], axes=[0], starts=[start_idx],
+                      ends=[end_idx]) if h0 is not None else None
+        c0_n = add_op(mgx_module, 'slice', [c0], axes=[0], starts=[start_idx],
+                      ends=[end_idx]) if c0 is not None else None
 
-        outs = add_lstm_layer(
+        hidden_states, last_hs, last_cell = add_lstm_layer(
             mgx_module,
             hidden_size,
             direction,
@@ -187,25 +189,20 @@ def module_lstm(mgx_module, torch_mod, node, args, kwargs):
             biases,
             h0_n,
             c0_n,
-        )  # shape [seq_length, num_directions, batch_size, hidden_size]
+        )
 
         # Input to next layer needs to be [seq_length, batch_size, num_directions*hidden_size]
-        inp = mgx_module.add_instruction(
-            migraphx.op(
-                'reshape',
-                dims=[seq_len, batch_size, num_directions * hidden_size]),
-            [outs])
+        inp = add_op(mgx_module,
+                     'reshape',
+                     [hidden_states],
+                     dims=[seq_len, batch_size, num_directions * hidden_size])
 
-        hiddens.append(
-            mgx_module.add_instruction(migraphx.op('rnn_last_hs_output'),
-                                       [outs]))
-        cells.append(
-            mgx_module.add_instruction(migraphx.op('rnn_last_cell_output'),
-                                       [outs]))
+        hiddens.append(last_hs)
+        cells.append(last_cell)
 
     if torch_mod.num_layers > 1:
-        hn = mgx_module.add_instruction(migraphx.op('concat', axis=0), hiddens)
-        cn = mgx_module.add_instruction(migraphx.op('concat', axis=0), cells)
+        hn = add_op(mgx_module, 'concat', hiddens, axis=0)
+        cn = add_op(mgx_module, 'concat', cells, axis=0)
     else:
         hn, cn = hiddens[0], cells[0]
 
