@@ -94,6 +94,7 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
             setattr(optim_gm, name, mgx_mod)
     
         lowered_gm = post_lowering_pass(optim_gm)
+        lowered_gm._tracer_cls = None
         return lowered_gm
 
 
