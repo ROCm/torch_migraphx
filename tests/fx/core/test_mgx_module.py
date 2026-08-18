@@ -10,6 +10,28 @@ class TestModule(torch.nn.Module):
         return x + x
 
 
+def test_infer_output_names_with_padded_indices():
+    class MockProgram:
+
+        def get_parameter_names(self):
+            return [
+                "input_0",
+                "main:#output_:00010",
+                "main:#output_2",
+                "main:#output_0",
+            ]
+
+    mgx_mod = MGXModule()
+    mgx_mod.program = MockProgram()
+    mgx_mod.input_names = ["input_0"]
+
+    assert mgx_mod._infer_output_names() == [
+        "main:#output_0",
+        "main:#output_2",
+        "main:#output_:00010",
+    ]
+
+
 def test_save_and_load_mgx_module():
 
     inputs = [torch.randn(1, 1)]
