@@ -158,7 +158,8 @@ class MGXModule(torch.nn.Module):
             i for i in self.program.get_parameter_names()
             if i not in self.input_names
         ],
-                           key=lambda x: int(x.split('output_')[1]))
+                           key=lambda x: int(
+                               x.rsplit('output_', 1)[1].lstrip(':')))
         return out_names
 
     def _allocate_param_buffers(self, names):
