@@ -27,7 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
 
-from typing import Dict, Optional, Sequence, Mapping
+from typing import Dict, Optional, Mapping
 import logging
 import os
 
@@ -107,6 +107,15 @@ def partition(gm: torch.fx.GraphModule,
     partitions = partitioner.propose_partitions()
     fused_gm = partitioner.fuse_partitions(partitions)
     fused_gm.graph.eliminate_dead_code()
+
+    # CapabilityBasedPartitioner can insert fused calls after an output node
+    # when the graph returns an empty tuple and only communicates through input
+    # mutations. Keep the output last so those side effects remain reachable.
+    output_node = next(n for n in fused_gm.graph.nodes if n.op == "output")
+    last_node = list(fused_gm.graph.nodes)[-1]
+    if output_node is not last_node:
+        last_node.append(output_node)
+
     fused_gm.recompile()
     fused_gm.delete_all_unused_submodules()
 
@@ -124,29 +133,3 @@ def partition(gm: torch.fx.GraphModule,
         )
 
     return fused_gm
-
-
-def get_partition_inputs(
-        mod: torch.fx.GraphModule, submod: torch.fx.GraphModule,
-        example_input: Sequence[torch.Tensor]) -> Sequence[torch.Tensor]:
-    """Returns the input to a specific submodule given initial model input. 
-       Uses same technique as torch.fx.passes.splitter_base.
-
-    Args:
-        mod (torch.fx.GraphModule): Full model graph
-        submod (torch.fx.GraphModule): Subgraph for which to capture input
-        example_input (Sequence[torch.Tensor]): Input to the full model graph
-
-    Returns:
-        Sequence[torch.Tensor]: Inputs to the specified subgraph
-    """
-    sub_inputs = None
-
-    def get_inputs(self, inputs):
-        nonlocal sub_inputs
-        sub_inputs = inputs
-
-    handle = submod.register_forward_pre_hook(get_inputs)
-    mod(*example_input)
-    handle.remove()
-    return sub_inputs

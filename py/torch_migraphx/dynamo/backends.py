@@ -38,6 +38,12 @@ from torch._functorch.aot_autograd import aot_export_joint_simple, make_boxed_fu
 from torch._dynamo.backends.common import aot_autograd, fake_tensor_unsupported
 from torch._inductor.compile_fx import fw_compiler_freezing, _graph_counter
 from .lower_dynamo import lower_aten_to_mgx
+from .mutation import (
+    UnsupportedMutation,
+    apply_mutation_plan,
+    export_functional,
+    graph_may_mutate,
+)
 from .passes.export.input_aliasing import insert_clone_input
 
 # Need to expliciltly enable freezing for torch 2.5 onward
@@ -46,6 +52,33 @@ if version.parse(torch.__version__) >= version.parse("2.5"):
     inductor_config.freezing = True
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _export_and_lower(gm: torch.fx.GraphModule,
+                      example_inputs: Sequence[torch.Tensor], **kwargs):
+    """Export a dynamo graph to aten and lower it to MIGraphX.
+
+    A graph that writes to its inputs or to module state is functionalized
+    first and wrapped afterwards, so that callers keep observing those writes.
+    """
+    if graph_may_mutate(gm):
+        try:
+            export = export_functional(gm, example_inputs)
+        except UnsupportedMutation as err:
+            _LOGGER.warning(f"Leaving graph in PyTorch: {err}")
+            return gm
+
+        compiled_gm = lower_aten_to_mgx(export.graph_module,
+                                        export.example_inputs, **kwargs)
+        return apply_mutation_plan(compiled_gm, export.plan, state_module=gm)
+
+    # TODO: remove alias input fix once issue is fixed upstream
+    # https://github.com/pytorch/pytorch/issues/108079
+    exported_gm = aot_export_joint_simple(insert_clone_input(gm),
+                                          example_inputs,
+                                          trace_joint=False)
+    return lower_aten_to_mgx(exported_gm, example_inputs, **kwargs)
+
 
 @dynamo.register_backend(name="migraphx")
 def migraphx_backend(gm: torch.fx.GraphModule,
@@ -81,17 +114,11 @@ def migraphx_pretraced_backend(gm: torch.fx.GraphModule,
         # Refer to discussion https://github.com/pytorch/pytorch/issues/105485
         TracingContext.get().fake_mode.allow_non_fake_inputs = True
 
-        if not is_aot_wrapped:
-            # TODO: remove alias input fix once issue is fixed upstream
-            # https://github.com/pytorch/pytorch/issues/108079
-            clone_inp_gm = insert_clone_input(gm)
-            opt_model = aot_export_joint_simple(clone_inp_gm,
-                                                example_inputs,
-                                                trace_joint=False)
+        if is_aot_wrapped:
+            # AOT autograd already exported the graph to aten.
+            compiled_gm = lower_aten_to_mgx(gm, example_inputs, **kwargs)
         else:
-            opt_model = gm
-
-        compiled_gm = lower_aten_to_mgx(opt_model, example_inputs, **kwargs)
+            compiled_gm = _export_and_lower(gm, example_inputs, **kwargs)
 
         if "save_compiled" in kwargs:
             torch.save(compiled_gm, kwargs["save_compiled"], pickle_protocol=4)

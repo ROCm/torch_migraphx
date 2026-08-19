@@ -5,7 +5,7 @@ def remove_lowered_constants(gm: torch.fx.GraphModule):
     used_literals = set()
     for node in gm.graph.nodes:
         if node.op == "get_attr":
-            used_literals.add(node.name)
+            used_literals.add(node.target)
     
     unused_literals = set()
     for name, _ in itertools.chain(gm.named_parameters(), gm.named_buffers()):

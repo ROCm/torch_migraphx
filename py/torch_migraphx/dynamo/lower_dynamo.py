@@ -27,7 +27,8 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #####################################################################################
 
-from typing import Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
+import copy
 import logging
 import os
 
@@ -39,8 +40,14 @@ from torch_migraphx.fx.mgx_module import MGXModule
 from torch_migraphx.fx.fx2mgx import MGXInterpreter
 from torch_migraphx.fx.passes.pass_utils import validate_inference
 
+from .mutation import graph_has_side_effects, graph_may_mutate
 from .passes.pass_manager import pre_partition_pass, post_partition_pass, post_lowering_pass
-from .passes.partition import partition, get_partition_inputs
+from .passes.partition import partition
+from .passes.rewrite_output_aliases import (
+    apply_alias_rewrite,
+    capture_partition_io,
+    plan_alias_rewrite,
+)
 from .utils import get_input_info, get_graph_info, SetLogLevel
 
 _LOGGER = logging.getLogger(__name__)
@@ -71,31 +78,102 @@ def lower_aten_to_mgx(gm: torch.fx.GraphModule,
     optim_gm = pre_partition_pass(gm)
     partition(optim_gm, verbose=verbose)
 
+    # Capturing a partition's inputs runs the whole graph, so every capture
+    # needs pristine values when the graph writes to them.
+    capture_inputs = (copy.deepcopy(example_inputs)
+                      if graph_may_mutate(optim_gm) else example_inputs)
+
     log_level = min(_LOGGER.level, logging.INFO) if verbose else _LOGGER.level
     with SetLogLevel(_LOGGER, log_level):
-        for name, mod in optim_gm.named_children():
-            # Const folded params can show up as "child objects"
-            if not isinstance(mod, torch.fx.GraphModule):
-                continue
+        for name, call_node in _partition_calls(optim_gm).items():
+            _lower_partition(optim_gm, name, call_node, capture_inputs,
+                             **kwargs)
 
-            mod = post_partition_pass(mod)
-            partition_inputs = get_partition_inputs(optim_gm, mod, example_inputs)
-
-            _LOGGER.info(f"Lowering subgraph: {name}")
-            _LOGGER.info(
-                f"Subgraph inputs: {get_input_info(partition_inputs)}")
-            _LOGGER.info(f"Subgraph:\n{get_graph_info(mod.graph)}")
-
-            mgx_mod = lower_subgraph(mod,
-                                     partition_inputs,
-                                     name=name,
-                                     **kwargs)
-
-            setattr(optim_gm, name, mgx_mod)
-    
         lowered_gm = post_lowering_pass(optim_gm)
         lowered_gm._tracer_cls = None
         return lowered_gm
+
+
+def _partition_calls(
+        gm: torch.fx.GraphModule) -> Dict[str, Optional[torch.fx.Node]]:
+    """Fused partitions of a graph, in the order they are executed.
+
+    Capturing partition inputs runs the partially lowered graph, so consumers
+    have to be lowered after their producers to observe the layouts those
+    producers actually give them.
+
+    The node calling a partition is needed to rewrite its call site. A
+    partition called from more than one site maps to None, since rewriting one
+    call site would leave the others reading the old outputs.
+    """
+    calls: Dict[str, Optional[torch.fx.Node]] = {}
+    for node in gm.graph.nodes:
+        if node.op != "call_module" or not isinstance(
+                gm.get_submodule(node.target), torch.fx.GraphModule):
+            continue
+        calls[node.target] = None if node.target in calls else node
+    return calls
+
+
+def _lower_partition(gm: torch.fx.GraphModule, name: str,
+                     call_node: Optional[torch.fx.Node],
+                     example_inputs: Sequence[torch.Tensor], **kwargs):
+    """Replace one fused partition with a compiled MIGraphX module.
+
+    Partitions that cannot be expressed as a MIGraphX program are left in
+    PyTorch, which costs performance but keeps the graph correct.
+    """
+    submodule = post_partition_pass(gm.get_submodule(name))
+    if graph_has_side_effects(submodule):
+        _LOGGER.warning(f"Leaving subgraph {name} in PyTorch because it has "
+                        "side effects MIGraphX cannot reproduce")
+        return
+
+    capture = capture_partition_io(gm, submodule, example_inputs)
+    if not capture.aliases_representable:
+        _LOGGER.warning(f"Leaving subgraph {name} in PyTorch because its "
+                        "output aliases cannot be represented safely")
+        return
+
+    # Aliased outputs are rebuilt as views at the call site instead of being
+    # returned by the compiled partition, which cannot alias anything.
+    rewrite = None
+    if capture.aliases:
+        if call_node is None:
+            _LOGGER.warning(f"Leaving subgraph {name} in PyTorch because it "
+                            "aliases outputs and is called more than once")
+            return
+
+        rewrite = plan_alias_rewrite(submodule, capture.aliases)
+        submodule = rewrite.module
+        if rewrite.prunes_every_output:
+            apply_alias_rewrite(gm, call_node, rewrite)
+            return
+
+    _LOGGER.info(f"Lowering subgraph: {name}")
+    _LOGGER.info(f"Subgraph inputs: {get_input_info(capture.inputs)}")
+    _LOGGER.info(f"Subgraph:\n{get_graph_info(submodule.graph)}")
+
+    mgx_module = lower_subgraph(submodule,
+                                capture.inputs,
+                                name=name,
+                                **kwargs)
+
+    if rewrite is not None:
+        if not rewrite.supports_output_layouts(_output_layouts(mgx_module)):
+            _LOGGER.warning(f"Leaving subgraph {name} in PyTorch because "
+                            "MIGraphX changed an output layout an alias is "
+                            "rebuilt from")
+            return
+        apply_alias_rewrite(gm, call_node, rewrite)
+
+    setattr(gm, name, mgx_module)
+
+
+def _output_layouts(
+        mgx_module: MGXModule) -> List[Tuple[Sequence[int], Sequence[int]]]:
+    return [(shape.lens(), shape.strides())
+            for shape in mgx_module.output_mgx_shapes]
 
 
 
