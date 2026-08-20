@@ -26,7 +26,9 @@ Start container using:
 sudo docker run -it --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined torch_migraphx
 ```
 
-The default Dockerfile builds on the nightly pytorch container and installs the latest source version of MIGraphX and torch_migraphx. For more builds refer to the docker directory.
+The default Dockerfile targets PyTorch 2.11 on ROCm 7.14 with Python 3.12
+and the matching MIGraphX release. For more builds refer to the docker
+directory.
 
 ### Install From Source
 Install Pre-reqs:
@@ -38,6 +40,14 @@ Build and install from source
 git clone https://github.com/ROCmSoftwarePlatform/torch_migraphx.git
 cd ./torch_migraphx/py
 pip install .
+```
+
+Torch-MIGraphX retains compatibility with older supported PyTorch releases by
+gating version-specific APIs. PyTorch 2.11 moved PT2E quantization to
+`torchao`; install the optional quantization dependencies when using that
+functionality:
+```
+pip install ".[quantization]"
 ```
 
 ## Example Usage

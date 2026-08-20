@@ -30,6 +30,7 @@ from typing import cast, Dict, Optional, Sequence, Tuple, Union
 import logging
 
 import migraphx
+from packaging import version
 import torch
 
 from ..converter_registry import migraphx_converter
@@ -45,13 +46,11 @@ from ..utils import (
 from ..mgx_module import MGXInstruction
 from torch_migraphx.fx.converters import acc_ops_converters
 
-# Import required to populate torch.ops.quantized_decomposed.
-# torch>=2.12 removed torch.ao.quantization.quantize_pt2e; the quantized_decomposed ops are now
-# registered by torch.ao.quantization.fx._decomposed instead.
-try:
-    import torch.ao.quantization.quantize_pt2e  # noqa: F401  (torch < 2.12)
-except ModuleNotFoundError:
-    import torch.ao.quantization.fx._decomposed  # noqa: F401  (torch >= 2.12)
+# Import required to populate torch.ops.quantized_decomposed
+if version.parse(torch.__version__) >= version.parse("2.11.dev"):
+    import torchao.quantization.pt2e.quantize_pt2e
+else:
+    import torch.ao.quantization.quantize_pt2e
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -122,7 +121,7 @@ def aten_ops_dequantize(mgx_module, node, args, kwargs):
     if q_inp.qparams is None:
         raise RuntimeError("""
             Graph contains a dequantize operation without a preceding quantize operation.
-            If using torch.ao.quantization.quantize_pt2e.convert_pt2e with PyTorch >= 2.2,
+            If using PT2E convert_pt2e with PyTorch >= 2.2,
             call using fold_quantize=False.
             """)
 

@@ -1,15 +1,10 @@
-from packaging import version
 import torch_migraphx
 import torch
 
-if version.parse(torch.__version__) < version.parse("2.6.dev"):
-    from torch._export import capture_pre_autograd_graph
-else:
-    from torch.export import export_for_training
-
-from torch.ao.quantization.quantize_pt2e import (
+from torch_migraphx.dynamo.quantization._compat import (
+    convert_pt2e_preserve_quantize,
+    export_for_quantization,
     prepare_pt2e,
-    convert_pt2e,
 )
 from torch_migraphx.dynamo.quantization import MGXQuantizer
 import torch_migraphx.fx.tracer.aten_tracer.aten_tracer as aten_tracer
@@ -30,19 +25,12 @@ class FuncModule(torch.nn.Module):
 
 
 def stable_convert_pt2e(model, use_reference_representation=False):
-    if version.parse(torch.__version__) < version.parse("2.2"):
-        return convert_pt2e(model, use_reference_representation)
-    else:
-        return convert_pt2e(model,
-                            use_reference_representation,
-                            fold_quantize=False)
+    return convert_pt2e_preserve_quantize(model,
+                                         use_reference_representation)
     
 
 def stable_pre_aot_export(model, inputs, *args, **kwargs):
-    if version.parse(torch.__version__) < version.parse("2.6.dev"):
-        return capture_pre_autograd_graph(model, inputs, *args, **kwargs)
-    else:
-        return export_for_training(model, tuple(inputs), *args, **kwargs).module()
+    return export_for_quantization(model, inputs, *args, **kwargs)
 
 
 
@@ -61,15 +49,18 @@ def quantize_module(mod, inp_shapes, asymm=False, calibration_n=10):
 
 
 def move_q_gm_to_device(gm, device="cuda"):
+    device = torch.device(device)
+    if device.type == "cuda" and device.index is None:
+        device = torch.device("cuda", torch.cuda.current_device())
     gm = gm.to(device)
     for node in gm.graph.nodes:
         if "device" in node.kwargs:
             new_kwargs = {k: v for k, v in node.kwargs.items()}
-            new_kwargs["device"] = torch.device(device)
+            new_kwargs["device"] = device
             node.kwargs = new_kwargs
         if any(isinstance(a, torch.device) for a in node.args):
             new_args = [
-                torch.device(device) if isinstance(a, torch.device) else a
+                device if isinstance(a, torch.device) else a
                 for a in node.args
             ]
             node.args = new_args

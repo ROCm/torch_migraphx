@@ -1,11 +1,10 @@
 import sys
 import pytest
 import copy
-from packaging import version
 import torch_migraphx
 import torch
 from torchvision import models
-from torch.ao.quantization.quantize_pt2e import prepare_pt2e
+from torch_migraphx.dynamo.quantization._compat import prepare_pt2e
 from torch_migraphx.dynamo.quantization import MGXQuantizer
 from quantization_utils_dynamo import (stable_convert_pt2e,
                                        stable_pre_aot_export,
@@ -56,8 +55,6 @@ def test_quant_vision_model(model_name, model_weights, rtol, atol, asymm,
     del mgx_mod, model, torch_fp32_mod, torch_q_mod, model_export
 
 
-@pytest.mark.skipif(version.parse(torch.__version__) > version.parse("2.4"), 
-                    reason="pt2e pipeline interaction with torch.compile API has changed in PyTorch 2.5, needs refactoring")
 @pytest.mark.skipif('transformers' not in sys.modules,
                     reason="requires the transformers library")
 @pytest.mark.parametrize(

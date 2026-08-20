@@ -69,6 +69,9 @@ setup(
     "packaging",
     "tabulate",
     ],
+    extras_require={
+        "quantization": ["torchao>=0.17.0"],
+    },
     packages=find_packages(),
     package_dir={'torch_migraphx': 'torch_migraphx'},
     package_data={'torch_migraphx': ['csrc/*.cpp']},

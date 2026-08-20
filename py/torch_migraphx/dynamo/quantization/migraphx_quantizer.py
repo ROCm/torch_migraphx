@@ -31,8 +31,8 @@
 # https://github.com/pytorch/pytorch/blob/main/torch/ao/quantization/quantizer/xnnpack_quantizer.py
 
 import torch
-from torch.ao.quantization.quantizer import QuantizationSpec, Quantizer
 
+from ._compat import Quantizer
 from .migraphx_quantizer_utils import OP_ANNOTATORS, OP_DEFAULT_CONFIGS, annotate_const_nodes
 
 

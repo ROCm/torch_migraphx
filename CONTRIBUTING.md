@@ -10,7 +10,8 @@ For general ROCm contribution guidelines, see the [ROCm contributing guide](http
 
 - [ROCm](https://rocm.docs.amd.com/projects/install-on-linux/en/latest/) (with MIGraphX installed)
 - [PyTorch (ROCm version)](https://rocm.docs.amd.com/projects/install-on-linux/en/develop/how-to/3rd-party/pytorch-install.html#using-a-wheels-package)
-- Python 3.7+
+- Python 3.7+ for legacy PyTorch environments; the primary PyTorch 2.11
+  development image uses Python 3.12
 - A C++ compiler compatible with your PyTorch installation (for building the native extension)
 
 ### Using Docker (Recommended)

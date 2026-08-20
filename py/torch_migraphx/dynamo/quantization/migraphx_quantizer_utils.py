@@ -34,20 +34,20 @@ from typing import Callable, Dict, List, NamedTuple, Optional, Any
 from dataclasses import dataclass
 
 import torch
-from torch.ao.quantization.quantizer import (
+from ._compat import (
+    HistogramObserver,
+    MinMaxObserver,
+    MovingAverageMinMaxObserver,
+    MovingAveragePerChannelMinMaxObserver,
+    ObserverBase,
+    PerChannelMinMaxObserver,
+    PlaceholderObserver,
     QuantizationAnnotation,
     QuantizationSpec,
     QuantizationSpecBase,
     SharedQuantizationSpec,
+    annotate_input_qspec_map,
 )
-from torch.ao.quantization.quantizer.utils import (
-    _annotate_input_qspec_map,
-    _annotate_output_qspec,
-)
-from torch.ao.quantization.observer import (
-    HistogramObserver, MinMaxObserver, MovingAverageMinMaxObserver,
-    MovingAveragePerChannelMinMaxObserver, PerChannelMinMaxObserver,
-    PlaceholderObserver, ObserverBase)
 from torch.fx import Node
 
 
@@ -260,19 +260,19 @@ def _annotate_linear(node: Node, quantization_config: QuantizationConfig):
     bias_node = node.args[2] if len(node.args) > 2 else None
 
     if not _is_annotated(node):
-        _annotate_input_qspec_map(
+        annotate_input_qspec_map(
             node,
             act_node,
             quantization_config.input_activation,
         )
-        _annotate_input_qspec_map(
+        annotate_input_qspec_map(
             node,
             weight_node,
             quantization_config.weight,
         )
         nodes_to_mark_annotated = [act_node, weight_node]
         if bias_node:
-            _annotate_input_qspec_map(
+            annotate_input_qspec_map(
                 node,
                 bias_node,
                 quantization_config.bias,
@@ -294,17 +294,17 @@ def _annotate_addmm(node: Node, quantization_config: QuantizationConfig):
         return None
 
     if not _is_annotated(node):
-        _annotate_input_qspec_map(
+        annotate_input_qspec_map(
             node,
             mm1_node,
             _get_gemm_node_default_spec(mm1_node, quantization_config, 0),
         )
-        _annotate_input_qspec_map(
+        annotate_input_qspec_map(
             node,
             mm2_node,
             _get_gemm_node_default_spec(mm2_node, quantization_config, 1),
         )
-        _annotate_input_qspec_map(
+        annotate_input_qspec_map(
             node,
             bias_node,
             quantization_config.bias,
@@ -328,12 +328,12 @@ def _annotate_bmm(node: Node, quantization_config: QuantizationConfig):
         return None
 
     if not _is_annotated(node):
-        _annotate_input_qspec_map(
+        annotate_input_qspec_map(
             node,
             a1,
             _get_gemm_node_default_spec(a1, quantization_config, 0),
         )
-        _annotate_input_qspec_map(
+        annotate_input_qspec_map(
             node,
             a2,
             _get_gemm_node_default_spec(a2, quantization_config, 1),
@@ -357,19 +357,19 @@ def _annotate_conv(node: Node, quantization_config: QuantizationConfig):
     bias_node = node.args[2] if len(node.args) > 2 else None
 
     if not _is_annotated(node):
-        _annotate_input_qspec_map(
+        annotate_input_qspec_map(
             node,
             act_node,
             quantization_config.input_activation,
         )
-        _annotate_input_qspec_map(
+        annotate_input_qspec_map(
             node,
             weight_node,
             quantization_config.weight,
         )
         nodes_to_mark_annotated = [act_node, weight_node]
         if bias_node:
-            _annotate_input_qspec_map(
+            annotate_input_qspec_map(
                 node,
                 bias_node,
                 quantization_config.bias,

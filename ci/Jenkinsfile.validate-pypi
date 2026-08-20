@@ -27,7 +27,7 @@ def runTests() {
         checkout scm
 
         gitStatusWrapper(credentialsId: 'ROC_Repo_Management_API_5', gitHubContext: "Jenkins - pypi-validate-${arch}", account: 'ROCm', repo: 'torch_migraphx') {
-            def pkg = params.PACKAGE_VERSION?.trim() ? "torch-migraphx==${params.PACKAGE_VERSION}" : "torch-migraphx"
+            def pkg = params.PACKAGE_VERSION?.trim() ? "torch-migraphx[quantization]==${params.PACKAGE_VERSION}" : "torch-migraphx[quantization]"
             def image = params.PYTORCH_IMAGE
             sh """
             docker run --rm --network=host --device=/dev/kfd --device=/dev/dri --group-add=video --ipc=host --cap-add=SYS_PTRACE --security-opt seccomp=unconfined ${image} bash -c '
@@ -50,7 +50,7 @@ pipeline {
     agent { label 'build-only' }
     parameters {
         string(name: 'PACKAGE_VERSION', defaultValue: '', description: 'Version to install from TestPyPI (e.g. 1.1). Leave empty for latest.')
-        string(name: 'PYTORCH_IMAGE', defaultValue: 'rocm/pytorch:latest', description: 'ROCm PyTorch Docker image')
+        string(name: 'PYTORCH_IMAGE', defaultValue: 'rocm/pytorch:rocm7.14_ubuntu24.04_py3.12_pytorch_release_2.11.0', description: 'ROCm PyTorch Docker image')
     }
     stages {
         stage('matrix') {
