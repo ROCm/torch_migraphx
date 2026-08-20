@@ -49,15 +49,18 @@ def quantize_module(mod, inp_shapes, asymm=False, calibration_n=10):
 
 
 def move_q_gm_to_device(gm, device="cuda"):
+    device = torch.device(device)
+    if device.type == "cuda" and device.index is None:
+        device = torch.device("cuda", torch.cuda.current_device())
     gm = gm.to(device)
     for node in gm.graph.nodes:
         if "device" in node.kwargs:
             new_kwargs = {k: v for k, v in node.kwargs.items()}
-            new_kwargs["device"] = torch.device(device)
+            new_kwargs["device"] = device
             node.kwargs = new_kwargs
         if any(isinstance(a, torch.device) for a in node.args):
             new_args = [
-                torch.device(device) if isinstance(a, torch.device) else a
+                device if isinstance(a, torch.device) else a
                 for a in node.args
             ]
             node.args = new_args
