@@ -28,7 +28,6 @@
 #####################################################################################
 
 from typing import Sequence
-import gc
 import logging
 import os
 
@@ -139,7 +138,6 @@ def lower_subgraph(module: torch.fx.GraphModule,
         if node.op == "get_attr" and hasattr(module, node.target.split(".")[0]):
             delattr(module, node.target.split(".")[0])
     if torch.cuda.is_available():
-        gc.collect()  # graph modules sit in reference cycles
         torch.cuda.empty_cache()
 
     mgx_module = MGXModule(program=program,
