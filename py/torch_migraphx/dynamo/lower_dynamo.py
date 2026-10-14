@@ -121,16 +121,27 @@ def lower_subgraph(module: torch.fx.GraphModule,
 
     interpreter = MGXInterpreter(module, inputs, deallocate=deallocate)
     interpreter.run()
+    program, input_names = interpreter.program, interpreter.get_input_names()
 
     if save_mxr:
         prefix = f"{save_mxr}_" if isinstance(save_mxr, str) else ""
         name = f"{prefix}{kwargs['name']}.mxr" if 'name' in kwargs else f"{prefix}_prog.mxr"
-        migraphx.save(interpreter.program, name)
+        migraphx.save(program, name)
 
-    _LOGGER.debug(f"Interpreted Program:\n{interpreter.program}")
+    _LOGGER.debug(f"Interpreted Program:\n{program}")
 
-    mgx_module = MGXModule(program=interpreter.program,
-                           input_names=interpreter.get_input_names(),
+    # Every get_attr tensor is now a literal in the program. Drop this subgraph's
+    # references (the constant-folded weights live only here) before compiling,
+    # so the folded GPU copies are not resident while MIGraphX uploads its own.
+    del interpreter
+    for node in module.graph.nodes:
+        if node.op == "get_attr" and hasattr(module, node.target.split(".")[0]):
+            delattr(module, node.target.split(".")[0])
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    mgx_module = MGXModule(program=program,
+                           input_names=input_names,
                            quantize_fp16=fp16,
                            quantize_bf16=bf16,
                            exhaustive_tune=exhaustive_tune)
