@@ -37,6 +37,7 @@ from torch._guards import TracingContext
 from torch._functorch.aot_autograd import aot_export_joint_simple, make_boxed_func
 from torch._dynamo.backends.common import aot_autograd, fake_tensor_unsupported
 from torch._inductor.compile_fx import fw_compiler_freezing, _graph_counter
+from .decompositions import MGX_DECOMPOSITIONS
 from .lower_dynamo import lower_aten_to_mgx
 from .passes.export.input_aliasing import insert_clone_input
 
@@ -85,9 +86,11 @@ def migraphx_pretraced_backend(gm: torch.fx.GraphModule,
             # TODO: remove alias input fix once issue is fixed upstream
             # https://github.com/pytorch/pytorch/issues/108079
             clone_inp_gm = insert_clone_input(gm)
-            opt_model = aot_export_joint_simple(clone_inp_gm,
-                                                example_inputs,
-                                                trace_joint=False)
+            opt_model = aot_export_joint_simple(
+                clone_inp_gm,
+                example_inputs,
+                trace_joint=False,
+                decompositions=MGX_DECOMPOSITIONS)
         else:
             opt_model = gm
 
@@ -133,4 +136,5 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
     return aot_autograd(
         fw_compiler=inference_compiler,
         keep_inference_input_mutations=True,
+        decompositions=MGX_DECOMPOSITIONS,
     )(gm, example_inputs)
