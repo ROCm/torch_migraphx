@@ -29,6 +29,23 @@ from dynamo_passes_test_utils import generate_func_gm, target_exists_in_graph
             {},
         ),
         (
+            # Empty size: a 0-d tensor
+            torch.ops.aten.new_zeros.default,
+            {
+                0: torch.randn(3, 4, 2)
+            },
+            ((), ),
+            {},
+        ),
+        (
+            torch.ops.aten.new_ones.default,
+            {
+                0: torch.randn(3, 4, 2)
+            },
+            ((), ),
+            {},
+        ),
+        (
             # Creates tensor where each element is `value` specified in args,
             # size and dtpye is the same as that of the input
             torch.ops.aten.full_like.default,

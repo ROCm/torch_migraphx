@@ -64,7 +64,10 @@ def test_quant_vision_model(model_name, model_weights, rtol, atol, asymm,
 @pytest.mark.parametrize("asymm", [False, True])
 def test_quant_LLM(model_class, tokenizer_class, model_name, rtol, atol, asymm,
                    default_torch_seed):
-    model = getattr(transformers, model_class).from_pretrained(model_name)
+    # Only last_hidden_state is compared; with the KV cache on, the output also
+    # holds a DynamicCache, which torch.export cannot flatten.
+    model = getattr(transformers, model_class).from_pretrained(model_name,
+                                                               use_cache=False)
     torch_fp32_mod = copy.deepcopy(model)
     tokenizer = getattr(transformers,
                         tokenizer_class).from_pretrained(model_name)

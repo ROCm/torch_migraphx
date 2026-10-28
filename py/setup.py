@@ -65,7 +65,8 @@ setup(
     long_description=long_description,
     install_requires=[
     "torch>=1.11.0",
-    "numpy>=1.20.0,<2.0",
+    "numpy>=1.20.0,<2.0; python_version < '3.13'",
+    "numpy>=2.0; python_version >= '3.13'",
     "packaging",
     "tabulate",
     ],
