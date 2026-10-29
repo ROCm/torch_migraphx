@@ -46,11 +46,26 @@ from ..utils import (
 from ..mgx_module import MGXInstruction
 from torch_migraphx.fx.converters import acc_ops_converters
 
-# Import required to populate torch.ops.quantized_decomposed
-if version.parse(torch.__version__) >= version.parse("2.11.dev"):
-    import torchao.quantization.pt2e.quantize_pt2e
-else:
-    import torch.ao.quantization.quantize_pt2e
+# Import required to populate torch.ops.quantized_decomposed. On PyTorch < 2.11 this
+# lived at torch.ao.quantization.quantize_pt2e; that module was removed upstream on
+# newer PyTorch (confirmed absent on 2.13.0+rocm7.2), and #290 pointed newer PyTorch at
+# torchao.quantization.pt2e.quantize_pt2e instead. That works, but pulls in torchao as a
+# hard new dependency for what is only a registration side effect here -- and torchao
+# ships CUDA-specific compiled extensions (_C_mxfp8, _C_cutlass_90a) that fail to load
+# on a ROCm build with no functional impact (they're simply unused), which is confusing
+# noise for anyone who doesn't already depend on torchao for something else. The same
+# registration is available with zero extra dependencies via
+# torch.ao.quantization.fx._decomposed, which is where quantize_pt2e itself sourced it
+# from on older PyTorch too (confirmed: torch.ops.quantized_decomposed.quantize_per_tensor
+# is absent before this import and present after, on 2.13.0+rocm7.2). Prefer that; only
+# reach for torchao if a future PyTorch also drops _decomposed's own registration.
+try:
+    import torch.ao.quantization.fx._decomposed  # noqa: F401
+except ModuleNotFoundError:
+    if version.parse(torch.__version__) >= version.parse("2.11.dev"):
+        import torchao.quantization.pt2e.quantize_pt2e
+    else:
+        import torch.ao.quantization.quantize_pt2e
 
 _LOGGER = logging.getLogger(__name__)
 
