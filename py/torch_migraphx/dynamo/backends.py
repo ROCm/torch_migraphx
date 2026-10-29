@@ -33,7 +33,8 @@ import logging
 
 import torch
 import torch._dynamo as dynamo
-from torch._guards import TracingContext
+from torch._guards import TracingContext, tracing
+from torch._subclasses.fake_tensor import FakeTensorMode
 from torch._functorch.aot_autograd import aot_export_joint_simple, make_boxed_func
 from torch._dynamo.backends.common import aot_autograd, fake_tensor_unsupported
 from torch._inductor.compile_fx import fw_compiler_freezing, _graph_counter
@@ -58,7 +59,36 @@ def migraphx_backend(gm: torch.fx.GraphModule,
     if use_aot:
         return migraphx_aot_backend(gm, example_inputs, **kwargs)
 
+    if _is_symbolic(example_inputs):
+        return _compile_per_shape(gm, **kwargs)
+
     return migraphx_pretraced_backend(gm, example_inputs, **kwargs)
+
+
+def _is_symbolic(example_inputs):
+    return any(
+        isinstance(i, torch.SymInt) or (isinstance(i, torch.Tensor) and any(
+            isinstance(d, torch.SymInt) for d in i.shape))
+        for i in example_inputs)
+
+
+def _compile_per_shape(gm, **kwargs):
+    """A MIGraphX program has static shapes, so a graph traced with symbolic shapes
+    is compiled once per concrete input shape when it is first called with it."""
+    compiled = {}
+
+    def forward(*args):
+        key = tuple(
+            (tuple(a.shape), a.dtype) if isinstance(a, torch.Tensor) else a
+            for a in args)
+        if key not in compiled:
+            _LOGGER.info(f"Compiling MIGraphX program for input shapes {key}")
+            # Called outside dynamo, so the export below needs a tracing context
+            with tracing(TracingContext(FakeTensorMode())):
+                compiled[key] = migraphx_pretraced_backend(gm, list(args), **kwargs)
+        return compiled[key](*args)
+
+    return forward
 
 
 @dynamo.register_backend(name="migraphx_pretraced")
