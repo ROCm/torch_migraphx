@@ -36,6 +36,26 @@ from .tracer.acc_tracer import acc_shape_prop
 from .utils import *
 
 
+def _strides_match(tensor, mgx_shape):
+    # The stride of a dimension of size 1 is never used to read data.
+    return all(
+        n == 1 or s == m
+        for n, s, m in zip(tensor.shape, tensor.stride(), mgx_shape.strides()))
+
+
+def _to_mgx_layout(tensor, mgx_shape):
+    strides = mgx_shape.strides()
+    # The program reads only index 0 of a dimension with stride 0, and
+    # copy_ cannot write to a tensor whose elements overlap.
+    for d, s in enumerate(strides):
+        if s == 0:
+            tensor = tensor.narrow(d, 0, 1)
+    return torch.empty_strided(tensor.shape,
+                               strides,
+                               dtype=tensor.dtype,
+                               device=tensor.device).copy_(tensor)
+
+
 class MGXInstruction:
 
     def __init__(self,
@@ -136,6 +156,12 @@ class MGXModule(torch.nn.Module):
                     "however, this will add extra overhead if running a performance benckmark."
                 )
                 inp_val = inp_val.cuda()
+
+            # The program reads the input with the strides it was compiled
+            # with. Copy the input to that layout if the runtime strides
+            # differ (e.g. a view output of an earlier partition).
+            if not _strides_match(inp_val, mgx_shape):
+                inp_val = _to_mgx_layout(inp_val, mgx_shape)
 
             self.mgx_buffers[inp_name] = mgx_argument_from_ptr(inp_val.data_ptr(), mgx_shape)
         
