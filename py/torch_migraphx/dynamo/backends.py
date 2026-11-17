@@ -29,6 +29,7 @@
 from typing import Sequence, Callable, Any
 from packaging import version
 import functools
+import inspect
 import logging
 
 import torch
@@ -119,14 +120,29 @@ def migraphx_aot_backend(gm: torch.fx.GraphModule,
     TracingContext.get().fake_mode.allow_non_fake_inputs = True
     if not torch.is_grad_enabled():
         _pretraced_backend = functools.partial(_pretraced_backend, is_freezing=True, **kwargs)
+        # torch 2.15 and later take one compiler_config_extra argument.
+        # torch 2.11 to 2.14 also have a CompilerConfigExtra class, with other
+        # fields, so check the signature, not the class.
+        if "compiler_config_extra" in inspect.signature(
+                fw_compiler_freezing).parameters:
+            from torch._inductor.compile_fx import CompilerConfigExtra
+            from torch._inductor.cudagraph_utils import BoxedDeviceIndex
+            from torch._inductor.utils import BoxedBool
+            config_kwargs = dict(compiler_config_extra=CompilerConfigExtra(
+                cudagraphs=BoxedBool(False),
+                graph_id=graph_id,
+                forward_device_index=BoxedDeviceIndex(None),
+                forward_is_cudagraph_partitioned=BoxedBool(False)))
+        else:
+            config_kwargs = dict(cudagraphs=False,
+                                 graph_id=graph_id,
+                                 forward_device=None)
         inference_compiler = functools.partial(
             fw_compiler_freezing,
             dynamo_model=gm,
             num_example_inputs=len(example_inputs),
             inner_compile=fake_tensor_unsupported(_pretraced_backend),
-            cudagraphs=False,
-            graph_id=graph_id,
-            forward_device=None)
+            **config_kwargs)
     else:
         _LOGGER.warning(
             f"Grad is enabled for lowered model, consider calling compiled model"
