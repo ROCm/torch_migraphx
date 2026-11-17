@@ -86,11 +86,24 @@ def migraphx_pretraced_backend(gm: torch.fx.GraphModule,
             # TODO: remove alias input fix once issue is fixed upstream
             # https://github.com/pytorch/pytorch/issues/108079
             clone_inp_gm = insert_clone_input(gm)
-            opt_model = aot_export_joint_simple(
-                clone_inp_gm,
-                example_inputs,
-                trace_joint=False,
-                decompositions=MGX_DECOMPOSITIONS)
+            # From PyTorch 2.16, a decomposition table makes the trace keep
+            # the CompositeImplicitAutograd (CIA) ops that are not in it.
+            # Trace without a table first, and use MGX_DECOMPOSITIONS only
+            # for the ops in it that remain. Then trace without a table again
+            # to decompose the CIA ops in these decompositions.
+            opt_model = aot_export_joint_simple(clone_inp_gm,
+                                                example_inputs,
+                                                trace_joint=False)
+            if any(n.target in MGX_DECOMPOSITIONS
+                   for n in opt_model.graph.nodes):
+                opt_model = aot_export_joint_simple(
+                    opt_model,
+                    example_inputs,
+                    trace_joint=False,
+                    decompositions=MGX_DECOMPOSITIONS)
+                opt_model = aot_export_joint_simple(opt_model,
+                                                    example_inputs,
+                                                    trace_joint=False)
         else:
             opt_model = gm
 
