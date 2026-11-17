@@ -70,3 +70,12 @@ def test_save_and_load_state_dict():
 
     reload_output = new_mgx_mod(inputs[0].cuda()).cpu()
     assert torch.allclose(reload_output, ref_output, rtol=1e-04, atol=1e-04)
+
+
+def test_zero_size_output():
+    # MIGraphX can give a null pointer for an output with no elements.
+    from torch_migraphx.fx.utils import tensor_from_ptr
+    out = tensor_from_ptr(0, [2, 0], [1, 1], "float_type", False,
+                          torch.device("cuda"))
+    assert out.shape == (2, 0)
+    assert out.device.type == "cuda" and out.device.index >= 0

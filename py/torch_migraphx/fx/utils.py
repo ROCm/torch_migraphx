@@ -158,6 +158,11 @@ def tensor_from_ptr(ptr: int,
         lens = []
         strides = []
     
+    # A tensor with no elements can have a null pointer. from_blob cannot get
+    # the device of a null pointer.
+    if 0 in lens:
+        return torch.empty_strided(lens, strides, dtype=torch_dtype, device=device)
+
     return _C.from_blob(ptr, lens, strides, torch_dtype, device)
 
 
