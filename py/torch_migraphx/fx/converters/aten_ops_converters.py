@@ -48,6 +48,7 @@ _LOGGER = logging.getLogger(__name__)
 @migraphx_converter(torch.ops.aten.clone.default)
 @migraphx_converter(torch.ops.aten.copy.default)
 @migraphx_converter(torch.ops.aten.detach.default)
+@migraphx_converter(torch.ops.aten.alias.default)
 def aten_ops_to_copy(mgx_module, node, args, kwargs):
     if node.target == torch.ops.aten.copy.default:
         assert len(args) == 2
