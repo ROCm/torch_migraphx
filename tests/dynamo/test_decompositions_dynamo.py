@@ -5,6 +5,7 @@ import torch_migraphx
 if not hasattr(torch_migraphx, "dynamo"):
     pytest.skip(allow_module_level=True)
 
+import torch_migraphx.dynamo.backends as backends
 from torch_migraphx.dynamo.decompositions import (
     native_multi_head_attention, transformer_encoder_layer_fwd)
 
@@ -85,3 +86,57 @@ def test_transformer_encoder_layer_fwd(norm_first, activation, mask_kind,
         out = transformer_encoder_layer_fwd(*args)
 
     torch.testing.assert_close(out, gold, rtol=1e-5, atol=1e-5)
+
+
+class CompositeOps(torch.nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.w = torch.nn.Parameter(torch.randn(8, 4, 3, 3))
+        self.lin = torch.nn.Linear(16, 32)
+
+    def forward(self, x, y):
+        a = torch.nn.functional.conv2d(x, self.w, padding=1)
+        a = torch.nn.functional.max_pool2d(a, 2)
+        a = torch.nn.functional.interpolate(a, scale_factor=2.0)
+        b = torch.matmul(y, y.transpose(-1, -2)).softmax(-1)
+        # linear on a non-contiguous input
+        c = self.lin(y.transpose(0, 1))
+        return a, b, c
+
+
+def test_cia_ops_decomposed(monkeypatch):
+    # PyTorch 2.16 keeps CompositeImplicitAutograd ops in aot_export when it
+    # gets a decomposition table.
+    graphs = []
+
+    def record(gm, example_inputs, **kwargs):
+        graphs.append(gm)
+        return gm
+
+    monkeypatch.setattr(backends, "lower_aten_to_mgx", record)
+    torch._dynamo.reset()
+    with torch.no_grad():
+        torch.compile(CompositeOps().eval(),
+                      backend="migraphx")(torch.randn(1, 4, 16, 16),
+                                          torch.randn(2, 8, 16))
+
+    aten = torch.ops.aten
+    cia_ops = {
+        aten.conv2d.default, aten.max_pool2d.default,
+        aten.upsample_nearest2d.vec, aten.matmul.default, aten.softmax.int,
+        aten.linear.default
+    }
+    nodes = [n for gm in graphs for n in gm.graph.nodes]
+    assert nodes
+    assert not [n.target for n in nodes if n.target in cia_ops]
+
+    # The weight of linear must not be expanded to the batch size.
+    assert any(n.op == "get_attr" for n in nodes)
+    for n in nodes:
+        if n.target == aten.expand.default:
+            src = n.args[0]
+            while src.op == "call_function" and src.target in (
+                    aten.t.default, aten.transpose.int, aten.view.default):
+                src = src.args[0]
+            assert src.op != "get_attr", f"weight expanded: {n}"
