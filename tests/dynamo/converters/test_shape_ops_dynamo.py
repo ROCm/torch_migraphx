@@ -183,6 +183,7 @@ def test_to_copy(op_alias):
 @pytest.mark.parametrize('op_alias', [
     torch.ops.aten.copy.default,
     torch.ops.aten.detach.default,
+    torch.ops.aten.alias.default,
     torch.ops.aten._to_copy.default,
     torch.ops.aten.clone.default,
 ])
